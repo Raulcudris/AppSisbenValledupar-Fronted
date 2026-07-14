@@ -14,6 +14,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -159,6 +160,14 @@ function formatDate(value?: string | null) {
   }
 
   return `${day}/${month}/${year}`;
+}
+
+function normalizeSearchText(value?: string | null) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 function normalizeTraceabilityColor(color?: string | null): ChipColor {
@@ -350,6 +359,7 @@ export default function VentanillaRegistrosPage() {
   const [menuRecord, setMenuRecord] = useState<VentanillaResponse | null>(null);
 
   const [form, setForm] = useState<FormState>(initialForm);
+  const [barrioInputText, setBarrioInputText] = useState('');
   const [restricted, setRestricted] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState<AppSnackbarState>(initialSnackbarState);
@@ -428,6 +438,14 @@ export default function VentanillaRegistrosPage() {
 
   const closeFeedback = () => {
     setFeedback(initialSnackbarState);
+  };
+
+  const getBarrioLabelById = (barrioId?: string | number | null) => {
+    if (!barrioId) {
+      return '';
+    }
+
+    return barrios.find((option) => String(option.id) === String(barrioId))?.label ?? '';
   };
 
   const buildBackendFilter = (
@@ -554,6 +572,18 @@ export default function VentanillaRegistrosPage() {
     );
   }, []);
 
+  useEffect(() => {
+    if (!dialogOpen || !form.barrioId) {
+      return;
+    }
+
+    const selectedBarrioLabel = getBarrioLabelById(form.barrioId);
+
+    if (selectedBarrioLabel) {
+      setBarrioInputText(selectedBarrioLabel);
+    }
+  }, [barrios, dialogOpen, form.barrioId]);
+
   const updateFilter = (key: keyof VentanillaFilter, value: string) => {
     setFilter((current) => ({
       ...current,
@@ -613,6 +643,7 @@ export default function VentanillaRegistrosPage() {
   };
 
   const clearForm = () => {
+    setBarrioInputText('');
     setForm({
       ...initialForm,
       fecha: getTodayDate(),
@@ -643,7 +674,11 @@ export default function VentanillaRegistrosPage() {
   };
 
   const openEdit = (row: VentanillaResponse) => {
+    const barrioId = row.barrioId ? String(row.barrioId) : '';
+    const barrioLabel = row.barrioNombre || getBarrioLabelById(barrioId);
+
     setError('');
+    setBarrioInputText(barrioLabel);
     setForm({
       id: row.id,
       fecha: row.fecha,
@@ -653,7 +688,7 @@ export default function VentanillaRegistrosPage() {
       telefono: row.telefono ?? '',
       categoriaId: String(row.categoriaId),
       direccion: row.direccion ?? '',
-      barrioId: String(row.barrioId),
+      barrioId,
       extranjero: row.extranjero,
       solicitudId: String(row.solicitudId),
       estadoSolicitudId: String(row.estadoSolicitudId),
@@ -846,16 +881,23 @@ export default function VentanillaRegistrosPage() {
         return;
       }
 
+      const recordBarrioId = record.barrioId ? String(record.barrioId) : '';
+      const recordBarrioLabel = record.barrioNombre || getBarrioLabelById(recordBarrioId);
+
       setForm((current) => ({
         ...current,
         cedulaUsuario: cedula,
         nombreUsuario: record.nombreUsuario ?? current.nombreUsuario,
         telefono: record.telefono ?? current.telefono,
         direccion: record.direccion ?? current.direccion,
-        barrioId: record.barrioId ? String(record.barrioId) : current.barrioId,
+        barrioId: recordBarrioId || current.barrioId,
         categoriaId: record.categoriaId ? String(record.categoriaId) : current.categoriaId,
         extranjero: record.extranjero === true,
       }));
+
+      if (recordBarrioLabel) {
+        setBarrioInputText(recordBarrioLabel);
+      }
 
       showSuccess(
         'Datos del ciudadano cargados correctamente, incluyendo categoría y condición de extranjero.',
@@ -927,7 +969,7 @@ export default function VentanillaRegistrosPage() {
     }
 
     if (!form.barrioId) {
-      return 'Selecciona el barrio.';
+      return 'Escribe y selecciona el barrio.';
     }
 
     return '';
@@ -1878,12 +1920,58 @@ export default function VentanillaRegistrosPage() {
                     onChange={(value) => updateForm('estadoSolicitudId', value)}
                   />
 
-                  <SelectField
-                    label="Barrio"
-                    value={form.barrioId}
+                  <Autocomplete
                     options={barrios}
-                    required
-                    onChange={(value) => updateForm('barrioId', value)}
+                    value={
+                      barrios.find((option) => String(option.id) === String(form.barrioId)) ?? null
+                    }
+                    inputValue={barrioInputText}
+                    onInputChange={(_, newInputValue, reason) => {
+                      if (reason === 'input') {
+                        setBarrioInputText(newInputValue);
+                        updateForm('barrioId', '');
+                        return;
+                      }
+
+                      if (reason === 'clear') {
+                        setBarrioInputText('');
+                        updateForm('barrioId', '');
+                      }
+                    }}
+                    onChange={(_, selectedOption) => {
+                      updateForm('barrioId', selectedOption ? String(selectedOption.id) : '');
+                      setBarrioInputText(selectedOption?.label ?? '');
+                    }}
+                    getOptionLabel={(option) => option.label ?? ''}
+                    isOptionEqualToValue={(option, value) =>
+                      String(option.id) === String(value.id)
+                    }
+                    filterOptions={(options, state) => {
+                      const searchText = normalizeSearchText(state.inputValue);
+
+                      if (!searchText) {
+                        return options;
+                      }
+
+                      return options.filter((option) =>
+                        normalizeSearchText(option.label).includes(searchText)
+                      );
+                    }}
+                    autoHighlight
+                    clearOnEscape
+                    noOptionsText="No se encontraron barrios"
+                    clearText="Limpiar"
+                    openText="Abrir"
+                    closeText="Cerrar"
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Barrio"
+                        size="small"
+                        required
+                        helperText="Escribe letras del barrio y selecciona una opción."
+                      />
+                    )}
                   />
 
                   <FormControlLabel

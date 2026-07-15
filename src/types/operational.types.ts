@@ -22,14 +22,15 @@ export type VentanillaRequest = {
   numeroVentanilla: string;
   cedulaUsuario: string;
   nombreUsuario: string;
-  telefono?: string;
+  telefono: string;
   categoriaId: number;
-  direccion?: string;
+  direccion: string;
   barrioId: number;
   extranjero: boolean;
   solicitudId: number;
   estadoSolicitudId: number;
-  observacion?: string;
+  observacion: string;
+  motivoRepeticion?: string;
 };
 
 export type VentanillaTraceabilityBadgeResponse = {
@@ -65,6 +66,7 @@ export type VentanillaResponse = {
   estadoSolicitudId: number;
   estadoSolicitudNombre: string;
   observacion: string;
+  motivoRepeticion: string | null;
   activo: boolean;
   trazabilidad?: VentanillaTraceabilityBadgeResponse | null;
 };
@@ -95,6 +97,8 @@ export type VentanillaDailyRequestItemResponse = {
   estadoSolicitudId: number | null;
   estadoSolicitudNombre: string | null;
   observacion: string | null;
+  motivoRepeticion: string | null;
+  activo: boolean | null;
 };
 
 export type VentanillaDailyValidationResponse = {
@@ -186,6 +190,8 @@ export type VentanillaUserHistoryItemResponse = {
   estadoSolicitudId: number | null;
   estadoSolicitudNombre: string | null;
   observacion: string | null;
+  motivoRepeticion: string | null;
+activo: boolean | null;
 };
 
 export type VentanillaUserHistoryResponse = {

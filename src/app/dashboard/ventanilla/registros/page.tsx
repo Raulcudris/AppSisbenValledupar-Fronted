@@ -54,7 +54,6 @@ import { ApiClientError } from '@/lib/apiClient';
 import {
   canDeleteVentanilla,
   canExport,
-  canHardDeleteVentanilla,
   canManageVentanillaStatus,
   canWriteVentanilla,
   currentRole,
@@ -98,6 +97,7 @@ type FormState = {
   solicitudId: string;
   estadoSolicitudId: string;
   observacion: string;
+  motivoRepeticion: string;
 };
 
 type PermissionsState = {
@@ -134,6 +134,7 @@ const initialForm: FormState = {
   solicitudId: '',
   estadoSolicitudId: '',
   observacion: '',
+  motivoRepeticion: '',
 };
 
 const initialPermissions: PermissionsState = {
@@ -352,6 +353,7 @@ export default function VentanillaRegistrosPage() {
   const [dailyValidationSaving, setDailyValidationSaving] = useState(false);
   const [dailyValidation, setDailyValidation] = useState<VentanillaDailyValidationResponse | null>(null);
   const [pendingCreateRequest, setPendingCreateRequest] = useState<VentanillaRequest | null>(null);
+  const [dailyValidationReason, setDailyValidationReason] = useState('');
 
   const [tableSearch, setTableSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -385,6 +387,7 @@ export default function VentanillaRegistrosPage() {
       row.direccion,
       row.barrioNombre,
       row.comunaNombre,
+      row.motivoRepeticion,
       isAdminUser ? row.funcionarioUsername : null,
       row.trazabilidad?.etiqueta,
       row.trazabilidad?.descripcion,
@@ -558,7 +561,7 @@ export default function VentanillaRegistrosPage() {
       export: canExport(role),
       delete: canDeleteVentanilla(role),
       manageStatus: canManageVentanillaStatus(role),
-      hardDelete: canHardDeleteVentanilla(role),
+      hardDelete: false,
     });
 
     loadCatalogs();
@@ -693,6 +696,7 @@ export default function VentanillaRegistrosPage() {
       solicitudId: String(row.solicitudId),
       estadoSolicitudId: String(row.estadoSolicitudId),
       observacion: row.observacion ?? '',
+      motivoRepeticion: row.motivoRepeticion ?? '',
     });
 
     setDialogOpen(true);
@@ -814,7 +818,7 @@ export default function VentanillaRegistrosPage() {
         await inactivateVentanilla(selectedRecord.id);
 
         showSuccess(
-          'El registro fue marcado como inactivo y ya no aparecerá para los funcionarios.',
+          'El registro fue marcado como inactivo y se conservará para trazabilidad e historial.',
           'Registro inactivado'
         );
       }
@@ -823,8 +827,8 @@ export default function VentanillaRegistrosPage() {
         await deleteVentanilla(selectedRecord.id);
 
         showSuccess(
-          'El registro fue eliminado definitivamente.',
-          'Registro eliminado'
+          'El registro fue inactivado y se conservará para trazabilidad e historial.',
+          'Registro inactivado'
         );
       }
 
@@ -937,6 +941,7 @@ export default function VentanillaRegistrosPage() {
     solicitudId: Number(form.solicitudId),
     estadoSolicitudId: Number(form.estadoSolicitudId),
     observacion: form.observacion.trim(),
+    motivoRepeticion: form.motivoRepeticion.trim(),
   });
 
   const validateForm = () => {
@@ -987,63 +992,64 @@ export default function VentanillaRegistrosPage() {
     load(filter);
   };
 
-  const save = async () => {
-    setError('');
+const save = async () => {
+  setError('');
 
-    const validationMessage = validateForm();
+  const validationMessage = validateForm();
 
-    if (validationMessage) {
-      setError(validationMessage);
-      showWarning(validationMessage, 'Faltan datos');
+  if (validationMessage) {
+    setError(validationMessage);
+    showWarning(validationMessage, 'Faltan datos');
+    return;
+  }
+
+  const request = buildRequest();
+
+  try {
+    if (form.id) {
+      await updateVentanilla(form.id, request);
+
+      showSuccess(
+        'La atención de ventanilla fue actualizada correctamente.',
+        'Registro actualizado'
+      );
+
+      clearForm();
+      setDialogOpen(false);
+      load(filter);
       return;
     }
 
-    const request = buildRequest();
+    const validation = await validateVentanillaBeforeSave({
+      fecha: request.fecha,
+      cedulaUsuario: request.cedulaUsuario,
+      solicitudId: request.solicitudId,
+    });
 
-    try {
-      if (form.id) {
-        await updateVentanilla(form.id, request);
-
-        showSuccess(
-          'La atención de ventanilla fue actualizada correctamente.',
-          'Registro actualizado'
-        );
-
-        clearForm();
-        setDialogOpen(false);
-        load(filter);
-        return;
-      }
-
-      const validation = await validateVentanillaBeforeSave({
-        fecha: request.fecha,
-        cedulaUsuario: request.cedulaUsuario,
-        solicitudId: request.solicitudId,
-      });
-
-      if (!validation.puedeContinuar) {
-        setDailyValidation(validation);
-        showWarning(validation.mensaje, validation.titulo);
-        return;
-      }
-
-      if (validation.requiereConfirmacion) {
-        setDailyValidation(validation);
-        setPendingCreateRequest(request);
-        setDailyValidationOpen(true);
-        return;
-      }
-
-      await createRecord(request);
-    } catch (err) {
-      const message = err instanceof Error
-        ? err.message
-        : 'No fue posible guardar el registro.';
-
-      setError(message);
-      showError(message, 'Error del backend');
+    if (!validation.puedeContinuar) {
+      setDailyValidation(validation);
+      showWarning(validation.mensaje, validation.titulo);
+      return;
     }
-  };
+
+    if (validation.requiereConfirmacion) {
+      setDailyValidation(validation);
+      setPendingCreateRequest(request);
+      setDailyValidationReason('');
+      setDailyValidationOpen(true);
+      return;
+    }
+
+    await createRecord(request);
+  } catch (err) {
+    const message = err instanceof Error
+      ? err.message
+      : 'No fue posible guardar el registro.';
+
+    setError(message);
+    showError(message, 'Error del backend');
+  }
+};
 
   const closeDailyValidationDialog = () => {
     if (dailyValidationSaving) {
@@ -1053,6 +1059,7 @@ export default function VentanillaRegistrosPage() {
     setDailyValidationOpen(false);
     setDailyValidation(null);
     setPendingCreateRequest(null);
+    setDailyValidationReason('');
   };
 
   const confirmDifferentDailyRequest = async () => {
@@ -1060,14 +1067,29 @@ export default function VentanillaRegistrosPage() {
       return;
     }
 
+    const reason = dailyValidationReason.trim();
+
+    if (!reason) {
+      showWarning(
+        'Debes escribir el motivo por el cual se registra nuevamente la solicitud.',
+        'Motivo obligatorio'
+      );
+      return;
+    }
+
     setDailyValidationSaving(true);
     setError('');
 
     try {
-      await createRecord(pendingCreateRequest);
+      await createRecord({
+        ...pendingCreateRequest,
+        motivoRepeticion: reason,
+      });
+
       setDailyValidationOpen(false);
       setDailyValidation(null);
       setPendingCreateRequest(null);
+      setDailyValidationReason('');
     } catch (err) {
       const message = err instanceof Error
         ? err.message
@@ -1110,7 +1132,7 @@ export default function VentanillaRegistrosPage() {
     }
 
     if (confirmAction === 'HARD_DELETE') {
-      return 'Eliminar definitivamente';
+      return 'Inactivar registro';
     }
 
     return 'Inactivar registro';
@@ -1121,11 +1143,7 @@ export default function VentanillaRegistrosPage() {
       return 'Activar';
     }
 
-    if (confirmAction === 'HARD_DELETE') {
-      return 'Eliminar definitivo';
-    }
-
-    return 'Eliminar';
+    return 'Inactivar';
   };
 
   const getConfirmColor = () => {
@@ -1145,11 +1163,7 @@ export default function VentanillaRegistrosPage() {
       return `¿Seguro que deseas activar nuevamente el registro de ${selectedRecord.nombreUsuario} con cédula ${selectedRecord.cedulaUsuario}?`;
     }
 
-    if (confirmAction === 'HARD_DELETE') {
-      return `¿Seguro que deseas eliminar definitivamente el registro de ${selectedRecord.nombreUsuario} con cédula ${selectedRecord.cedulaUsuario}? Esta acción sí borra el registro de la base de datos.`;
-    }
-
-    return `¿Seguro que deseas retirar de la lista el registro de ${selectedRecord.nombreUsuario} con cédula ${selectedRecord.cedulaUsuario}? El registro no se borrará, solo quedará inactivo.`;
+    return `¿Seguro que deseas inactivar el registro de ${selectedRecord.nombreUsuario} con cédula ${selectedRecord.cedulaUsuario}? El registro no se borrará, quedará guardado para trazabilidad e historial.`;
   };
 
   if (loading && !pageData) {
@@ -1193,7 +1207,7 @@ export default function VentanillaRegistrosPage() {
 
               <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
                 {isAdminUser
-                  ? 'Consulta registros activos e inactivos, cambia su estado o elimina definitivamente cuando sea necesario.'
+                  ? 'Consulta registros activos e inactivos. Los registros inactivados se conservan para trazabilidad e historial.'
                   : 'Registra, consulta y actualiza las solicitudes atendidas en ventanilla.'}
               </Typography>
             </Box>
@@ -1226,8 +1240,8 @@ export default function VentanillaRegistrosPage() {
 
       {isAdminUser ? (
         <Alert severity="info">
-          Como administrador puedes ver registros activos e inactivos. Las acciones de activación,
-          inactivación y eliminación definitiva quedan registradas en auditoría.
+          Como administrador puedes ver registros activos e inactivos. La acción de eliminar
+          en Ventanilla inactiva el registro, no lo borra físicamente.
         </Alert>
       ) : null}
 
@@ -1759,7 +1773,7 @@ export default function VentanillaRegistrosPage() {
                 }}
               >
                 <DeleteForeverIcon fontSize="small" />
-                Eliminar definitivo
+                Inactivar registro
               </MenuItem>
             ) : null}
           </Menu>
@@ -1973,7 +1987,6 @@ export default function VentanillaRegistrosPage() {
                       />
                     )}
                   />
-
                   <FormControlLabel
                     control={
                       <Checkbox
@@ -2001,6 +2014,18 @@ export default function VentanillaRegistrosPage() {
                     onChange={(event) => updateForm('observacion', event.target.value)}
                     sx={{ gridColumn: { md: '1 / -1' } }}
                   />
+
+                  {form.motivoRepeticion ? (
+                    <TextField
+                      label="Motivo de repetición"
+                      size="small"
+                      multiline
+                      minRows={2}
+                      value={form.motivoRepeticion}
+                      disabled
+                      sx={{ gridColumn: { md: '1 / -1' } }}
+                    />
+                  ) : null}
                 </Box>
               </CardContent>
             </Card>
@@ -2062,6 +2087,7 @@ export default function VentanillaRegistrosPage() {
                   <TableCell>Solicitud</TableCell>
                   <TableCell>Categoría</TableCell>
                   <TableCell>Estado</TableCell>
+                  <TableCell>Registro</TableCell>
 
                   {isAdminUser ? (
                     <TableCell>Funcionario</TableCell>
@@ -2076,6 +2102,15 @@ export default function VentanillaRegistrosPage() {
                     <TableCell>{item.solicitudNombre || 'Sin solicitud'}</TableCell>
                     <TableCell>{item.categoriaNombre || 'Sin categoría'}</TableCell>
                     <TableCell>{item.estadoSolicitudNombre || 'Sin estado'}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={item.activo ? 'Activo' : 'Inactivo'}
+                        size="small"
+                        color={item.activo ? 'success' : 'warning'}
+                        variant="outlined"
+                        sx={{ fontWeight: 700 }}
+                      />
+                    </TableCell>
 
                     {isAdminUser ? (
                       <TableCell>{item.funcionarioUsername || 'Sin funcionario'}</TableCell>
@@ -2085,6 +2120,19 @@ export default function VentanillaRegistrosPage() {
               </TableBody>
             </Table>
           </Box>
+
+          <TextField
+            label="Motivo de la nueva solicitud"
+            placeholder="Ejemplo: el ciudadano requiere actualizar información, hubo error en la solicitud anterior o solicita nuevamente el trámite."
+            value={dailyValidationReason}
+            onChange={(event) => setDailyValidationReason(event.target.value)}
+            fullWidth
+            required
+            multiline
+            minRows={3}
+            sx={{ mt: 2 }}
+            helperText="Este motivo es obligatorio para guardar una nueva solicitud el mismo día."
+          />
         </DialogContent>
 
         <DialogActions>
@@ -2101,7 +2149,7 @@ export default function VentanillaRegistrosPage() {
             variant="contained"
             color="warning"
             onClick={confirmDifferentDailyRequest}
-            disabled={dailyValidationSaving}
+            disabled={dailyValidationSaving || !dailyValidationReason.trim()}
           >
             {dailyValidationSaving ? 'Guardando...' : 'Confirmar y guardar'}
           </Button>

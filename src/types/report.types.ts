@@ -29,3 +29,43 @@ export type ReportGroupResponse = {
   nombre: string | null;
   total: number;
 };
+
+export type VentanillaSolicitudPreviewRow = {
+  solicitud: string;
+  cantidadesPorFecha: Record<string, number>;
+  totalGeneral: number;
+  porcentaje: number;
+};
+
+export type VentanillaSolicitudPreviewResponse = {
+  fechaInicio: string;
+  fechaFin: string;
+  tipoAgrupacion: 'DIARIA' | 'MENSUAL';
+  fechas: string[];
+  totalGeneral: number;
+  filas: VentanillaSolicitudPreviewRow[];
+};
+
+export type VentanillaDailyTrendResponse = {
+  fecha: string;
+  total: number;
+};
+
+export type VentanillaFuncionarioPerformanceResponse = {
+  funcionarioId: number | null;
+  funcionarioUsername: string | null;
+  total: number;
+  porcentaje: number;
+  promedioDiario: number;
+};
+
+export type VentanillaFuncionarioTrendResponse = {
+  fecha: string;
+  funcionarioUsername: string | null;
+  total: number;
+};
+
+export type VentanillaSolicitudesReportParams = {
+  fechaInicio: string;
+  fechaFin: string;
+};

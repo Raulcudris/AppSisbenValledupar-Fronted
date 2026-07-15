@@ -2,7 +2,7 @@
   "name": "appsisben-dashboard-material-ui",
   "version": "1.0.0",
   "private": true,
-   "scripts": {
+  "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
@@ -14,9 +14,12 @@
     "@mui/icons-material": "latest",
     "@mui/material": "latest",
     "@mui/x-charts": "latest",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "recharts": "^3.9.2"
   },
   "devDependencies": {
     "@types/node": "latest",

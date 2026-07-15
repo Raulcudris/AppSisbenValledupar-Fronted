@@ -5,13 +5,19 @@ import {
   DmcReportSummaryResponse,
   ReportDateRange,
   ReportGroupResponse,
+  VentanillaDailyTrendResponse,
+  VentanillaFuncionarioPerformanceResponse,
+  VentanillaFuncionarioTrendResponse,
   VentanillaReportSummaryResponse,
+  VentanillaSolicitudPreviewResponse,
+  VentanillaSolicitudesReportParams,
 } from '@/types/report.types';
 
 export async function getVentanillaSummary(filter: ReportDateRange) {
   const response = await apiRequest<ApiResponse<VentanillaReportSummaryResponse>>(
     `/api/reports/ventanilla/summary${toQueryString(filter)}`
   );
+
   return response.data;
 }
 
@@ -19,6 +25,7 @@ export async function getVentanillaGroup(path: string, filter: ReportDateRange) 
   const response = await apiRequest<ApiResponse<ReportGroupResponse[]>>(
     `/api/reports/ventanilla/${path}${toQueryString(filter)}`
   );
+
   return response.data;
 }
 
@@ -26,6 +33,7 @@ export async function getDmcSummary(filter: ReportDateRange) {
   const response = await apiRequest<ApiResponse<DmcReportSummaryResponse>>(
     `/api/reports/dmc/summary${toQueryString(filter)}`
   );
+
   return response.data;
 }
 
@@ -33,29 +41,9 @@ export async function getDmcGroup(path: string, filter: ReportDateRange) {
   const response = await apiRequest<ApiResponse<ReportGroupResponse[]>>(
     `/api/reports/dmc/${path}${toQueryString(filter)}`
   );
+
   return response.data;
 }
-
-export type VentanillaSolicitudPreviewRow = {
-  solicitud: string;
-  cantidadesPorFecha: Record<string, number>;
-  totalGeneral: number;
-  porcentaje: number;
-};
-
-export type VentanillaSolicitudPreviewResponse = {
-  fechaInicio: string;
-  fechaFin: string;
-  tipoAgrupacion: 'DIARIA' | 'MENSUAL';
-  fechas: string[];
-  totalGeneral: number;
-  filas: VentanillaSolicitudPreviewRow[];
-};
-
-type VentanillaSolicitudesReportParams = {
-  fechaInicio: string;
-  fechaFin: string;
-};
 
 function buildQuery(params: Record<string, string | number | undefined>) {
   const query = new URLSearchParams();
@@ -105,4 +93,34 @@ export async function downloadVentanillaSolicitudesPdf(
   downloadBlob(response.blob, response.filename);
 
   return response;
+}
+
+export async function getVentanillaSolicitudesTrend(
+  params: VentanillaSolicitudesReportParams
+) {
+  const response = await apiRequest<ApiResponse<VentanillaDailyTrendResponse[]>>(
+    `/api/reportes/ventanilla/solicitudes/tendencia${buildQuery(params)}`
+  );
+
+  return response.data;
+}
+
+export async function getVentanillaFuncionariosPerformance(
+  params: VentanillaSolicitudesReportParams
+) {
+  const response = await apiRequest<ApiResponse<VentanillaFuncionarioPerformanceResponse[]>>(
+    `/api/reportes/ventanilla/funcionarios/desempeno${buildQuery(params)}`
+  );
+
+  return response.data;
+}
+
+export async function getVentanillaFuncionariosTrend(
+  params: VentanillaSolicitudesReportParams
+) {
+  const response = await apiRequest<ApiResponse<VentanillaFuncionarioTrendResponse[]>>(
+    `/api/reportes/ventanilla/funcionarios/tendencia${buildQuery(params)}`
+  );
+
+  return response.data;
 }

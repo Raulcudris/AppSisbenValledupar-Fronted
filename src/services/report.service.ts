@@ -3,9 +3,11 @@ import { toQueryString } from '@/lib/queryString';
 import { ApiResponse } from '@/types/api.types';
 import {
   DmcReportSummaryResponse,
+  ProductivityGrouping,
   ReportDateRange,
   ReportGroupResponse,
   VentanillaDailyTrendResponse,
+  VentanillaEmployeeProductivityResponse,
   VentanillaFrequentCitizenResponse,
   VentanillaFuncionarioPerformanceResponse,
   VentanillaFuncionarioTrendResponse,
@@ -134,6 +136,20 @@ export async function getVentanillaFrequentCitizens(
     `/api/reports/ventanilla/frequent-citizens${toQueryString({
       ...filter,
       limit,
+    })}`
+  );
+
+  return response.data;
+}
+
+export async function getVentanillaEmployeeProductivity(
+  filter: ReportDateRange,
+  grouping: ProductivityGrouping = 'SEMANAL'
+) {
+  const response = await apiRequest<ApiResponse<VentanillaEmployeeProductivityResponse[]>>(
+    `/api/reports/ventanilla/employee-productivity${toQueryString({
+      ...filter,
+      grouping,
     })}`
   );
 

@@ -55,6 +55,7 @@ import {
   downloadVentanillaSolicitudesPdf,
   getDmcGroup,
   getDmcSummary,
+  getVentanillaEmployeeProductivity,
   getVentanillaFrequentCitizens,
   getVentanillaFuncionariosPerformance,
   getVentanillaFuncionariosTrend,
@@ -67,9 +68,11 @@ import { getVentanillaUserHistory } from '@/services/ventanilla.service';
 import { VentanillaUserHistoryResponse } from '@/types/operational.types';
 import {
   DmcReportSummaryResponse,
+  ProductivityGrouping,
   ReportDateRange,
   ReportGroupResponse,
   VentanillaDailyTrendResponse,
+  VentanillaEmployeeProductivityResponse,
   VentanillaFrequentCitizenResponse,
   VentanillaFuncionarioPerformanceResponse,
   VentanillaFuncionarioTrendResponse,
@@ -93,13 +96,15 @@ type ReportType =
   | 'COMUNAS'
   | 'ALERTAS'
   | 'HISTORIAL_USUARIO'
-  | 'CIUDADANOS_FRECUENTES';
+  | 'CIUDADANOS_FRECUENTES'
+  | 'PRODUCTIVIDAD_FUNCIONARIO';
 
 type FormState = {
   fechaInicio: string;
   fechaFin: string;
   tipoReporte: ReportType;
   cedulaUsuario: string;
+  productivityGrouping: ProductivityGrouping;
 };
 
 type AlertItem = {
@@ -112,6 +117,8 @@ type AlertItem = {
 
 const MAX_RANGE_DAYS = 1825;
 const PDF_MARGIN_MM = 8;
+const PDF_EXPORT_CANVAS_SCALE = 2.6;
+const PDF_EXPORT_WIDTH_PX = 1600;
 
 const initialSnackbar: SnackbarState = {
   open: false,
@@ -154,6 +161,7 @@ const initialForm: FormState = {
   fechaFin: getTodayDate(),
   tipoReporte: 'SOLICITUDES',
   cedulaUsuario: '',
+  productivityGrouping: 'SEMANAL',
 };
 
 function formatPercent(value: number) {
@@ -195,6 +203,7 @@ function buildPdfFilename(tipoReporte: ReportType, fechaInicio: string, fechaFin
     ALERTAS: 'control-operativo-alertas',
     HISTORIAL_USUARIO: 'historial-ciudadano',
     CIUDADANOS_FRECUENTES: 'ciudadanos-frecuentes',
+    PRODUCTIVIDAD_FUNCIONARIO: 'productividad-funcionario',
   };
 
   return `Reporte-${labels[tipoReporte]}-${fechaInicio}-a-${fechaFin}.pdf`;
@@ -214,6 +223,7 @@ function getReportTitle(tipoReporte: ReportType) {
     ALERTAS: 'Control operativo y alertas',
     HISTORIAL_USUARIO: 'Historial por ciudadano',
     CIUDADANOS_FRECUENTES: 'Ciudadanos frecuentes',
+    PRODUCTIVIDAD_FUNCIONARIO: 'Productividad por funcionario',
   };
 
   return titles[tipoReporte];
@@ -368,6 +378,72 @@ function getTopFrequentCitizen(
   return [...data].sort((a, b) => Number(b[metric] ?? 0) - Number(a[metric] ?? 0))[0];
 }
 
+
+function getProductivityGroupingLabel(value: ProductivityGrouping) {
+  return value === 'MENSUAL' ? 'Mensual' : 'Semanal';
+}
+
+function getEmployeeProductivityTotal(data: VentanillaEmployeeProductivityResponse[]) {
+  return data.reduce((sum, item) => sum + Number(item.totalAtenciones ?? 0), 0);
+}
+
+function buildEmployeeProductivityEmployeeSummary(
+  data: VentanillaEmployeeProductivityResponse[]
+): ReportGroupResponse[] {
+  const groups = new Map<string, { id: number | null; name: string; total: number }>();
+
+  data.forEach((item) => {
+    const key = item.funcionarioUsername || 'Sin funcionario';
+    const current = groups.get(key) ?? {
+      id: item.funcionarioId ?? null,
+      name: key,
+      total: 0,
+    };
+
+    current.total += Number(item.totalAtenciones ?? 0);
+    groups.set(key, current);
+  });
+
+  return Array.from(groups.values())
+    .map((item, index) => ({
+      id: item.id ?? index + 1,
+      codigo: item.name,
+      nombre: item.name,
+      total: item.total,
+    }))
+    .sort((a, b) => Number(b.total ?? 0) - Number(a.total ?? 0));
+}
+
+function buildEmployeeProductivityPeriodSummary(
+  data: VentanillaEmployeeProductivityResponse[]
+): ReportGroupResponse[] {
+  const groups = new Map<string, number>();
+
+  data.forEach((item) => {
+    const key = item.periodo || 'Sin periodo';
+    groups.set(key, (groups.get(key) ?? 0) + Number(item.totalAtenciones ?? 0));
+  });
+
+  return Array.from(groups.entries())
+    .map(([periodo, total], index) => ({
+      id: index + 1,
+      codigo: periodo,
+      nombre: periodo,
+      total,
+    }))
+    .sort((a, b) => Number(b.total ?? 0) - Number(a.total ?? 0));
+}
+
+function getTopEmployeeProductivity(data: VentanillaEmployeeProductivityResponse[]) {
+  if (!data.length) {
+    return null;
+  }
+
+  return [...data].sort(
+    (a, b) => Number(b.totalAtenciones ?? 0) - Number(a.totalAtenciones ?? 0)
+  )[0];
+}
+
 function buildGroupChartData(data: ReportGroupResponse[], limit = 14) {
   return [...data]
     .sort((a, b) => Number(b.total ?? 0) - Number(a.total ?? 0))
@@ -429,6 +505,59 @@ function buildTopSolicitudesPieData(
       porcentaje: 0,
     },
   ];
+}
+
+function getSolicitudColumnTotal(
+  rows: VentanillaSolicitudPreviewResponse['filas'],
+  fecha: string
+) {
+  return rows.reduce((sum, row) => sum + Number(row.cantidadesPorFecha[fecha] ?? 0), 0);
+}
+
+function isWeekendDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+
+  if (!year || !month || !day) {
+    return false;
+  }
+
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay();
+
+  return dayOfWeek === 0 || dayOfWeek === 6;
+}
+
+function getBusinessDates(dates: string[]) {
+  return dates.filter((date) => !isWeekendDate(date));
+}
+
+function buildSolicitudRowsForDates(
+  rows: VentanillaSolicitudPreviewResponse['filas'],
+  dates: string[]
+): VentanillaSolicitudPreviewResponse['filas'] {
+  const totalGeneral = rows.reduce(
+    (sum, row) => sum + dates.reduce(
+      (dateSum, date) => dateSum + Number(row.cantidadesPorFecha[date] ?? 0),
+      0
+    ),
+    0
+  );
+
+  return rows
+    .map((row) => {
+      const rowTotal = dates.reduce(
+        (sum, date) => sum + Number(row.cantidadesPorFecha[date] ?? 0),
+        0
+      );
+
+      return {
+        ...row,
+        totalGeneral: rowTotal,
+        porcentaje: getPercentage(rowTotal, totalGeneral),
+      };
+    })
+    .filter((row) => row.totalGeneral > 0)
+    .sort((a, b) => b.totalGeneral - a.totalGeneral || a.solicitud.localeCompare(b.solicitud));
 }
 
 function buildFuncionarioTrendChartData(data: VentanillaFuncionarioTrendResponse[]) {
@@ -888,6 +1017,8 @@ export default function ReportesPage() {
     useState<VentanillaUserHistoryResponse | null>(null);
   const [frequentCitizens, setFrequentCitizens] =
     useState<VentanillaFrequentCitizenResponse[]>([]);
+  const [employeeProductivity, setEmployeeProductivity] =
+    useState<VentanillaEmployeeProductivityResponse[]>([]);
 
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingPdf, setLoadingPdf] = useState(false);
@@ -904,7 +1035,8 @@ export default function ReportesPage() {
     || ventanillaComunas.length > 0
     || dmcComunas.length > 0
     || Boolean(citizenHistory)
-    || frequentCitizens.length > 0;
+    || frequentCitizens.length > 0
+    || employeeProductivity.length > 0;
 
   const totalDays = getDaysBetween(form.fechaInicio, form.fechaFin);
   const estimatedGrouping = totalDays > 31 ? 'mensual' : 'diaria';
@@ -912,13 +1044,32 @@ export default function ReportesPage() {
   const funcionarioTrendChartData = buildFuncionarioTrendChartData(funcionariosTrend);
   const funcionarioNames = getFuncionarioNames(funcionariosTrend);
 
-  const solicitudesPieData = solicitudesPreview
-    ? buildTopSolicitudesPieData(solicitudesPreview.filas)
+  const solicitudesBusinessDates = solicitudesPreview
+    ? getBusinessDates(solicitudesPreview.fechas)
     : [];
+  const solicitudesBusinessRows = solicitudesPreview
+    ? buildSolicitudRowsForDates(solicitudesPreview.filas, solicitudesBusinessDates)
+    : [];
+  const solicitudesBusinessTotal = solicitudesBusinessRows.reduce(
+    (sum, row) => sum + Number(row.totalGeneral ?? 0),
+    0
+  );
+  const solicitudesExcludedWeekendCount = solicitudesPreview
+    ? solicitudesPreview.fechas.length - solicitudesBusinessDates.length
+    : 0;
+  const solicitudesBusinessTrend = solicitudesTrend.filter((item) => !isWeekendDate(item.fecha));
 
-  const solicitudesBarChartHeight = solicitudesPreview
-    ? Math.max(460, Math.min(780, solicitudesPreview.filas.length * 36 + 160))
-    : 460;
+  const solicitudesPieData = buildTopSolicitudesPieData(solicitudesBusinessRows);
+
+  const solicitudesTableMinWidth = Math.max(
+    1120,
+    360 + solicitudesBusinessDates.length * 72 + 120 + 90
+  );
+
+  const solicitudesBarChartHeight = Math.max(
+    460,
+    Math.min(780, solicitudesBusinessRows.length * 36 + 160)
+  );
 
   const funcionariosBarChartHeight = Math.max(
     460,
@@ -983,6 +1134,18 @@ export default function ReportesPage() {
     0
   );
 
+
+  const employeeProductivityTotal = getEmployeeProductivityTotal(employeeProductivity);
+  const employeeProductivityByEmployee = buildEmployeeProductivityEmployeeSummary(employeeProductivity);
+  const employeeProductivityByPeriod = buildEmployeeProductivityPeriodSummary(employeeProductivity);
+  const topEmployeeProductivity = getTopEmployeeProductivity(employeeProductivity);
+  const employeeProductivityPeriodCount = new Set(
+    employeeProductivity.map((item) => item.periodo)
+  ).size;
+  const employeeProductivityEmployeeCount = new Set(
+    employeeProductivity.map((item) => item.funcionarioUsername || 'Sin funcionario')
+  ).size;
+
   const showSnackbar = (
     message: string,
     severity: SnackbarSeverity = 'success'
@@ -1013,6 +1176,7 @@ export default function ReportesPage() {
     setDmcComunas([]);
     setCitizenHistory(null);
     setFrequentCitizens([]);
+    setEmployeeProductivity([]);
   };
 
   const updateForm = <K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -1119,7 +1283,7 @@ export default function ReportesPage() {
 
         showSnackbar(
           previewResponse.filas.length === 0
-            ? 'No hay registros para el periodo seleccionado.'
+            ? 'No hay registros de lunes a viernes para el periodo seleccionado.'
             : 'Reporte de solicitudes generado correctamente.',
           previewResponse.filas.length === 0 ? 'info' : 'success'
         );
@@ -1185,6 +1349,24 @@ export default function ReportesPage() {
           response.length === 0
             ? 'No hay ciudadanos frecuentes para el periodo seleccionado.'
             : 'Reporte de ciudadanos frecuentes generado correctamente.',
+          response.length === 0 ? 'info' : 'success'
+        );
+
+        return;
+      }
+
+      if (form.tipoReporte === 'PRODUCTIVIDAD_FUNCIONARIO') {
+        const response = await getVentanillaEmployeeProductivity(
+          filter,
+          form.productivityGrouping
+        );
+
+        setEmployeeProductivity(response);
+
+        showSnackbar(
+          response.length === 0
+            ? 'No hay productividad por funcionario para el periodo seleccionado.'
+            : 'Reporte de productividad por funcionario generado correctamente.',
           response.length === 0 ? 'info' : 'success'
         );
 
@@ -1339,6 +1521,14 @@ export default function ReportesPage() {
             Campo: 'Rango en días',
             Valor: totalDays,
           },
+          ...(form.tipoReporte === 'PRODUCTIVIDAD_FUNCIONARIO'
+            ? [
+                {
+                  Campo: 'Agrupación',
+                  Valor: getProductivityGroupingLabel(form.productivityGrouping),
+                },
+              ]
+            : []),
         ],
         [24, 42]
       );
@@ -1347,13 +1537,13 @@ export default function ReportesPage() {
         appendJsonSheet(
           workbook,
           'Solicitudes',
-          solicitudesPreview.filas.map((row) => {
+          solicitudesBusinessRows.map((row) => {
             const values: Record<string, string | number | boolean | null> = {
               Solicitud: row.solicitud,
             };
 
-            solicitudesPreview.fechas.forEach((fecha) => {
-              values[fecha] = row.cantidadesPorFecha[fecha] ?? 0;
+            solicitudesBusinessDates.forEach((fecha) => {
+              values[formatDateLabel(fecha)] = row.cantidadesPorFecha[fecha] ?? 0;
             });
 
             values['Total general'] = row.totalGeneral;
@@ -1361,13 +1551,13 @@ export default function ReportesPage() {
 
             return values;
           }),
-          [36, ...solicitudesPreview.fechas.map(() => 14), 18, 14]
+          [36, ...solicitudesBusinessDates.map(() => 14), 18, 14]
         );
 
         appendJsonSheet(
           workbook,
           'Tendencia',
-          solicitudesTrend.map((item) => ({
+          solicitudesBusinessTrend.map((item) => ({
             Fecha: formatDateLabel(item.fecha),
             Total: item.total,
           })),
@@ -1538,6 +1728,38 @@ export default function ReportesPage() {
         appendJsonSheet(workbook, 'Ranking por trámites', groupRowsToExcelRows(frequentCitizensByRequests), [8, 18, 44, 16, 16]);
       }
 
+      if (form.tipoReporte === 'PRODUCTIVIDAD_FUNCIONARIO') {
+        appendJsonSheet(
+          workbook,
+          'Productividad',
+          employeeProductivity.map((item, index) => ({
+            '#': index + 1,
+            Periodo: item.periodo,
+            'Fecha inicio periodo': formatDateLabel(item.fechaInicioPeriodo),
+            'Fecha fin periodo': formatDateLabel(item.fechaFinPeriodo),
+            Funcionario: item.funcionarioUsername || 'Sin funcionario',
+            'Total atenciones': Number(item.totalAtenciones ?? 0),
+            Porcentaje: `${formatPercent(Number(item.porcentaje ?? 0))} %`,
+            'Promedio diario': formatPercent(Number(item.promedioDiario ?? 0)),
+          })),
+          [8, 20, 20, 20, 30, 18, 16, 18]
+        );
+
+        appendJsonSheet(
+          workbook,
+          'Resumen funcionarios',
+          groupRowsToExcelRows(employeeProductivityByEmployee),
+          [8, 22, 34, 18, 18]
+        );
+
+        appendJsonSheet(
+          workbook,
+          'Resumen periodos',
+          groupRowsToExcelRows(employeeProductivityByPeriod),
+          [8, 22, 30, 18, 18]
+        );
+      }
+
       XLSX.writeFile(workbook, buildExcelFilename(form.tipoReporte, form.fechaInicio, form.fechaFin));
       showSnackbar('Reporte Excel descargado correctamente.', 'success');
     } catch (err) {
@@ -1567,11 +1789,11 @@ export default function ReportesPage() {
     setError('');
 
     try {
-      const pages = Array.from(
+      const sections = Array.from(
         reportContentRef.current.querySelectorAll<HTMLElement>('.report-export-section')
       );
 
-      if (!pages.length) {
+      if (!sections.length) {
         showSnackbar('No se encontraron secciones del reporte para exportar.', 'warning');
         return;
       }
@@ -1580,55 +1802,129 @@ export default function ReportesPage() {
         orientation: 'landscape',
         unit: 'mm',
         format: 'a4',
+        compress: true,
+      });
+
+      pdf.setProperties({
+        title: buildPdfFilename(form.tipoReporte, form.fechaInicio, form.fechaFin),
+        subject: 'Reporte generado desde AppSisbén',
+        creator: 'AppSisbén Valledupar',
       });
 
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-
       const availableWidth = pageWidth - PDF_MARGIN_MM * 2;
       const availableHeight = pageHeight - PDF_MARGIN_MM * 2;
+      let hasPage = false;
 
-      for (let index = 0; index < pages.length; index += 1) {
-        const pageElement = pages[index];
+      const addPdfPage = () => {
+        if (hasPage) {
+          pdf.addPage('a4', 'landscape');
+        } else {
+          hasPage = true;
+        }
+      };
 
-        const canvas = await html2canvas(pageElement, {
-          scale: 2,
+      for (const section of sections) {
+        const canvas = await html2canvas(section, {
+          scale: PDF_EXPORT_CANVAS_SCALE,
           backgroundColor: '#ffffff',
           useCORS: true,
           logging: false,
-          windowWidth: pageElement.scrollWidth,
-          windowHeight: pageElement.scrollHeight,
+          windowWidth: Math.max(PDF_EXPORT_WIDTH_PX, section.scrollWidth),
+          windowHeight: Math.max(section.scrollHeight, 1200),
+          onclone: (clonedDocument) => {
+            clonedDocument.body.style.backgroundColor = '#ffffff';
+
+            clonedDocument
+              .querySelectorAll<HTMLElement>('.report-export-section')
+              .forEach((exportSection) => {
+                exportSection.style.width = `${Math.max(PDF_EXPORT_WIDTH_PX, section.scrollWidth)}px`;
+                exportSection.style.maxWidth = 'none';
+                exportSection.style.overflow = 'visible';
+                exportSection.style.backgroundColor = '#ffffff';
+                exportSection.style.boxShadow = 'none';
+              });
+
+            clonedDocument
+              .querySelectorAll<HTMLElement>('.report-export-section .MuiTableContainer-root')
+              .forEach((tableContainer) => {
+                tableContainer.style.maxHeight = 'none';
+                tableContainer.style.overflow = 'visible';
+                tableContainer.style.width = '100%';
+              });
+
+            clonedDocument
+              .querySelectorAll<HTMLElement>('.report-export-section .MuiTableCell-root')
+              .forEach((tableCell) => {
+                tableCell.style.position = 'static';
+                tableCell.style.left = 'auto';
+                tableCell.style.top = 'auto';
+                tableCell.style.zIndex = 'auto';
+                tableCell.style.backgroundColor = '#ffffff';
+              });
+
+            clonedDocument
+              .querySelectorAll<HTMLElement>('.report-export-section svg')
+              .forEach((svg) => {
+                svg.style.overflow = 'visible';
+              });
+          },
         });
 
-        const imageData = canvas.toDataURL('image/png', 1.0);
-
-        if (index > 0) {
-          pdf.addPage('a4', 'landscape');
+        if (!canvas.width || !canvas.height) {
+          continue;
         }
 
-        const widthRatio = availableWidth / canvas.width;
-        const heightRatio = availableHeight / canvas.height;
-        const ratio = Math.min(widthRatio, heightRatio);
+        const pxPerMm = canvas.width / availableWidth;
+        const maxSliceHeightPx = Math.max(1, Math.floor(availableHeight * pxPerMm));
 
-        const imageWidth = canvas.width * ratio;
-        const imageHeight = canvas.height * ratio;
+        for (let offsetY = 0; offsetY < canvas.height; offsetY += maxSliceHeightPx) {
+          const sliceHeightPx = Math.min(maxSliceHeightPx, canvas.height - offsetY);
+          const sliceCanvas = document.createElement('canvas');
+          const context = sliceCanvas.getContext('2d');
 
-        const x = (pageWidth - imageWidth) / 2;
-        const y = (pageHeight - imageHeight) / 2;
+          if (!context) {
+            throw new Error('No fue posible preparar una sección del PDF.');
+          }
 
-        pdf.addImage(
-          imageData,
-          'PNG',
-          x,
-          y,
-          imageWidth,
-          imageHeight
-        );
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = sliceHeightPx;
+
+          context.fillStyle = '#ffffff';
+          context.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+          context.drawImage(
+            canvas,
+            0,
+            offsetY,
+            canvas.width,
+            sliceHeightPx,
+            0,
+            0,
+            canvas.width,
+            sliceHeightPx
+          );
+
+          const imageData = sliceCanvas.toDataURL('image/png', 1.0);
+          const imageHeightMm = sliceHeightPx / pxPerMm;
+
+          addPdfPage();
+
+          pdf.addImage(
+            imageData,
+            'PNG',
+            PDF_MARGIN_MM,
+            PDF_MARGIN_MM,
+            availableWidth,
+            imageHeightMm,
+            undefined,
+            'FAST'
+          );
+        }
       }
 
       pdf.save(buildPdfFilename(form.tipoReporte, form.fechaInicio, form.fechaFin));
-
-      showSnackbar('Documento completo exportado correctamente.', 'success');
+      showSnackbar('Documento completo exportado correctamente y ajustado a impresión.', 'success');
     } catch (err) {
       const message = err instanceof Error
         ? err.message
@@ -1675,7 +1971,7 @@ export default function ReportesPage() {
 
               <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 760 }}>
                 Genera reportes de Ventanilla, DMC, desempeño, comunas, funcionamiento
-                general, control operativo, historial por ciudadano y ciudadanos frecuentes.
+                general, control operativo, historial por ciudadano, ciudadanos frecuentes y productividad por funcionario.
               </Typography>
             </Box>
 
@@ -1755,7 +2051,7 @@ export default function ReportesPage() {
                 }
               >
                 <MenuItem value="SOLICITUDES">
-                  Solicitudes por ventanilla
+                  Solicitudes por tipo
                 </MenuItem>
 
                 <MenuItem value="FUNCIONARIOS">
@@ -1784,6 +2080,10 @@ export default function ReportesPage() {
 
                 <MenuItem value="CIUDADANOS_FRECUENTES">
                   Ciudadanos frecuentes
+                </MenuItem>
+
+                <MenuItem value="PRODUCTIVIDAD_FUNCIONARIO">
+                  Productividad por funcionario
                 </MenuItem>
               </TextField>
 
@@ -1839,6 +2139,33 @@ export default function ReportesPage() {
                   },
                 }}
               />
+            ) : null}
+
+
+            {form.tipoReporte === 'PRODUCTIVIDAD_FUNCIONARIO' ? (
+              <TextField
+                select
+                label="Agrupación de productividad"
+                size="small"
+                value={form.productivityGrouping}
+                onChange={(event) =>
+                  updateForm('productivityGrouping', event.target.value as ProductivityGrouping)
+                }
+                sx={{
+                  width: {
+                    xs: '100%',
+                    md: 320,
+                  },
+                }}
+              >
+                <MenuItem value="SEMANAL">
+                  Semanal
+                </MenuItem>
+
+                <MenuItem value="MENSUAL">
+                  Mensual
+                </MenuItem>
+              </TextField>
             ) : null}
 
             <Alert severity="info">
@@ -1943,7 +2270,9 @@ export default function ReportesPage() {
                                   ? 'Control operativo y alertas'
                                   : form.tipoReporte === 'HISTORIAL_USUARIO'
                                     ? 'Historial por ciudadano'
-                                    : 'Ciudadanos frecuentes'}
+                                    : form.tipoReporte === 'CIUDADANOS_FRECUENTES'
+                                      ? 'Ciudadanos frecuentes'
+                                      : 'Productividad por funcionario'}
                     </Typography>
 
                     <Typography color="text.secondary" sx={{ mt: 0.5 }}>
@@ -1966,84 +2295,232 @@ export default function ReportesPage() {
               <Stack spacing={3}>
                 <Card className="report-export-section" sx={reportCardSx}>
                   <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                    <Stack spacing={2}>
+                    <Stack spacing={2.5}>
                       <Box>
                         <Typography variant="h6" sx={{ fontWeight: 800 }}>
                           Totales por tipo de solicitud - Ventanilla
                         </Typography>
 
                         <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
-                          Total general: <strong>{formatNumber(solicitudesPreview.totalGeneral)}</strong>
+                          Total general lunes a viernes: <strong>{formatNumber(solicitudesBusinessTotal)}</strong>
                           {' · '}
                           Agrupación: <strong>{getGroupingLabel(solicitudesPreview.tipoAgrupacion)}</strong>
+                          {' · '}
+                          Fechas de fin de semana excluidas: <strong>{formatNumber(solicitudesExcludedWeekendCount)}</strong>
                         </Typography>
+
                       </Box>
 
-                      <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 560, overflowX: 'auto' }}>
-                        <Table size="small" stickyHeader>
-                          <TableHead>
-                            <TableRow>
-                              <TableCell sx={{ fontWeight: 800, minWidth: 320, position: 'sticky', left: 0, zIndex: 3, backgroundColor: 'background.paper' }}>
-                                Solicitudes
-                              </TableCell>
-
-                              {solicitudesPreview.fechas.map((fecha) => (
-                                <TableCell key={fecha} align="center" sx={{ fontWeight: 800, minWidth: 110 }}>
-                                  {fecha}
-                                </TableCell>
-                              ))}
-
-                              <TableCell align="center" sx={{ fontWeight: 800, minWidth: 120 }}>
-                                Total general
-                              </TableCell>
-
-                              <TableCell align="center" sx={{ fontWeight: 800, minWidth: 90 }}>
-                                %
-                              </TableCell>
-                            </TableRow>
-                          </TableHead>
-
-                          <TableBody>
-                            {solicitudesPreview.filas.length === 0 ? (
+                      {solicitudesBusinessDates.length === 0 || solicitudesBusinessRows.length === 0 ? (
+                        <Alert severity="info">
+                          No hay registros de lunes a viernes para el periodo seleccionado.
+                        </Alert>
+                      ) : (
+                        <TableContainer
+                          component={Paper}
+                          variant="outlined"
+                          sx={{
+                            borderRadius: 3,
+                            overflowX: 'auto',
+                            overflowY: 'visible',
+                            borderColor: 'divider',
+                            bgcolor: '#ffffff',
+                            '&::-webkit-scrollbar': {
+                              height: 10,
+                            },
+                            '&::-webkit-scrollbar-thumb': {
+                              borderRadius: 8,
+                              backgroundColor: 'rgba(25, 118, 210, 0.35)',
+                            },
+                          }}
+                        >
+                          <Table
+                            size="small"
+                            sx={{
+                              minWidth: solicitudesTableMinWidth,
+                              tableLayout: 'fixed',
+                              borderCollapse: 'separate',
+                              borderSpacing: 0,
+                              '& .MuiTableCell-root': {
+                                borderColor: 'rgba(15, 23, 42, 0.12)',
+                                px: 0.75,
+                                py: 0.85,
+                                verticalAlign: 'middle',
+                              },
+                              '& .solicitudes-header-cell': {
+                                bgcolor: '#eef5ff',
+                                color: 'text.primary',
+                                fontWeight: 900,
+                                fontSize: 11.5,
+                                lineHeight: 1.15,
+                                borderBottom: '2px solid rgba(25, 118, 210, 0.30)',
+                              },
+                              '& .solicitudes-number-cell': {
+                                width: 72,
+                                minWidth: 72,
+                                maxWidth: 72,
+                                fontVariantNumeric: 'tabular-nums',
+                                whiteSpace: 'nowrap',
+                                textAlign: 'center',
+                                fontSize: 12,
+                              },
+                              '& .solicitudes-name-cell': {
+                                width: 360,
+                                minWidth: 360,
+                                maxWidth: 360,
+                                fontWeight: 700,
+                                lineHeight: 1.25,
+                                whiteSpace: 'normal',
+                                wordBreak: 'break-word',
+                                position: 'sticky',
+                                left: 0,
+                                zIndex: 2,
+                                bgcolor: '#ffffff',
+                                boxShadow: '8px 0 12px -12px rgba(15, 23, 42, 0.45)',
+                              },
+                              '& thead .solicitudes-name-cell': {
+                                zIndex: 4,
+                                bgcolor: '#e3f0ff',
+                              },
+                              '& .solicitudes-total-cell': {
+                                width: 120,
+                                minWidth: 120,
+                                maxWidth: 120,
+                                fontWeight: 900,
+                                bgcolor: '#f8fafc',
+                              },
+                              '& .solicitudes-percent-cell': {
+                                width: 90,
+                                minWidth: 90,
+                                maxWidth: 90,
+                              },
+                              '& .solicitudes-total-row td': {
+                                bgcolor: '#f8fafc',
+                                fontWeight: 900,
+                                borderTop: '2px solid rgba(15, 23, 42, 0.20)',
+                              },
+                              '& .solicitudes-total-row .solicitudes-name-cell': {
+                                bgcolor: '#f8fafc',
+                              },
+                            }}
+                          >
+                            <TableHead>
                               <TableRow>
-                                <TableCell colSpan={solicitudesPreview.fechas.length + 3} align="center">
-                                  No hay registros para el periodo seleccionado.
+                                <TableCell className="solicitudes-header-cell solicitudes-name-cell">
+                                  Solicitudes
+                                </TableCell>
+
+                                {solicitudesBusinessDates.map((fecha) => (
+                                  <TableCell
+                                    key={fecha}
+                                    className="solicitudes-header-cell solicitudes-number-cell"
+                                    align="center"
+                                  >
+                                    {formatDateLabel(fecha)}
+                                  </TableCell>
+                                ))}
+
+                                <TableCell
+                                  className="solicitudes-header-cell solicitudes-number-cell solicitudes-total-cell"
+                                  align="center"
+                                >
+                                  Total general
+                                </TableCell>
+
+                                <TableCell
+                                  className="solicitudes-header-cell solicitudes-number-cell solicitudes-percent-cell"
+                                  align="center"
+                                >
+                                  %
                                 </TableCell>
                               </TableRow>
-                            ) : (
-                              solicitudesPreview.filas.map((row) => (
-                                <TableRow key={row.solicitud} hover>
-                                  <TableCell sx={{ fontWeight: 600, position: 'sticky', left: 0, zIndex: 2, backgroundColor: 'background.paper' }}>
+                            </TableHead>
+
+                            <TableBody>
+                              {solicitudesBusinessRows.map((row, rowIndex) => (
+                                <TableRow
+                                  key={row.solicitud}
+                                  hover
+                                  sx={{
+                                    '& td': {
+                                      bgcolor: rowIndex % 2 === 0 ? '#ffffff' : '#fbfdff',
+                                    },
+                                    '& .solicitudes-name-cell': {
+                                      bgcolor: rowIndex % 2 === 0 ? '#ffffff' : '#fbfdff',
+                                    },
+                                  }}
+                                >
+                                  <TableCell className="solicitudes-name-cell">
                                     {row.solicitud}
                                   </TableCell>
 
-                                  {solicitudesPreview.fechas.map((fecha) => {
-                                    const value = row.cantidadesPorFecha[fecha] ?? 0;
+                                  {solicitudesBusinessDates.map((fecha) => {
+                                    const value = Number(row.cantidadesPorFecha[fecha] ?? 0);
 
                                     return (
-                                      <TableCell key={fecha} align="center">
-                                        {value > 0 ? value : ''}
+                                      <TableCell
+                                        key={`${row.solicitud}-${fecha}`}
+                                        className="solicitudes-number-cell"
+                                        align="center"
+                                        sx={{ color: value > 0 ? 'text.primary' : 'text.disabled' }}
+                                      >
+                                        {value > 0 ? formatNumber(value) : '—'}
                                       </TableCell>
                                     );
                                   })}
 
-                                  <TableCell align="center" sx={{ fontWeight: 700 }}>
+                                  <TableCell
+                                    className="solicitudes-number-cell solicitudes-total-cell"
+                                    align="center"
+                                  >
                                     {formatNumber(row.totalGeneral)}
                                   </TableCell>
 
-                                  <TableCell align="center">
+                                  <TableCell
+                                    className="solicitudes-number-cell solicitudes-percent-cell"
+                                    align="center"
+                                  >
                                     {formatPercent(row.porcentaje)} %
                                   </TableCell>
                                 </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
+                              ))}
+
+                              <TableRow className="solicitudes-total-row">
+                                <TableCell className="solicitudes-name-cell">
+                                  Total general
+                                </TableCell>
+
+                                {solicitudesBusinessDates.map((fecha) => (
+                                  <TableCell
+                                    key={`total-${fecha}`}
+                                    className="solicitudes-number-cell"
+                                    align="center"
+                                  >
+                                    {formatNumber(getSolicitudColumnTotal(solicitudesBusinessRows, fecha))}
+                                  </TableCell>
+                                ))}
+
+                                <TableCell
+                                  className="solicitudes-number-cell solicitudes-total-cell"
+                                  align="center"
+                                >
+                                  {formatNumber(solicitudesBusinessTotal)}
+                                </TableCell>
+
+                                <TableCell
+                                  className="solicitudes-number-cell solicitudes-percent-cell"
+                                  align="center"
+                                >
+                                  100,0 %
+                                </TableCell>
+                              </TableRow>
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      )}
                     </Stack>
                   </CardContent>
                 </Card>
-
                 <Card className="report-export-section" sx={reportCardSx}>
                   <CardContent sx={{ p: { xs: 2, md: 3 } }}>
                     <Typography variant="h6" sx={{ fontWeight: 800 }}>
@@ -2056,7 +2533,7 @@ export default function ReportesPage() {
 
                     <Box sx={{ width: '100%', height: solicitudesBarChartHeight }}>
                       <ResponsiveContainer>
-                        <BarChart data={solicitudesPreview.filas} layout="vertical" margin={{ top: 20, right: 30, left: 40, bottom: 20 }}>
+                        <BarChart data={solicitudesBusinessRows} layout="vertical" margin={{ top: 20, right: 30, left: 40, bottom: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis type="number" allowDecimals={false} />
                           <YAxis type="category" dataKey="solicitud" width={280} tick={{ fontSize: 12 }} />
@@ -2076,13 +2553,13 @@ export default function ReportesPage() {
                     </Typography>
 
                     <Typography color="text.secondary" sx={{ fontSize: 13, mb: 2 }}>
-                      Muestra el comportamiento de las solicitudes durante el periodo.
+                      Muestra el comportamiento de las solicitudes de lunes a viernes durante el periodo.
                     </Typography>
 
                     <Box sx={{ width: '100%', height: 460 }}>
                       <ResponsiveContainer>
                         <LineChart
-                          data={solicitudesTrend.map((item) => ({
+                          data={solicitudesBusinessTrend.map((item) => ({
                             fecha: formatDateLabel(item.fecha),
                             total: item.total,
                           }))}
@@ -2624,6 +3101,188 @@ export default function ReportesPage() {
                   title="Distribución porcentual por trámites"
                   description="Participación de los ciudadanos con mayor cantidad de trámites dentro del periodo."
                   data={frequentCitizensByRequests}
+                />
+              </Stack>
+            ) : null}
+
+            {form.tipoReporte === 'PRODUCTIVIDAD_FUNCIONARIO' ? (
+              <Stack spacing={3}>
+                <Card className="report-export-section" sx={reportCardSx}>
+                  <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                          Resumen de productividad por funcionario
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
+                          Consolidado de atenciones por funcionario con agrupación{' '}
+                          <strong>{getProductivityGroupingLabel(form.productivityGrouping)}</strong>.
+                        </Typography>
+                      </Box>
+
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: {
+                            xs: '1fr',
+                            sm: 'repeat(2, 1fr)',
+                            md: 'repeat(4, 1fr)',
+                          },
+                          gap: 2,
+                        }}
+                      >
+                        <KpiCard
+                          title="Total atenciones"
+                          value={employeeProductivityTotal}
+                          color="primary"
+                        />
+
+                        <KpiCard
+                          title="Funcionarios"
+                          value={employeeProductivityEmployeeCount}
+                          color="success"
+                        />
+
+                        <KpiCard
+                          title="Periodos"
+                          value={employeeProductivityPeriodCount}
+                          color="secondary"
+                          subtitle={getProductivityGroupingLabel(form.productivityGrouping)}
+                        />
+
+                        <KpiCard
+                          title="Promedio por funcionario"
+                          value={employeeProductivityEmployeeCount > 0
+                            ? Math.round(employeeProductivityTotal / employeeProductivityEmployeeCount)
+                            : 0}
+                          color="info"
+                          subtitle="Promedio aproximado del periodo"
+                        />
+                      </Box>
+
+                      {topEmployeeProductivity ? (
+                        <Alert severity="info" variant="outlined">
+                          Mayor productividad:{' '}
+                          <strong>{topEmployeeProductivity.funcionarioUsername || 'Sin funcionario'}</strong>
+                          {' · '}
+                          Periodo: <strong>{topEmployeeProductivity.periodo}</strong>
+                          {' · '}
+                          Atenciones:{' '}
+                          <strong>{formatNumber(Number(topEmployeeProductivity.totalAtenciones ?? 0))}</strong>
+                        </Alert>
+                      ) : (
+                        <Alert severity="info">
+                          No hay datos de productividad para el periodo seleccionado.
+                        </Alert>
+                      )}
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <Card className="report-export-section" sx={reportCardSx}>
+                  <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                          Tabla de productividad por funcionario
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
+                          Muestra el total de atenciones, participación porcentual y promedio diario
+                          por funcionario en cada periodo.
+                        </Typography>
+                      </Box>
+
+                      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+                        <Table size="small" sx={{ minWidth: 1000 }}>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ fontWeight: 800 }}>#</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Periodo</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Fecha inicio</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Fecha fin</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Funcionario</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 800 }}>Total atenciones</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 800 }}>% del periodo</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 800 }}>Promedio diario</TableCell>
+                            </TableRow>
+                          </TableHead>
+
+                          <TableBody>
+                            {employeeProductivity.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={8} align="center">
+                                  No hay productividad para el periodo seleccionado.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              employeeProductivity.map((item, index) => (
+                                <TableRow
+                                  key={`${item.periodo}-${item.funcionarioId ?? item.funcionarioUsername}-${index}`}
+                                  hover
+                                >
+                                  <TableCell sx={{ fontWeight: 800 }}>
+                                    {index + 1}
+                                  </TableCell>
+
+                                  <TableCell sx={{ fontWeight: 700 }}>
+                                    {item.periodo}
+                                  </TableCell>
+
+                                  <TableCell>
+                                    {formatDateLabel(item.fechaInicioPeriodo)}
+                                  </TableCell>
+
+                                  <TableCell>
+                                    {formatDateLabel(item.fechaFinPeriodo)}
+                                  </TableCell>
+
+                                  <TableCell>
+                                    {item.funcionarioUsername || 'Sin funcionario'}
+                                  </TableCell>
+
+                                  <TableCell align="center">
+                                    {formatNumber(Number(item.totalAtenciones ?? 0))}
+                                  </TableCell>
+
+                                  <TableCell align="center">
+                                    {formatPercent(Number(item.porcentaje ?? 0))} %
+                                  </TableCell>
+
+                                  <TableCell align="center">
+                                    {formatPercent(Number(item.promedioDiario ?? 0))}
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <HorizontalGroupBarChart
+                  title="Productividad consolidada por funcionario"
+                  description="Suma todas las atenciones del periodo seleccionado por funcionario."
+                  data={employeeProductivityByEmployee}
+                  barName="Atenciones"
+                  color="#2e7d32"
+                />
+
+                <HorizontalGroupBarChart
+                  title="Productividad consolidada por periodo"
+                  description="Suma las atenciones por semana o mes, según la agrupación seleccionada."
+                  data={employeeProductivityByPeriod}
+                  barName="Atenciones"
+                  color="#1976d2"
+                />
+
+                <PieGroupChart
+                  title="Distribución porcentual por funcionario"
+                  description="Participación de cada funcionario sobre el total de atenciones del periodo."
+                  data={employeeProductivityByEmployee}
                 />
               </Stack>
             ) : null}

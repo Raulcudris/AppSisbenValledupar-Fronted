@@ -79,3 +79,16 @@ export type VentanillaFrequentCitizenResponse = {
   primeraVisita: string | null;
   ultimaVisita: string | null;
 };
+
+export type ProductivityGrouping = 'SEMANAL' | 'MENSUAL';
+
+export type VentanillaEmployeeProductivityResponse = {
+  periodo: string;
+  fechaInicioPeriodo: string;
+  fechaFinPeriodo: string;
+  funcionarioId: number | null;
+  funcionarioUsername: string | null;
+  totalAtenciones: number;
+  porcentaje: number;
+  promedioDiario: number;
+};

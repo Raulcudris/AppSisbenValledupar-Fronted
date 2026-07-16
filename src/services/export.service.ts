@@ -1,6 +1,8 @@
-import { apiDownload } from '@/lib/apiClient';
+import { apiDownload, apiRequest } from '@/lib/apiClient';
 import { downloadBlob } from '@/lib/downloadFile';
 import { toQueryString } from '@/lib/queryString';
+import { ApiResponse } from '@/types/api.types';
+import { ExportDmcPreviewResponse, ExportVentanillaPreviewResponse } from '@/types/export.types';
 import { VentanillaFilter } from '@/types/operational.types';
 import { ReportDateRange } from '@/types/report.types';
 
@@ -41,9 +43,44 @@ function buildVentanillaExportQuery(filter: Partial<VentanillaFilter>): Record<s
   };
 }
 
+function buildDateRangeQuery(filter: ReportDateRange): Record<string, QueryValue> {
+  return {
+    fechaInicio: toQueryValue(filter.fechaInicio),
+    fechaFin: toQueryValue(filter.fechaFin),
+  };
+}
+
 async function download(path: string) {
   const { blob, filename } = await apiDownload(path);
   downloadBlob(blob, filename);
+}
+
+export async function previewExportVentanilla(
+  filter: Partial<VentanillaFilter>,
+  limit = 200
+) {
+  const response = await apiRequest<ApiResponse<ExportVentanillaPreviewResponse[]>>(
+    `/api/export/preview/ventanilla${toQueryString({
+      ...buildVentanillaExportQuery(filter),
+      limit,
+    })}`
+  );
+
+  return response.data;
+}
+
+export async function previewExportDmc(
+  filter: ReportDateRange,
+  limit = 200
+) {
+  const response = await apiRequest<ApiResponse<ExportDmcPreviewResponse[]>>(
+    `/api/export/preview/dmc${toQueryString({
+      ...buildDateRangeQuery(filter),
+      limit,
+    })}`
+  );
+
+  return response.data;
 }
 
 export function exportVentanilla(filter: Partial<VentanillaFilter>) {
@@ -51,15 +88,15 @@ export function exportVentanilla(filter: Partial<VentanillaFilter>) {
 }
 
 export function exportDmc(filter: ReportDateRange) {
-  return download(`/api/export/dmc${toQueryString(filter)}`);
+  return download(`/api/export/dmc${toQueryString(buildDateRangeQuery(filter))}`);
 }
 
 export function exportVentanillaReport(filter: ReportDateRange) {
-  return download(`/api/export/reports/ventanilla${toQueryString(filter)}`);
+  return download(`/api/export/reports/ventanilla${toQueryString(buildDateRangeQuery(filter))}`);
 }
 
 export function exportDmcReport(filter: ReportDateRange) {
-  return download(`/api/export/reports/dmc${toQueryString(filter)}`);
+  return download(`/api/export/reports/dmc${toQueryString(buildDateRangeQuery(filter))}`);
 }
 
 export async function exportVentanillaUserHistory(cedulaUsuario: string) {

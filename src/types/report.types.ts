@@ -69,3 +69,13 @@ export type VentanillaSolicitudesReportParams = {
   fechaInicio: string;
   fechaFin: string;
 };
+
+export type VentanillaFrequentCitizenResponse = {
+  cedulaUsuario: string;
+  nombreUsuario: string | null;
+  telefono: string | null;
+  totalVisitas: number;
+  totalSolicitudes: number;
+  primeraVisita: string | null;
+  ultimaVisita: string | null;
+};

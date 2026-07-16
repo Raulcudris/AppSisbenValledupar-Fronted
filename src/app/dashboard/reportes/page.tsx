@@ -1,9 +1,11 @@
 'use client';
 
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import TableChartIcon from '@mui/icons-material/TableChart';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import PreviewIcon from '@mui/icons-material/Preview';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import SearchIcon from '@mui/icons-material/Search';
 import {
   Alert,
   AlertColor,
@@ -13,6 +15,7 @@ import {
   CardContent,
   Chip,
   Divider,
+  InputAdornment,
   MenuItem,
   Paper,
   Snackbar,
@@ -28,6 +31,7 @@ import {
 } from '@mui/material';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 import { useRef, useState } from 'react';
 import {
   Bar,
@@ -46,10 +50,12 @@ import {
 } from 'recharts';
 
 import { ApiClientError } from '@/lib/apiClient';
+import { exportVentanillaUserHistoryPdf } from '@/services/export.service';
 import {
   downloadVentanillaSolicitudesPdf,
   getDmcGroup,
   getDmcSummary,
+  getVentanillaFrequentCitizens,
   getVentanillaFuncionariosPerformance,
   getVentanillaFuncionariosTrend,
   getVentanillaGroup,
@@ -57,11 +63,14 @@ import {
   getVentanillaSummary,
   previewVentanillaSolicitudes,
 } from '@/services/report.service';
+import { getVentanillaUserHistory } from '@/services/ventanilla.service';
+import { VentanillaUserHistoryResponse } from '@/types/operational.types';
 import {
   DmcReportSummaryResponse,
   ReportDateRange,
   ReportGroupResponse,
   VentanillaDailyTrendResponse,
+  VentanillaFrequentCitizenResponse,
   VentanillaFuncionarioPerformanceResponse,
   VentanillaFuncionarioTrendResponse,
   VentanillaReportSummaryResponse,
@@ -82,12 +91,15 @@ type ReportType =
   | 'GENERAL'
   | 'DMC'
   | 'COMUNAS'
-  | 'ALERTAS';
+  | 'ALERTAS'
+  | 'HISTORIAL_USUARIO'
+  | 'CIUDADANOS_FRECUENTES';
 
 type FormState = {
   fechaInicio: string;
   fechaFin: string;
   tipoReporte: ReportType;
+  cedulaUsuario: string;
 };
 
 type AlertItem = {
@@ -141,6 +153,7 @@ const initialForm: FormState = {
   fechaInicio: getTodayDate(),
   fechaFin: getTodayDate(),
   tipoReporte: 'SOLICITUDES',
+  cedulaUsuario: '',
 };
 
 function formatPercent(value: number) {
@@ -180,9 +193,69 @@ function buildPdfFilename(tipoReporte: ReportType, fechaInicio: string, fechaFin
     DMC: 'dmc',
     COMUNAS: 'totales-comuna',
     ALERTAS: 'control-operativo-alertas',
+    HISTORIAL_USUARIO: 'historial-ciudadano',
+    CIUDADANOS_FRECUENTES: 'ciudadanos-frecuentes',
   };
 
   return `Reporte-${labels[tipoReporte]}-${fechaInicio}-a-${fechaFin}.pdf`;
+}
+
+function buildExcelFilename(tipoReporte: ReportType, fechaInicio: string, fechaFin: string) {
+  return buildPdfFilename(tipoReporte, fechaInicio, fechaFin).replace('.pdf', '.xlsx');
+}
+
+function getReportTitle(tipoReporte: ReportType) {
+  const titles: Record<ReportType, string> = {
+    SOLICITUDES: 'Reporte de solicitudes - Ventanilla',
+    FUNCIONARIOS: 'Reporte de desempeño por funcionario - Ventanilla',
+    GENERAL: 'Reporte general del sistema',
+    DMC: 'Reporte DMC',
+    COMUNAS: 'Reporte de totales por comuna',
+    ALERTAS: 'Control operativo y alertas',
+    HISTORIAL_USUARIO: 'Historial por ciudadano',
+    CIUDADANOS_FRECUENTES: 'Ciudadanos frecuentes',
+  };
+
+  return titles[tipoReporte];
+}
+
+function normalizeSheetName(name: string) {
+  return name
+    .replace(/[\/?*:[\]]/g, ' ')
+    .trim()
+    .slice(0, 31) || 'Hoja';
+}
+
+function appendJsonSheet(
+  workbook: XLSX.WorkBook,
+  sheetName: string,
+  rows: Record<string, string | number | boolean | null>[],
+  widths: number[] = []
+) {
+  const safeRows = rows.length ? rows : [{ Mensaje: 'No hay datos para mostrar' }];
+  const worksheet = XLSX.utils.json_to_sheet(safeRows);
+
+  if (widths.length) {
+    worksheet['!cols'] = widths.map((width) => ({ wch: width }));
+  }
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, normalizeSheetName(sheetName));
+}
+
+function groupRowsToExcelRows(data: ReportGroupResponse[]) {
+  const total = getGroupTotal(data);
+
+  return data.map((item, index) => {
+    const itemTotal = Number(item.total ?? 0);
+
+    return {
+      '#': index + 1,
+      Código: item.codigo || '',
+      Nombre: getGroupName(item),
+      Total: itemTotal,
+      Porcentaje: `${formatPercent(getPercentage(itemTotal, total))} %`,
+    };
+  });
 }
 
 function getGroupName(item: ReportGroupResponse) {
@@ -207,6 +280,92 @@ function getTopGroup(data: ReportGroupResponse[]) {
   }
 
   return [...data].sort((a, b) => Number(b.total ?? 0) - Number(a.total ?? 0))[0];
+}
+
+function buildHistoryGroupData(
+  history: VentanillaUserHistoryResponse | null,
+  field:
+    | 'solicitudNombre'
+    | 'estadoSolicitudNombre'
+    | 'funcionarioUsername'
+    | 'comunaNombre'
+): ReportGroupResponse[] {
+  if (!history) {
+    return [];
+  }
+
+  const groups = new Map<string, number>();
+
+  history.solicitudes.forEach((item) => {
+    const key = item[field] || 'Sin clasificar';
+    groups.set(key, (groups.get(key) ?? 0) + 1);
+  });
+
+  return Array.from(groups.entries())
+    .map(([name, total], index) => ({
+      id: index + 1,
+      codigo: name,
+      nombre: name,
+      total,
+    }))
+    .sort((a, b) => b.total - a.total);
+}
+
+function getLastHistoryItem(history: VentanillaUserHistoryResponse | null) {
+  if (!history || !history.solicitudes.length) {
+    return null;
+  }
+
+  return [...history.solicitudes].sort((a, b) => {
+    if (a.fecha === b.fecha) {
+      return Number(b.id ?? 0) - Number(a.id ?? 0);
+    }
+
+    return b.fecha.localeCompare(a.fecha);
+  })[0];
+}
+
+function getCitizenNameLabel(item: VentanillaFrequentCitizenResponse) {
+  const name = item.nombreUsuario?.trim();
+
+  if (name) {
+    return name;
+  }
+
+  return `CC ${item.cedulaUsuario}`;
+}
+
+function getCitizenChartLabel(item: VentanillaFrequentCitizenResponse) {
+  const name = getCitizenNameLabel(item);
+
+  return `${name} · ${item.cedulaUsuario}`;
+}
+
+function buildFrequentCitizenGroupData(
+  data: VentanillaFrequentCitizenResponse[],
+  metric: 'totalVisitas' | 'totalSolicitudes',
+  limit = 14
+): ReportGroupResponse[] {
+  return [...data]
+    .sort((a, b) => Number(b[metric] ?? 0) - Number(a[metric] ?? 0))
+    .slice(0, limit)
+    .map((item, index) => ({
+      id: index + 1,
+      codigo: item.cedulaUsuario,
+      nombre: getCitizenChartLabel(item),
+      total: Number(item[metric] ?? 0),
+    }));
+}
+
+function getTopFrequentCitizen(
+  data: VentanillaFrequentCitizenResponse[],
+  metric: 'totalVisitas' | 'totalSolicitudes'
+) {
+  if (!data.length) {
+    return null;
+  }
+
+  return [...data].sort((a, b) => Number(b[metric] ?? 0) - Number(a[metric] ?? 0))[0];
 }
 
 function buildGroupChartData(data: ReportGroupResponse[], limit = 14) {
@@ -725,9 +884,15 @@ export default function ReportesPage() {
   const [dmcComunas, setDmcComunas] =
     useState<ReportGroupResponse[]>([]);
 
+  const [citizenHistory, setCitizenHistory] =
+    useState<VentanillaUserHistoryResponse | null>(null);
+  const [frequentCitizens, setFrequentCitizens] =
+    useState<VentanillaFrequentCitizenResponse[]>([]);
+
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [loadingFullPdf, setLoadingFullPdf] = useState(false);
+  const [loadingExcel, setLoadingExcel] = useState(false);
   const [error, setError] = useState('');
   const [snackbar, setSnackbar] = useState<SnackbarState>(initialSnackbar);
 
@@ -737,7 +902,9 @@ export default function ReportesPage() {
     || Boolean(ventanillaSummary)
     || Boolean(dmcSummary)
     || ventanillaComunas.length > 0
-    || dmcComunas.length > 0;
+    || dmcComunas.length > 0
+    || Boolean(citizenHistory)
+    || frequentCitizens.length > 0;
 
   const totalDays = getDaysBetween(form.fechaInicio, form.fechaFin);
   const estimatedGrouping = totalDays > 31 ? 'mensual' : 'diaria';
@@ -791,6 +958,31 @@ export default function ReportesPage() {
     dmcComunas,
   });
 
+  const historySolicitudGroups = buildHistoryGroupData(citizenHistory, 'solicitudNombre');
+  const historyEstadoGroups = buildHistoryGroupData(citizenHistory, 'estadoSolicitudNombre');
+  const historyFuncionarioGroups = buildHistoryGroupData(citizenHistory, 'funcionarioUsername');
+  const historyComunaGroups = buildHistoryGroupData(citizenHistory, 'comunaNombre');
+  const lastHistoryItem = getLastHistoryItem(citizenHistory);
+
+  const frequentCitizensByVisits = buildFrequentCitizenGroupData(
+    frequentCitizens,
+    'totalVisitas'
+  );
+  const frequentCitizensByRequests = buildFrequentCitizenGroupData(
+    frequentCitizens,
+    'totalSolicitudes'
+  );
+  const topCitizenByVisits = getTopFrequentCitizen(frequentCitizens, 'totalVisitas');
+  const topCitizenByRequests = getTopFrequentCitizen(frequentCitizens, 'totalSolicitudes');
+  const frequentCitizensTotalVisits = frequentCitizens.reduce(
+    (sum, item) => sum + Number(item.totalVisitas ?? 0),
+    0
+  );
+  const frequentCitizensTotalRequests = frequentCitizens.reduce(
+    (sum, item) => sum + Number(item.totalSolicitudes ?? 0),
+    0
+  );
+
   const showSnackbar = (
     message: string,
     severity: SnackbarSeverity = 'success'
@@ -819,6 +1011,8 @@ export default function ReportesPage() {
     setVentanillaFuncionarios([]);
     setVentanillaComunas([]);
     setDmcComunas([]);
+    setCitizenHistory(null);
+    setFrequentCitizens([]);
   };
 
   const updateForm = <K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -958,6 +1152,45 @@ export default function ReportesPage() {
         return;
       }
 
+      if (form.tipoReporte === 'HISTORIAL_USUARIO') {
+        const cedula = form.cedulaUsuario.trim();
+
+        if (!cedula) {
+          const message = 'La cédula del ciudadano es obligatoria para consultar el historial.';
+          setError(message);
+          showSnackbar(message, 'warning');
+          return;
+        }
+
+        const response = await getVentanillaUserHistory(cedula);
+
+        setCitizenHistory(response);
+
+        showSnackbar(
+          response.totalSolicitudes === 0
+            ? 'No hay solicitudes registradas para este ciudadano.'
+            : 'Historial del ciudadano consultado correctamente.',
+          response.totalSolicitudes === 0 ? 'info' : 'success'
+        );
+
+        return;
+      }
+
+      if (form.tipoReporte === 'CIUDADANOS_FRECUENTES') {
+        const response = await getVentanillaFrequentCitizens(filter, 50);
+
+        setFrequentCitizens(response);
+
+        showSnackbar(
+          response.length === 0
+            ? 'No hay ciudadanos frecuentes para el periodo seleccionado.'
+            : 'Reporte de ciudadanos frecuentes generado correctamente.',
+          response.length === 0 ? 'info' : 'success'
+        );
+
+        return;
+      }
+
       if (form.tipoReporte === 'GENERAL') {
         await loadGeneralData(filter);
         showSnackbar('Reporte general generado correctamente.', 'success');
@@ -1015,6 +1248,35 @@ export default function ReportesPage() {
       return;
     }
 
+    if (form.tipoReporte === 'HISTORIAL_USUARIO') {
+      const cedula = form.cedulaUsuario.trim();
+
+      if (!cedula) {
+        const message = 'La cédula del ciudadano es obligatoria para generar el PDF.';
+        setError(message);
+        showSnackbar(message, 'warning');
+        return;
+      }
+
+      setLoadingPdf(true);
+
+      try {
+        await exportVentanillaUserHistoryPdf(cedula);
+        showSnackbar('PDF oficial del historial generado correctamente.', 'success');
+      } catch (err) {
+        const message = err instanceof ApiClientError
+          ? err.message
+          : 'No fue posible generar el PDF del historial.';
+
+        setError(message);
+        showSnackbar(message, 'error');
+      } finally {
+        setLoadingPdf(false);
+      }
+
+      return;
+    }
+
     if (form.tipoReporte !== 'SOLICITUDES') {
       showSnackbar(
         'El PDF oficial está disponible para el informe de solicitudes. Para los demás reportes usa “Exportar documento completo”.',
@@ -1041,6 +1303,252 @@ export default function ReportesPage() {
       showSnackbar(message, 'error');
     } finally {
       setLoadingPdf(false);
+    }
+  };
+
+  const exportCurrentReportToExcel = async () => {
+    if (!hasReportData) {
+      showSnackbar('Primero genera la previsualización del reporte.', 'warning');
+      return;
+    }
+
+    setLoadingExcel(true);
+    setError('');
+
+    try {
+      const workbook = XLSX.utils.book_new();
+      const reportTitle = getReportTitle(form.tipoReporte);
+
+      appendJsonSheet(
+        workbook,
+        'Resumen',
+        [
+          {
+            Campo: 'Reporte',
+            Valor: reportTitle,
+          },
+          {
+            Campo: 'Fecha inicio',
+            Valor: formatDateLabel(form.fechaInicio),
+          },
+          {
+            Campo: 'Fecha fin',
+            Valor: formatDateLabel(form.fechaFin),
+          },
+          {
+            Campo: 'Rango en días',
+            Valor: totalDays,
+          },
+        ],
+        [24, 42]
+      );
+
+      if (form.tipoReporte === 'SOLICITUDES' && solicitudesPreview) {
+        appendJsonSheet(
+          workbook,
+          'Solicitudes',
+          solicitudesPreview.filas.map((row) => {
+            const values: Record<string, string | number | boolean | null> = {
+              Solicitud: row.solicitud,
+            };
+
+            solicitudesPreview.fechas.forEach((fecha) => {
+              values[fecha] = row.cantidadesPorFecha[fecha] ?? 0;
+            });
+
+            values['Total general'] = row.totalGeneral;
+            values.Porcentaje = `${formatPercent(row.porcentaje)} %`;
+
+            return values;
+          }),
+          [36, ...solicitudesPreview.fechas.map(() => 14), 18, 14]
+        );
+
+        appendJsonSheet(
+          workbook,
+          'Tendencia',
+          solicitudesTrend.map((item) => ({
+            Fecha: formatDateLabel(item.fecha),
+            Total: item.total,
+          })),
+          [18, 14]
+        );
+      }
+
+      if (form.tipoReporte === 'FUNCIONARIOS') {
+        appendJsonSheet(
+          workbook,
+          'Desempeño',
+          funcionariosPerformance.map((item, index) => ({
+            '#': index + 1,
+            Funcionario: item.funcionarioUsername || 'Sin funcionario',
+            Total: item.total,
+            Porcentaje: `${formatPercent(item.porcentaje)} %`,
+            'Promedio diario': formatPercent(item.promedioDiario),
+          })),
+          [8, 28, 14, 14, 18]
+        );
+
+        appendJsonSheet(
+          workbook,
+          'Tendencia funcionarios',
+          funcionariosTrend.map((item) => ({
+            Fecha: formatDateLabel(item.fecha),
+            Funcionario: item.funcionarioUsername || 'Sin funcionario',
+            Total: item.total,
+          })),
+          [18, 28, 14]
+        );
+      }
+
+      if (form.tipoReporte === 'GENERAL') {
+        appendJsonSheet(
+          workbook,
+          'Indicadores',
+          [
+            { Indicador: 'Total Ventanilla', Valor: ventanillaSummary?.totalRegistros ?? 0 },
+            { Indicador: 'Pendientes', Valor: ventanillaSummary?.pendientes ?? 0 },
+            { Indicador: 'Realizadas', Valor: ventanillaSummary?.realizadas ?? 0 },
+            { Indicador: 'Aprobadas', Valor: ventanillaSummary?.aprobadas ?? 0 },
+            { Indicador: 'Rechazadas', Valor: ventanillaSummary?.rechazadas ?? 0 },
+            { Indicador: 'Canceladas', Valor: ventanillaSummary?.canceladas ?? 0 },
+            { Indicador: 'Revisar', Valor: ventanillaSummary?.revisar ?? 0 },
+            { Indicador: 'Extranjeros', Valor: ventanillaSummary?.extranjeros ?? 0 },
+            { Indicador: 'Nacionales', Valor: ventanillaSummary?.nacionales ?? 0 },
+            { Indicador: 'Total DMC', Valor: dmcSummary?.totalRegistros ?? 0 },
+            { Indicador: 'Cantidad DMC', Valor: dmcSummary?.totalCantidad ?? 0 },
+            { Indicador: 'Cargadas', Valor: dmcSummary?.totalCargadas ?? 0 },
+            { Indicador: 'Descargadas', Valor: dmcSummary?.totalDescargadas ?? 0 },
+          ],
+          [32, 16]
+        );
+
+        appendJsonSheet(workbook, 'Solicitudes Ventanilla', groupRowsToExcelRows(ventanillaSolicitudes), [8, 18, 38, 16, 16]);
+        appendJsonSheet(workbook, 'Estados Ventanilla', groupRowsToExcelRows(ventanillaEstados), [8, 18, 34, 16, 16]);
+        appendJsonSheet(workbook, 'Funcionarios', groupRowsToExcelRows(ventanillaFuncionarios), [8, 20, 30, 16, 16]);
+        appendJsonSheet(workbook, 'Comunas Ventanilla', groupRowsToExcelRows(ventanillaComunas), [8, 18, 32, 16, 16]);
+        appendJsonSheet(workbook, 'Comunas DMC', groupRowsToExcelRows(dmcComunas), [8, 18, 32, 16, 16]);
+      }
+
+      if (form.tipoReporte === 'ALERTAS') {
+        appendJsonSheet(
+          workbook,
+          'Alertas',
+          operationalAlerts.map((item, index) => ({
+            '#': index + 1,
+            Alerta: item.title,
+            Valor: item.value,
+            Severidad: item.severity,
+            Descripción: item.description,
+            Recomendación: item.helper,
+          })),
+          [8, 32, 16, 16, 60, 60]
+        );
+
+        appendJsonSheet(workbook, 'Estados Ventanilla', groupRowsToExcelRows(ventanillaEstados), [8, 18, 34, 16, 16]);
+        appendJsonSheet(workbook, 'Funcionarios', groupRowsToExcelRows(ventanillaFuncionarios), [8, 20, 30, 16, 16]);
+        appendJsonSheet(workbook, 'Solicitudes', groupRowsToExcelRows(ventanillaSolicitudes), [8, 18, 38, 16, 16]);
+        appendJsonSheet(workbook, 'Comunas Ventanilla', groupRowsToExcelRows(ventanillaComunas), [8, 18, 32, 16, 16]);
+        appendJsonSheet(workbook, 'Comunas DMC', groupRowsToExcelRows(dmcComunas), [8, 18, 32, 16, 16]);
+      }
+
+      if (form.tipoReporte === 'DMC' && dmcSummary) {
+        appendJsonSheet(
+          workbook,
+          'Resumen DMC',
+          [
+            { Indicador: 'Total registros DMC', Valor: dmcSummary.totalRegistros },
+            { Indicador: 'Cantidad total', Valor: dmcSummary.totalCantidad },
+            { Indicador: 'Cargadas', Valor: dmcSummary.totalCargadas },
+            { Indicador: 'Descargadas', Valor: dmcSummary.totalDescargadas },
+          ],
+          [34, 16]
+        );
+
+        appendJsonSheet(workbook, 'Comunas DMC', groupRowsToExcelRows(dmcComunas), [8, 18, 32, 16, 16]);
+      }
+
+      if (form.tipoReporte === 'COMUNAS') {
+        appendJsonSheet(workbook, 'Comunas Ventanilla', groupRowsToExcelRows(ventanillaComunas), [8, 18, 32, 16, 16]);
+        appendJsonSheet(workbook, 'Comunas DMC', groupRowsToExcelRows(dmcComunas), [8, 18, 32, 16, 16]);
+      }
+
+      if (form.tipoReporte === 'HISTORIAL_USUARIO' && citizenHistory) {
+        appendJsonSheet(
+          workbook,
+          'Resumen ciudadano',
+          [
+            { Campo: 'Cédula', Valor: citizenHistory.cedulaUsuario },
+            { Campo: 'Nombre', Valor: citizenHistory.nombreUsuario || 'Sin nombre registrado' },
+            { Campo: 'Teléfono', Valor: citizenHistory.telefono || 'Sin teléfono' },
+            { Campo: 'Total visitas', Valor: citizenHistory.totalVisitas },
+            { Campo: 'Total solicitudes', Valor: citizenHistory.totalSolicitudes },
+            { Campo: 'Primera visita', Valor: formatDateLabel(citizenHistory.primeraVisita || '') },
+            { Campo: 'Última visita', Valor: formatDateLabel(citizenHistory.ultimaVisita || '') },
+          ],
+          [26, 45]
+        );
+
+        appendJsonSheet(
+          workbook,
+          'Historial solicitudes',
+          citizenHistory.solicitudes.map((item, index) => ({
+            '#': index + 1,
+            Fecha: formatDateLabel(item.fecha),
+            'N° Ventanilla': item.numeroVentanilla || '',
+            Solicitud: item.solicitudNombre || 'Sin solicitud',
+            Categoría: item.categoriaNombre || 'Sin categoría',
+            Estado: item.estadoSolicitudNombre || 'Sin estado',
+            Barrio: item.barrioNombre || 'Sin barrio',
+            Comuna: item.comunaNombre || 'Sin comuna',
+            Funcionario: item.funcionarioUsername || 'Sin funcionario',
+            Extranjero: item.extranjero ? 'Sí' : 'No',
+            'Estado registro': item.activo ? 'Activo' : 'Inactivo',
+            Observación: item.observacion || 'Sin observación',
+          })),
+          [8, 16, 16, 32, 26, 22, 24, 24, 24, 14, 16, 42]
+        );
+      }
+
+      if (form.tipoReporte === 'CIUDADANOS_FRECUENTES') {
+        appendJsonSheet(
+          workbook,
+          'Ranking ciudadanos',
+          frequentCitizens.map((item, index) => {
+            const totalVisitas = Number(item.totalVisitas ?? 0);
+            const totalSolicitudes = Number(item.totalSolicitudes ?? 0);
+
+            return {
+              '#': index + 1,
+              Ciudadano: getCitizenNameLabel(item),
+              Cédula: item.cedulaUsuario,
+              Teléfono: item.telefono || 'Sin teléfono',
+              Visitas: totalVisitas,
+              Trámites: totalSolicitudes,
+              '% visitas': `${formatPercent(getPercentage(totalVisitas, frequentCitizensTotalVisits))} %`,
+              '% trámites': `${formatPercent(getPercentage(totalSolicitudes, frequentCitizensTotalRequests))} %`,
+              'Primera visita': formatDateLabel(item.primeraVisita || ''),
+              'Última visita': formatDateLabel(item.ultimaVisita || ''),
+            };
+          }),
+          [8, 34, 18, 18, 14, 14, 14, 14, 18, 18]
+        );
+
+        appendJsonSheet(workbook, 'Ranking por visitas', groupRowsToExcelRows(frequentCitizensByVisits), [8, 18, 44, 16, 16]);
+        appendJsonSheet(workbook, 'Ranking por trámites', groupRowsToExcelRows(frequentCitizensByRequests), [8, 18, 44, 16, 16]);
+      }
+
+      XLSX.writeFile(workbook, buildExcelFilename(form.tipoReporte, form.fechaInicio, form.fechaFin));
+      showSnackbar('Reporte Excel descargado correctamente.', 'success');
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible descargar el reporte en Excel.';
+
+      setError(message);
+      showSnackbar(message, 'error');
+    } finally {
+      setLoadingExcel(false);
     }
   };
 
@@ -1133,7 +1641,7 @@ export default function ReportesPage() {
     }
   };
 
-  const loading = loadingPreview || loadingPdf || loadingFullPdf;
+  const loading = loadingPreview || loadingPdf || loadingFullPdf || loadingExcel;
 
   return (
     <Stack spacing={3}>
@@ -1167,19 +1675,35 @@ export default function ReportesPage() {
 
               <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 760 }}>
                 Genera reportes de Ventanilla, DMC, desempeño, comunas, funcionamiento
-                general y control operativo con alertas.
+                general, control operativo, historial por ciudadano y ciudadanos frecuentes.
               </Typography>
             </Box>
 
-            <Button
-              variant="contained"
-              color="secondary"
-              startIcon={<PictureAsPdfIcon />}
-              onClick={exportFullDocumentToPdf}
-              disabled={loading || !hasReportData}
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1.2}
+              sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}
             >
-              {loadingFullPdf ? 'Exportando...' : 'Exportar documento completo'}
-            </Button>
+              <Button
+                variant="outlined"
+                color="success"
+                startIcon={<TableChartIcon />}
+                onClick={exportCurrentReportToExcel}
+                disabled={loading || !hasReportData}
+              >
+                {loadingExcel ? 'Descargando...' : 'Descargar Excel'}
+              </Button>
+
+              <Button
+                variant="contained"
+                color="secondary"
+                startIcon={<PictureAsPdfIcon />}
+                onClick={exportFullDocumentToPdf}
+                disabled={loading || !hasReportData}
+              >
+                {loadingFullPdf ? 'Exportando...' : 'Exportar documento completo'}
+              </Button>
+            </Stack>
           </Stack>
         </CardContent>
       </Card>
@@ -1205,7 +1729,7 @@ export default function ReportesPage() {
               </Typography>
 
               <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
-                Selecciona el tipo de reporte y el rango de fechas.
+                Selecciona el tipo de reporte y diligencia los parámetros requeridos.
               </Typography>
             </Box>
 
@@ -1231,7 +1755,7 @@ export default function ReportesPage() {
                 }
               >
                 <MenuItem value="SOLICITUDES">
-                  Solicitudes por tipo
+                  Solicitudes por ventanilla
                 </MenuItem>
 
                 <MenuItem value="FUNCIONARIOS">
@@ -1252,6 +1776,14 @@ export default function ReportesPage() {
 
                 <MenuItem value="ALERTAS">
                   Control operativo y alertas
+                </MenuItem>
+
+                <MenuItem value="HISTORIAL_USUARIO">
+                  Historial por ciudadano
+                </MenuItem>
+
+                <MenuItem value="CIUDADANOS_FRECUENTES">
+                  Ciudadanos frecuentes
                 </MenuItem>
               </TextField>
 
@@ -1284,6 +1816,31 @@ export default function ReportesPage() {
               />
             </Box>
 
+            {form.tipoReporte === 'HISTORIAL_USUARIO' ? (
+              <TextField
+                label="Cédula del ciudadano"
+                size="small"
+                required
+                value={form.cedulaUsuario}
+                onChange={(event) => updateForm('cedulaUsuario', event.target.value)}
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+                sx={{
+                  width: {
+                    xs: '100%',
+                    md: 420,
+                  },
+                }}
+              />
+            ) : null}
+
             <Alert severity="info">
               Para rangos de hasta 31 días se recomienda análisis diario. Rango actual:
               {' '}
@@ -1315,6 +1872,16 @@ export default function ReportesPage() {
                 disabled={loading}
               >
                 {loadingPdf ? 'Generando PDF...' : 'Generar PDF oficial'}
+              </Button>
+
+              <Button
+                variant="outlined"
+                color="success"
+                startIcon={<TableChartIcon />}
+                onClick={exportCurrentReportToExcel}
+                disabled={loading || !hasReportData}
+              >
+                {loadingExcel ? 'Descargando...' : 'Descargar Excel'}
               </Button>
 
               <Button
@@ -1372,7 +1939,11 @@ export default function ReportesPage() {
                               ? 'Reporte DMC'
                               : form.tipoReporte === 'COMUNAS'
                                 ? 'Reporte de totales por comuna'
-                                : 'Control operativo y alertas'}
+                                : form.tipoReporte === 'ALERTAS'
+                                  ? 'Control operativo y alertas'
+                                  : form.tipoReporte === 'HISTORIAL_USUARIO'
+                                    ? 'Historial por ciudadano'
+                                    : 'Ciudadanos frecuentes'}
                     </Typography>
 
                     <Typography color="text.secondary" sx={{ mt: 0.5 }}>
@@ -1684,6 +2255,376 @@ export default function ReportesPage() {
                     )}
                   </CardContent>
                 </Card>
+              </Stack>
+            ) : null}
+
+            {form.tipoReporte === 'HISTORIAL_USUARIO' && citizenHistory ? (
+              <Stack spacing={3}>
+                <Card className="report-export-section" sx={reportCardSx}>
+                  <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                          Resumen del ciudadano
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
+                          Información general del historial individual consultado.
+                        </Typography>
+                      </Box>
+
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: {
+                            xs: '1fr',
+                            sm: 'repeat(2, 1fr)',
+                            md: 'repeat(4, 1fr)',
+                          },
+                          gap: 2,
+                        }}
+                      >
+                        <KpiCard title="Total visitas" value={citizenHistory.totalVisitas} color="primary" />
+                        <KpiCard title="Total solicitudes" value={citizenHistory.totalSolicitudes} color="secondary" />
+
+                        <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+                          <Typography color="text.secondary" sx={{ fontSize: 13, fontWeight: 700 }}>
+                            Primera visita
+                          </Typography>
+
+                          <Typography variant="h6" sx={{ fontWeight: 900, mt: 0.5 }}>
+                            {formatDateLabel(citizenHistory.primeraVisita || '')}
+                          </Typography>
+                        </Paper>
+
+                        <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+                          <Typography color="text.secondary" sx={{ fontSize: 13, fontWeight: 700 }}>
+                            Última visita
+                          </Typography>
+
+                          <Typography variant="h6" sx={{ fontWeight: 900, mt: 0.5 }}>
+                            {formatDateLabel(citizenHistory.ultimaVisita || '')}
+                          </Typography>
+                        </Paper>
+                      </Box>
+
+                      <Alert severity="info">
+                        Ciudadano: <strong>{citizenHistory.nombreUsuario || 'Sin nombre registrado'}</strong>
+                        {' · '}
+                        Cédula: <strong>{citizenHistory.cedulaUsuario}</strong>
+                        {' · '}
+                        Teléfono: <strong>{citizenHistory.telefono || 'Sin teléfono'}</strong>
+                      </Alert>
+
+                      {lastHistoryItem ? (
+                        <Alert severity="success">
+                          Última atención registrada el <strong>{formatDateLabel(lastHistoryItem.fecha)}</strong>
+                          {' '}
+                          por solicitud <strong>{lastHistoryItem.solicitudNombre || 'Sin solicitud'}</strong>
+                          {' '}
+                          con estado <strong>{lastHistoryItem.estadoSolicitudNombre || 'Sin estado'}</strong>.
+                        </Alert>
+                      ) : null}
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <Card className="report-export-section" sx={reportCardSx}>
+                  <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                          Historial completo de solicitudes
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
+                          Detalle de las solicitudes asociadas al ciudadano consultado.
+                        </Typography>
+                      </Box>
+
+                      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+                        <Table size="small" sx={{ minWidth: 1250 }}>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ fontWeight: 800 }}>Fecha</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>N° Ventanilla</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Solicitud</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Categoría</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Estado</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Barrio</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Comuna</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Funcionario</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Extranjero</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Estado registro</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Observación</TableCell>
+                            </TableRow>
+                          </TableHead>
+
+                          <TableBody>
+                            {citizenHistory.solicitudes.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={11} align="center">
+                                  No hay solicitudes registradas para este ciudadano.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              citizenHistory.solicitudes.map((item) => (
+                                <TableRow key={item.id} hover>
+                                  <TableCell>{formatDateLabel(item.fecha)}</TableCell>
+                                  <TableCell>{item.numeroVentanilla || '-'}</TableCell>
+                                  <TableCell>{item.solicitudNombre || 'Sin solicitud'}</TableCell>
+                                  <TableCell>{item.categoriaNombre || 'Sin categoría'}</TableCell>
+                                  <TableCell>{item.estadoSolicitudNombre || 'Sin estado'}</TableCell>
+                                  <TableCell>{item.barrioNombre || 'Sin barrio'}</TableCell>
+                                  <TableCell>{item.comunaNombre || 'Sin comuna'}</TableCell>
+                                  <TableCell>{item.funcionarioUsername || 'Sin funcionario'}</TableCell>
+                                  <TableCell>{item.extranjero ? 'Sí' : 'No'}</TableCell>
+                                  <TableCell>{item.activo ? 'Activo' : 'Inactivo'}</TableCell>
+                                  <TableCell>{item.observacion || 'Sin observación'}</TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <HorizontalGroupBarChart
+                  title="Solicitudes realizadas por el ciudadano"
+                  description="Agrupa el historial individual por tipo de solicitud."
+                  data={historySolicitudGroups}
+                  barName="Solicitudes"
+                  color="#1976d2"
+                />
+
+                <HorizontalGroupBarChart
+                  title="Estados de las solicitudes del ciudadano"
+                  description="Permite revisar cómo se distribuyen los estados dentro del historial individual."
+                  data={historyEstadoGroups}
+                  barName="Registros"
+                  color="#ed6c02"
+                />
+
+                <HorizontalGroupBarChart
+                  title="Funcionarios que atendieron al ciudadano"
+                  description="Muestra los funcionarios asociados a las atenciones del ciudadano."
+                  data={historyFuncionarioGroups}
+                  barName="Atenciones"
+                  color="#2e7d32"
+                />
+
+                <PieGroupChart
+                  title="Distribución territorial del historial"
+                  description="Distribución por comuna de las solicitudes del ciudadano."
+                  data={historyComunaGroups}
+                />
+              </Stack>
+            ) : null}
+
+            {form.tipoReporte === 'CIUDADANOS_FRECUENTES' ? (
+              <Stack spacing={3}>
+                <Card className="report-export-section" sx={reportCardSx}>
+                  <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                          Resumen de ciudadanos frecuentes
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
+                          Ranking de ciudadanos que más visitan la ventanilla y realizan trámites
+                          dentro del periodo seleccionado.
+                        </Typography>
+                      </Box>
+
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: {
+                            xs: '1fr',
+                            sm: 'repeat(2, 1fr)',
+                            md: 'repeat(4, 1fr)',
+                          },
+                          gap: 2,
+                        }}
+                      >
+                        <KpiCard
+                          title="Ciudadanos encontrados"
+                          value={frequentCitizens.length}
+                          color="primary"
+                        />
+
+                        <KpiCard
+                          title="Total visitas"
+                          value={frequentCitizensTotalVisits}
+                          color="success"
+                        />
+
+                        <KpiCard
+                          title="Total trámites"
+                          value={frequentCitizensTotalRequests}
+                          color="secondary"
+                        />
+
+                        <KpiCard
+                          title="Promedio de trámites"
+                          value={frequentCitizens.length > 0
+                            ? Math.round(frequentCitizensTotalRequests / frequentCitizens.length)
+                            : 0}
+                          color="info"
+                          subtitle="Promedio aproximado por ciudadano"
+                        />
+                      </Box>
+
+                      {topCitizenByVisits ? (
+                        <Alert severity="info" variant="outlined">
+                          Ciudadano con más visitas:{' '}
+                          <strong>{getCitizenNameLabel(topCitizenByVisits)}</strong>
+                          {' · '}
+                          Cédula: <strong>{topCitizenByVisits.cedulaUsuario}</strong>
+                          {' · '}
+                          Visitas: <strong>{formatNumber(topCitizenByVisits.totalVisitas)}</strong>
+                        </Alert>
+                      ) : null}
+
+                      {topCitizenByRequests ? (
+                        <Alert severity="success" variant="outlined">
+                          Ciudadano con más trámites:{' '}
+                          <strong>{getCitizenNameLabel(topCitizenByRequests)}</strong>
+                          {' · '}
+                          Cédula: <strong>{topCitizenByRequests.cedulaUsuario}</strong>
+                          {' · '}
+                          Trámites: <strong>{formatNumber(topCitizenByRequests.totalSolicitudes)}</strong>
+                        </Alert>
+                      ) : null}
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <Card className="report-export-section" sx={reportCardSx}>
+                  <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                          Ranking de ciudadanos frecuentes
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
+                          Ordenado por mayor número de visitas y mayor número de trámites.
+                        </Typography>
+                      </Box>
+
+                      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+                        <Table size="small" sx={{ minWidth: 1150 }}>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ fontWeight: 800 }}>#</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Ciudadano</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Cédula</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Teléfono</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 800 }}>Visitas</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 800 }}>Trámites</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 800 }}>% visitas</TableCell>
+                              <TableCell align="center" sx={{ fontWeight: 800 }}>% trámites</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Primera visita</TableCell>
+                              <TableCell sx={{ fontWeight: 800 }}>Última visita</TableCell>
+                            </TableRow>
+                          </TableHead>
+
+                          <TableBody>
+                            {frequentCitizens.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={10} align="center">
+                                  No hay ciudadanos frecuentes para el periodo seleccionado.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              frequentCitizens.map((item, index) => {
+                                const totalVisitas = Number(item.totalVisitas ?? 0);
+                                const totalSolicitudes = Number(item.totalSolicitudes ?? 0);
+                                const visitsPercent = getPercentage(
+                                  totalVisitas,
+                                  frequentCitizensTotalVisits
+                                );
+                                const requestsPercent = getPercentage(
+                                  totalSolicitudes,
+                                  frequentCitizensTotalRequests
+                                );
+
+                                return (
+                                  <TableRow key={`${item.cedulaUsuario}-${index}`} hover>
+                                    <TableCell sx={{ fontWeight: 800 }}>
+                                      {index + 1}
+                                    </TableCell>
+
+                                    <TableCell sx={{ fontWeight: 700 }}>
+                                      {getCitizenNameLabel(item)}
+                                    </TableCell>
+
+                                    <TableCell>
+                                      <Chip
+                                        label={item.cedulaUsuario}
+                                        size="small"
+                                        color="primary"
+                                        variant="outlined"
+                                        sx={{ fontWeight: 700 }}
+                                      />
+                                    </TableCell>
+
+                                    <TableCell>{item.telefono || 'Sin teléfono'}</TableCell>
+
+                                    <TableCell align="center">
+                                      {formatNumber(totalVisitas)}
+                                    </TableCell>
+
+                                    <TableCell align="center">
+                                      {formatNumber(totalSolicitudes)}
+                                    </TableCell>
+
+                                    <TableCell align="center">
+                                      {formatPercent(visitsPercent)} %
+                                    </TableCell>
+
+                                    <TableCell align="center">
+                                      {formatPercent(requestsPercent)} %
+                                    </TableCell>
+
+                                    <TableCell>{formatDateLabel(item.primeraVisita || '')}</TableCell>
+                                    <TableCell>{formatDateLabel(item.ultimaVisita || '')}</TableCell>
+                                  </TableRow>
+                                );
+                              })
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <HorizontalGroupBarChart
+                  title="Ciudadanos con más visitas"
+                  description="Ranking por número de días o visitas registradas en Ventanilla."
+                  data={frequentCitizensByVisits}
+                  barName="Visitas"
+                  color="#1976d2"
+                />
+
+                <HorizontalGroupBarChart
+                  title="Ciudadanos con más trámites"
+                  description="Ranking por cantidad total de solicitudes o trámites realizados."
+                  data={frequentCitizensByRequests}
+                  barName="Trámites"
+                  color="#2e7d32"
+                />
+
+                <PieGroupChart
+                  title="Distribución porcentual por trámites"
+                  description="Participación de los ciudadanos con mayor cantidad de trámites dentro del periodo."
+                  data={frequentCitizensByRequests}
+                />
               </Stack>
             ) : null}
 

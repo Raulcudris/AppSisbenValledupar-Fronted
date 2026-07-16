@@ -6,6 +6,7 @@ import {
   ReportDateRange,
   ReportGroupResponse,
   VentanillaDailyTrendResponse,
+  VentanillaFrequentCitizenResponse,
   VentanillaFuncionarioPerformanceResponse,
   VentanillaFuncionarioTrendResponse,
   VentanillaReportSummaryResponse,
@@ -120,6 +121,20 @@ export async function getVentanillaFuncionariosTrend(
 ) {
   const response = await apiRequest<ApiResponse<VentanillaFuncionarioTrendResponse[]>>(
     `/api/reportes/ventanilla/funcionarios/tendencia${buildQuery(params)}`
+  );
+
+  return response.data;
+}
+
+export async function getVentanillaFrequentCitizens(
+  filter: ReportDateRange,
+  limit = 50
+) {
+  const response = await apiRequest<ApiResponse<VentanillaFrequentCitizenResponse[]>>(
+    `/api/reports/ventanilla/frequent-citizens${toQueryString({
+      ...filter,
+      limit,
+    })}`
   );
 
   return response.data;

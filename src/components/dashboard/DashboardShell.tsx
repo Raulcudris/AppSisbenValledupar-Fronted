@@ -38,8 +38,8 @@ import {
 } from '@/lib/roleAccess';
 import { AuthUserResponse } from '@/types/auth.types';
 
-const drawerWidth = 300;
-const collapsedDrawerWidth = 76;
+const drawerWidth = 304;
+const collapsedDrawerWidth = 78;
 
 const dashboardIcons: Record<DashboardIconKey, ReactNode> = {
   dashboard: <DashboardIcon />,
@@ -55,6 +55,34 @@ const dashboardIcons: Record<DashboardIconKey, ReactNode> = {
 type DashboardShellProps = {
   children: ReactNode;
 };
+
+function getCurrentModuleLabel(pathname: string) {
+  if (pathname.includes('/dashboard/ventanilla')) {
+    return 'Ventanilla';
+  }
+
+  if (pathname.includes('/dashboard/dmc')) {
+    return 'DMC';
+  }
+
+  if (pathname.includes('/dashboard/reportes')) {
+    return 'Reportes';
+  }
+
+  if (pathname.includes('/dashboard/exportaciones')) {
+    return 'Exportaciones';
+  }
+
+  if (pathname.includes('/dashboard/auditoria')) {
+    return 'Auditoría';
+  }
+
+  if (pathname.includes('/dashboard/usuarios')) {
+    return 'Usuarios';
+  }
+
+  return 'Inicio';
+}
 
 export default function DashboardShell({ children }: DashboardShellProps) {
   const theme = useTheme();
@@ -79,6 +107,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   }, [roleCode]);
 
   const currentDrawerWidth = sidebarExpanded ? drawerWidth : collapsedDrawerWidth;
+  const currentModule = getCurrentModuleLabel(pathname);
 
   useEffect(() => {
     setMounted(true);
@@ -135,123 +164,180 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: '#f8fafc',
+        bgcolor: '#F4F8FC',
         overflowX: 'hidden',
       }}
     >
       <Box
         sx={{
-          p: sidebarExpanded ? 2.5 : 1.5,
-          bgcolor: 'background.paper',
+          p: sidebarExpanded ? 2.2 : 1.2,
+          bgcolor: '#FFFFFF',
           borderBottom: '1px solid',
           borderColor: 'divider',
         }}
       >
-        <Stack
-          direction="row"
-          spacing={sidebarExpanded ? 1.5 : 0}
+        <Box
           sx={{
-            alignItems: 'center',
-            justifyContent: sidebarExpanded ? 'flex-start' : 'center',
+            borderRadius: sidebarExpanded || !isDesktop ? 4 : 3,
+            p: sidebarExpanded || !isDesktop ? 2 : 1,
+            background: 'linear-gradient(135deg, #0066CC 0%, #004B99 100%)',
+            color: '#FFFFFF',
+            position: 'relative',
+            overflow: 'hidden',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 5,
+              background: 'linear-gradient(90deg, #FCD116 0%, #E30613 100%)',
+            },
           }}
         >
-          <Avatar sx={{ bgcolor: 'primary.main', fontWeight: 800 }}>
-            S
-          </Avatar>
-
-          {sidebarExpanded || !isDesktop ? (
-            <Box>
-              <Typography variant="h6" sx={{ lineHeight: 1.1, fontWeight: 800 }}>
-                AppSisben
-              </Typography>
-
-              <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                Valledupar
-              </Typography>
-            </Box>
-          ) : null}
-        </Stack>
-      </Box>
-
-      <List sx={{ px: 1.2, py: 2, flex: 1 }}>
-        {menuItems.map((item) => {
-          const selected = pathname === item.href;
-
-          const button = (
-            <ListItemButton
-              key={item.href}
-              selected={selected}
-              onClick={() => {
-                router.push(item.href);
-
-                if (!isDesktop) {
-                  closeMobileMenu();
-                }
-              }}
+          <Stack
+            direction="row"
+            spacing={sidebarExpanded ? 1.5 : 0}
+            sx={{
+              alignItems: 'center',
+              justifyContent: sidebarExpanded || !isDesktop ? 'flex-start' : 'center',
+            }}
+          >
+            <Avatar
               sx={{
-                borderRadius: 2,
-                mb: 0.7,
-                py: 1.1,
-                px: sidebarExpanded || !isDesktop ? 1.5 : 1,
-                justifyContent: sidebarExpanded || !isDesktop ? 'flex-start' : 'center',
-                '&.Mui-selected': {
-                  bgcolor: 'primary.main',
-                  color: 'primary.contrastText',
-                },
-                '&.Mui-selected:hover': {
-                  bgcolor: 'primary.dark',
-                },
-                '&.Mui-selected .MuiListItemIcon-root': {
-                  color: 'primary.contrastText',
-                },
+                bgcolor: '#FFFFFF',
+                color: '#0066CC',
+                fontWeight: 900,
+                width: 42,
+                height: 42,
               }}
             >
-              <ListItemIcon
+              S
+            </Avatar>
+
+            {sidebarExpanded || !isDesktop ? (
+              <Box>
+                <Typography variant="h6" sx={{ lineHeight: 1.1, fontWeight: 900 }}>
+                  Sisbén
+                </Typography>
+
+                <Typography sx={{ fontSize: 13, fontWeight: 700, opacity: 0.92 }}>
+                  Sistema de información
+                </Typography>
+              </Box>
+            ) : null}
+          </Stack>
+        </Box>
+      </Box>
+
+      <Box sx={{ px: sidebarExpanded || !isDesktop ? 2 : 1.2, py: 1.5 }}>
+        {sidebarExpanded || !isDesktop ? (
+          <Typography
+            sx={{
+              fontSize: 12,
+              fontWeight: 900,
+              color: 'text.secondary',
+              textTransform: 'uppercase',
+              letterSpacing: 0.8,
+              mb: 1,
+            }}
+          >
+            Navegación
+          </Typography>
+        ) : null}
+
+        <List sx={{ p: 0 }}>
+          {menuItems.map((item) => {
+            const selected = pathname === item.href;
+
+            const button = (
+              <ListItemButton
+                key={item.href}
+                selected={selected}
+                onClick={() => {
+                  router.push(item.href);
+
+                  if (!isDesktop) {
+                    closeMobileMenu();
+                  }
+                }}
                 sx={{
-                  minWidth: sidebarExpanded || !isDesktop ? 42 : 0,
-                  color: selected ? 'primary.contrastText' : 'text.secondary',
-                  justifyContent: 'center',
+                  borderRadius: 2.5,
+                  mb: 0.7,
+                  py: 1.15,
+                  px: sidebarExpanded || !isDesktop ? 1.4 : 1,
+                  justifyContent: sidebarExpanded || !isDesktop ? 'flex-start' : 'center',
+                  '&.Mui-selected': {
+                    bgcolor: 'primary.main',
+                    color: 'primary.contrastText',
+                    boxShadow: '0 10px 24px rgba(0, 102, 204, 0.20)',
+                  },
+                  '&.Mui-selected:hover': {
+                    bgcolor: 'primary.dark',
+                  },
+                  '&.Mui-selected .MuiListItemIcon-root': {
+                    color: 'primary.contrastText',
+                  },
+                  '&:hover': {
+                    bgcolor: 'rgba(0, 102, 204, 0.08)',
+                  },
                 }}
               >
-                {dashboardIcons[item.iconKey]}
-              </ListItemIcon>
+                <ListItemIcon
+                  sx={{
+                    minWidth: sidebarExpanded || !isDesktop ? 42 : 0,
+                    color: selected ? 'primary.contrastText' : 'text.secondary',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {dashboardIcons[item.iconKey]}
+                </ListItemIcon>
 
-              {sidebarExpanded || !isDesktop ? (
-                <ListItemText
-                  primary={
-                    <Typography
-                      sx={{
-                        fontWeight: selected ? 800 : 600,
-                        fontSize: 14,
-                      }}
-                    >
-                      {item.label}
-                    </Typography>
-                  }
-                />
-              ) : null}
-            </ListItemButton>
-          );
-
-          if (!sidebarExpanded && isDesktop) {
-            return (
-              <Tooltip key={item.href} title={item.label} placement="right">
-                {button}
-              </Tooltip>
+                {sidebarExpanded || !isDesktop ? (
+                  <ListItemText
+                    primary={
+                      <Typography
+                        sx={{
+                          fontWeight: selected ? 900 : 700,
+                          fontSize: 14,
+                        }}
+                      >
+                        {item.label}
+                      </Typography>
+                    }
+                  />
+                ) : null}
+              </ListItemButton>
             );
-          }
 
-          return button;
-        })}
-      </List>
+            if (!sidebarExpanded && isDesktop) {
+              return (
+                <Tooltip key={item.href} title={item.label} placement="right">
+                  {button}
+                </Tooltip>
+              );
+            }
 
-      <Divider />
+            return button;
+          })}
+        </List>
+      </Box>
+
+      <Divider sx={{ mt: 'auto' }} />
 
       <Box sx={{ p: sidebarExpanded || !isDesktop ? 2 : 1.2 }}>
         <Stack spacing={1.5}>
           {sidebarExpanded || !isDesktop ? (
-            <Box>
-              <Typography color="text.secondary" sx={{ fontWeight: 700 }}>
+            <Box
+              sx={{
+                p: 1.5,
+                borderRadius: 3,
+                bgcolor: '#FFFFFF',
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              <Typography color="text.primary" sx={{ fontWeight: 900 }}>
                 {user.username ?? 'Usuario'}
               </Typography>
 
@@ -268,18 +354,23 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             <ListItemButton
               onClick={handleLogout}
               sx={{
-                borderRadius: 2,
+                borderRadius: 2.5,
                 bgcolor: 'background.paper',
                 border: '1px solid',
                 borderColor: 'divider',
                 justifyContent: sidebarExpanded || !isDesktop ? 'flex-start' : 'center',
                 px: sidebarExpanded || !isDesktop ? 1.5 : 1,
+                '&:hover': {
+                  bgcolor: 'rgba(227, 6, 19, 0.08)',
+                  color: 'secondary.main',
+                },
               }}
             >
               <ListItemIcon
                 sx={{
                   minWidth: sidebarExpanded || !isDesktop ? 42 : 0,
                   justifyContent: 'center',
+                  color: 'inherit',
                 }}
               >
                 <LogoutIcon />
@@ -288,7 +379,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               {sidebarExpanded || !isDesktop ? (
                 <ListItemText
                   primary={
-                    <Typography sx={{ fontWeight: 700, fontSize: 14 }}>
+                    <Typography sx={{ fontWeight: 800, fontSize: 14 }}>
                       Cerrar sesión
                     </Typography>
                   }
@@ -305,11 +396,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar
         position="fixed"
-        color="inherit"
         elevation={0}
         sx={{
-          borderBottom: '1px solid',
-          borderColor: 'divider',
           transition: 'width 0.25s ease, margin-left 0.25s ease',
           width: {
             xs: '100%',
@@ -321,7 +409,12 @@ export default function DashboardShell({ children }: DashboardShellProps) {
           },
         }}
       >
-        <Toolbar>
+        <Toolbar
+          sx={{
+            bgcolor: 'background.paper',
+            minHeight: '76px !important',
+          }}
+        >
           <IconButton
             edge="start"
             onClick={toggleSidebar}
@@ -333,7 +426,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               bgcolor: sidebarExpanded ? 'primary.main' : 'background.paper',
               color: sidebarExpanded ? 'primary.contrastText' : 'text.primary',
               '&:hover': {
-                bgcolor: sidebarExpanded ? 'primary.dark' : 'background.paper',
+                bgcolor: sidebarExpanded ? 'primary.dark' : 'rgba(0, 102, 204, 0.08)',
               },
             }}
           >
@@ -341,12 +434,36 @@ export default function DashboardShell({ children }: DashboardShellProps) {
           </IconButton>
 
           <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              Panel principal
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 900,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+              }}
+            >
+              {currentModule}
             </Typography>
 
-            <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-              Accesos disponibles para {user.rolNombre ?? user.rolCodigo}
+            <Typography color="text.secondary" sx={{ fontSize: 13, fontWeight: 600 }}>
+              Sistema de información Sisbén · {user.rolNombre ?? user.rolCodigo}
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              display: { xs: 'none', md: 'block' },
+              px: 1.5,
+              py: 0.7,
+              borderRadius: 999,
+              bgcolor: 'rgba(0, 102, 204, 0.08)',
+              border: '1px solid',
+              borderColor: 'divider',
+            }}
+          >
+            <Typography sx={{ fontSize: 12, fontWeight: 900, color: 'primary.main' }}>
+              AppSisbén Valledupar
             </Typography>
           </Box>
         </Toolbar>
@@ -388,7 +505,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       <Box
         component="main"
         sx={{
-          pt: 11,
+          pt: 12,
           px: { xs: 2, md: 3 },
           pb: 4,
           transition: 'margin-left 0.25s ease',

@@ -31,6 +31,7 @@ import {
   InputAdornment,
   Menu,
   MenuItem,
+  Paper,
   Stack,
   Table,
   TableBody,
@@ -322,6 +323,292 @@ function CitizenFrequencyField({ row }: { row: VentanillaResponse }) {
   );
 }
 
+
+function InfoValue({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | number | boolean | null;
+}) {
+  return (
+    <Box>
+      <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+        {label}
+      </Typography>
+
+      <Typography sx={{ fontWeight: 800 }}>
+        {value === undefined || value === null || value === '' ? '-' : String(value)}
+      </Typography>
+    </Box>
+  );
+}
+
+function CitizenDetailDialog({
+  open,
+  row,
+  onClose,
+}: {
+  open: boolean;
+  row: VentanillaResponse | null;
+  onClose: () => void;
+}) {
+  const trace = row?.trazabilidad;
+  const chipColor = normalizeTraceabilityColor(trace?.color);
+  const lastVisitDate = trace?.ultimaVisitaAnterior
+    ? formatDate(trace.ultimaVisitaAnterior)
+    : 'Sin visita anterior';
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="lg"
+      fullWidth
+    >
+      <DialogTitle
+        sx={{
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              Detalle de la atención de Ventanilla
+            </Typography>
+
+            <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+              {row
+                ? `${row.nombreUsuario || 'Usuario sin nombre'} · CC: ${row.cedulaUsuario || '-'}`
+                : 'Detalle del ciudadano'}
+            </Typography>
+          </Box>
+
+          <IconButton
+            onClick={onClose}
+            sx={{
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 2,
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Stack>
+      </DialogTitle>
+
+      <DialogContent sx={{ p: 3 }}>
+        {!row ? (
+          <Box sx={{ py: 5, textAlign: 'center' }}>
+            <Typography sx={{ fontWeight: 800 }}>
+              No hay información seleccionada.
+            </Typography>
+
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+              Selecciona un registro para visualizar el detalle completo.
+            </Typography>
+          </Box>
+        ) : (
+          <Stack spacing={2}>
+            <Alert severity="info">
+              Este detalle muestra la información completa de la atención, datos del ciudadano,
+              ubicación, solicitud, funcionario y trazabilidad de visitas.
+            </Alert>
+
+            <Card
+              variant="outlined"
+              sx={{
+                borderRadius: 3,
+              }}
+            >
+              <CardContent>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      md: 'repeat(4, 1fr)',
+                    },
+                    gap: 2,
+                  }}
+                >
+                  <InfoValue label="Ciudadano" value={row.nombreUsuario || 'Sin nombre'} />
+                  <InfoValue label="Cédula" value={row.cedulaUsuario || '-'} />
+                  <InfoValue label="Teléfono" value={row.telefono || 'Sin teléfono'} />
+                  <InfoValue label="Fecha" value={formatDate(row.fecha)} />
+                  <InfoValue label="N° Ventanilla" value={row.numeroVentanilla || '-'} />
+                  <InfoValue label="Solicitud" value={row.solicitudNombre || 'Sin solicitud'} />
+                  <InfoValue label="Categoría" value={row.categoriaNombre || 'Sin categoría'} />
+                  <InfoValue label="Estado solicitud" value={row.estadoSolicitudNombre || 'Sin estado'} />
+                  <InfoValue label="Barrio" value={row.barrioNombre || 'Sin barrio'} />
+                  <InfoValue label="Comuna" value={row.comunaNombre || 'Sin comuna'} />
+                  <InfoValue label="Dirección" value={row.direccion || 'Sin dirección registrada'} />
+                  <InfoValue label="Funcionario" value={row.funcionarioUsername || 'Sin funcionario'} />
+                  <InfoValue label="Extranjero" value={row.extranjero ? 'Sí' : 'No'} />
+                  <InfoValue label="Estado registro" value={row.activo ? 'Activo' : 'Inactivo'} />
+                  <InfoValue label="Motivo repetición" value={row.motivoRepeticion || 'Sin motivo'} />
+                </Box>
+              </CardContent>
+            </Card>
+
+            <Card
+              variant="outlined"
+              sx={{
+                borderRadius: 3,
+              }}
+            >
+              <CardContent>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={2}
+                  sx={{
+                    alignItems: { xs: 'flex-start', md: 'center' },
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ fontWeight: 800 }}>
+                      Frecuencia / última visita
+                    </Typography>
+
+                    <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+                      Resumen de trazabilidad del ciudadano en Ventanilla.
+                    </Typography>
+                  </Box>
+
+                  {trace ? (
+                    <Chip
+                      label={trace.etiqueta}
+                      color={chipColor}
+                      variant={trace.nivel === 'PRIMERA_VISITA' ? 'filled' : 'outlined'}
+                      sx={{ fontWeight: 800 }}
+                    />
+                  ) : (
+                    <Chip
+                      label="Sin trazabilidad"
+                      color="default"
+                      variant="outlined"
+                      sx={{ fontWeight: 800 }}
+                    />
+                  )}
+                </Stack>
+
+                <Divider sx={{ my: 2 }} />
+
+                {!trace ? (
+                  <Alert severity="info">
+                    Este ciudadano no tiene información de trazabilidad disponible.
+                  </Alert>
+                ) : (
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: {
+                        xs: '1fr',
+                        md: 'repeat(4, 1fr)',
+                      },
+                      gap: 2,
+                    }}
+                  >
+                    <InfoValue
+                      label="Tiempo desde última visita"
+                      value={formatDaysFromLastVisit(trace.diasDesdeUltimaVisitaAnterior)}
+                    />
+                    <InfoValue label="Total visitas" value={trace.totalVisitas} />
+                    <InfoValue label="Últimos 30 días" value={trace.visitasUltimos30Dias} />
+                    <InfoValue label="Última visita anterior" value={lastVisitDate} />
+
+                    <Box sx={{ gridColumn: { md: '1 / -1' } }}>
+                      <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+                        Descripción
+                      </Typography>
+
+                      <Typography sx={{ fontWeight: 800 }}>
+                        {trace.descripcion || 'Sin descripción de trazabilidad.'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+
+            <Box sx={{ overflowX: 'auto' }}>
+              <Table
+                size="small"
+                sx={{
+                  minWidth: 1180,
+                  '& .MuiTableHead-root .MuiTableCell-root': {
+                    bgcolor: '#f8fafc',
+                    color: 'text.secondary',
+                    fontSize: 13,
+                    fontWeight: 800,
+                  },
+                }}
+              >
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Fecha</TableCell>
+                    <TableCell>N° Ventanilla</TableCell>
+                    <TableCell>Solicitud</TableCell>
+                    <TableCell>Categoría</TableCell>
+                    <TableCell>Estado</TableCell>
+                    <TableCell>Barrio</TableCell>
+                    <TableCell>Comuna</TableCell>
+                    <TableCell>Funcionario</TableCell>
+                    <TableCell>Extranjero</TableCell>
+                    <TableCell>Observación</TableCell>
+                  </TableRow>
+                </TableHead>
+
+                <TableBody>
+                  <TableRow>
+                    <TableCell>{formatDate(row.fecha)}</TableCell>
+                    <TableCell>{row.numeroVentanilla || '-'}</TableCell>
+                    <TableCell>{row.solicitudNombre || 'Sin solicitud'}</TableCell>
+                    <TableCell>{row.categoriaNombre || 'Sin categoría'}</TableCell>
+                    <TableCell>{row.estadoSolicitudNombre || 'Sin estado'}</TableCell>
+                    <TableCell>{row.barrioNombre || 'Sin barrio'}</TableCell>
+                    <TableCell>{row.comunaNombre || 'Sin comuna'}</TableCell>
+                    <TableCell>{row.funcionarioUsername || 'Sin funcionario'}</TableCell>
+                    <TableCell>{row.extranjero ? 'Sí' : 'No'}</TableCell>
+                    <TableCell>{row.observacion || 'Sin observación'}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </Box>
+          </Stack>
+        )}
+      </DialogContent>
+
+      <DialogActions
+        sx={{
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          px: 3,
+          py: 2,
+        }}
+      >
+        <Button
+          variant="outlined"
+          color="inherit"
+          onClick={onClose}
+        >
+          Cerrar
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+
 export default function VentanillaRegistrosPage() {
   const [filter, setFilter] = useState<VentanillaFilter>({
     page: 0,
@@ -356,9 +643,10 @@ export default function VentanillaRegistrosPage() {
   const [dailyValidationReason, setDailyValidationReason] = useState('');
 
   const [tableSearch, setTableSearch] = useState('');
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
   const [menuRecord, setMenuRecord] = useState<VentanillaResponse | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<VentanillaResponse | null>(null);
 
   const [form, setForm] = useState<FormState>(initialForm);
   const [barrioInputText, setBarrioInputText] = useState('');
@@ -398,10 +686,8 @@ export default function VentanillaRegistrosPage() {
       .some((value) => String(value).toLowerCase().includes(searchText));
   });
 
-  const visibleSelectedCount = visibleRows.filter((row) => selectedIds.includes(row.id)).length;
-  const allVisibleSelected = visibleRows.length > 0 && visibleSelectedCount === visibleRows.length;
   const menuOpen = Boolean(menuAnchorEl);
-  const emptyTableColSpan = isAdminUser ? 13 : 12;
+  const emptyTableColSpan = 7;
 
   const showSuccess = (message: string, title = 'Operación exitosa') => {
     setFeedback({
@@ -528,7 +814,6 @@ export default function VentanillaRegistrosPage() {
 
       setPageData(response);
       setFilter(customFilter);
-      setSelectedIds([]);
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 403) {
         setRestricted(true);
@@ -724,31 +1009,20 @@ export default function VentanillaRegistrosPage() {
     setMenuRecord(null);
   };
 
-  const toggleSelected = (id: number) => {
-    setSelectedIds((current) => {
-      if (current.includes(id)) {
-        return current.filter((item) => item !== id);
-      }
+  const openDetailDialog = (row: VentanillaResponse) => {
+    const activeElement = document.activeElement;
 
-      return [...current, id];
-    });
-  };
-
-  const toggleAllVisible = () => {
-    if (allVisibleSelected) {
-      setSelectedIds((current) =>
-        current.filter((id) => !visibleRows.some((row) => row.id === id))
-      );
-
-      return;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
     }
 
-    setSelectedIds((current) => {
-      const ids = visibleRows.map((row) => row.id);
-      const merged = new Set([...current, ...ids]);
+    setDetailRecord(row);
+    setDetailDialogOpen(true);
+  };
 
-      return Array.from(merged);
-    });
+  const closeDetailDialog = () => {
+    setDetailDialogOpen(false);
+    setDetailRecord(null);
   };
 
   const handleMenuEdit = () => {
@@ -1482,7 +1756,7 @@ const save = async () => {
           <Box sx={{ overflowX: 'auto' }}>
             <Table
               sx={{
-                minWidth: isAdminUser ? 1520 : 1380,
+                minWidth: 1180,
                 '& .MuiTableCell-root': {
                   borderBottom: '1px solid',
                   borderColor: 'divider',
@@ -1505,83 +1779,87 @@ const save = async () => {
             >
               <TableHead>
                 <TableRow>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      size="small"
-                      checked={allVisibleSelected}
-                      indeterminate={visibleSelectedCount > 0 && !allVisibleSelected}
-                      onChange={toggleAllVisible}
-                    />
+                  <TableCell sx={{ fontWeight: 800, minWidth: 105 }}>
+                    Fecha
                   </TableCell>
 
-                  <TableCell>Fecha</TableCell>
-                  <TableCell>N° Ventanilla</TableCell>
-                  <TableCell>Ciudadano</TableCell>
-                  <TableCell>Solicitud</TableCell>
-                  <TableCell>Estado solicitud</TableCell>
-                  <TableCell>Dirección</TableCell>
-                  <TableCell>Barrio</TableCell>
-                  <TableCell>Comuna</TableCell>
+                  <TableCell sx={{ fontWeight: 800, minWidth: 125 }}>
+                    N° Ventanilla
+                  </TableCell>
 
-                  {isAdminUser ? (
-                    <TableCell>Funcionario</TableCell>
-                  ) : null}
+                  <TableCell sx={{ fontWeight: 800, minWidth: 260 }}>
+                    Ciudadano
+                  </TableCell>
 
-                  <TableCell>Extranjero</TableCell>
-                  <TableCell>Frecuencia / última visita</TableCell>
-                  <TableCell align="center">Acciones</TableCell>
+                  <TableCell sx={{ fontWeight: 800, minWidth: 230 }}>
+                    Solicitud
+                  </TableCell>
+
+                  <TableCell sx={{ fontWeight: 800, minWidth: 165 }}>
+                    Estado solicitud
+                  </TableCell>
+
+                  <TableCell sx={{ fontWeight: 800, minWidth: 245 }}>
+                    Frecuencia / última visita
+                  </TableCell>
+
+                  <TableCell align="center" sx={{ fontWeight: 800, minWidth: 140 }}>
+                    Acciones
+                  </TableCell>
                 </TableRow>
               </TableHead>
 
               <TableBody>
                 {visibleRows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        size="small"
-                        checked={selectedIds.includes(row.id)}
-                        onChange={() => toggleSelected(row.id)}
-                      />
-                    </TableCell>
-
                     <TableCell>
-                      <Typography sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        {row.fecha}
+                      <Typography sx={{ fontWeight: 800, fontSize: 13, whiteSpace: 'nowrap' }}>
+                        {formatDate(row.fecha)}
                       </Typography>
                     </TableCell>
 
                     <TableCell>
                       <Chip
-                        label={row.numeroVentanilla}
+                        label={row.numeroVentanilla || '-'}
                         size="small"
                         color="primary"
                         variant="outlined"
-                        sx={{ fontWeight: 700 }}
+                        sx={{ fontWeight: 800 }}
                       />
                     </TableCell>
 
                     <TableCell>
                       <Stack spacing={0.3} sx={{ minWidth: 230 }}>
                         <Typography sx={{ fontWeight: 800, lineHeight: 1.2 }}>
-                          {row.nombreUsuario}
+                          {row.nombreUsuario || 'Sin nombre'}
                         </Typography>
 
                         <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                          CC: {row.cedulaUsuario}
+                          CC: {row.cedulaUsuario || '-'}
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+                          {row.telefono || 'Sin teléfono'}
                         </Typography>
                       </Stack>
                     </TableCell>
 
                     <TableCell>
-                      <Typography sx={{ minWidth: 160 }}>
-                        {row.solicitudNombre}
-                      </Typography>
+                      <Stack spacing={0.3} sx={{ minWidth: 190 }}>
+                        <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
+                          {row.solicitudNombre || 'Sin solicitud'}
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+                          {row.categoriaNombre || 'Sin categoría'}
+                        </Typography>
+                      </Stack>
                     </TableCell>
 
                     <TableCell>
                       <Stack spacing={0.7} sx={{ minWidth: 150 }}>
                         <Chip
-                          label={row.estadoSolicitudNombre}
+                          label={row.estadoSolicitudNombre || 'Sin estado'}
                           size="small"
                           variant="outlined"
                           color="primary"
@@ -1601,70 +1879,55 @@ const save = async () => {
                     </TableCell>
 
                     <TableCell>
-                      <Typography
-                        color={row.direccion ? 'text.primary' : 'text.secondary'}
-                        sx={{
-                          minWidth: 220,
-                          maxWidth: 300,
-                        }}
-                      >
-                        {row.direccion || 'Sin dirección registrada'}
-                      </Typography>
-                    </TableCell>
-
-                    <TableCell>
-                      <Typography sx={{ minWidth: 130 }}>
-                        {row.barrioNombre || 'Sin barrio'}
-                      </Typography>
-                    </TableCell>
-
-                    <TableCell>
-                      <Typography sx={{ minWidth: 130 }}>
-                        {row.comunaNombre || 'Sin comuna'}
-                      </Typography>
-                    </TableCell>
-
-                    {isAdminUser ? (
-                      <TableCell>
-                        <Chip
-                          label={row.funcionarioUsername || 'Sin funcionario'}
-                          size="small"
-                          variant="outlined"
-                          sx={{ fontWeight: 700 }}
-                        />
-                      </TableCell>
-                    ) : null}
-
-                    <TableCell>
-                      <Chip
-                        label={row.extranjero ? 'Sí' : 'No'}
-                        size="small"
-                        color={row.extranjero ? 'warning' : 'default'}
-                        variant={row.extranjero ? 'filled' : 'outlined'}
-                        sx={{ fontWeight: 700 }}
-                      />
-                    </TableCell>
-
-                    <TableCell>
                       <CitizenFrequencyField row={row} />
                     </TableCell>
 
                     <TableCell align="center">
-                      {permissions.write ? (
-                        <IconButton
-                          onClick={(event) => openRowMenu(event, row)}
-                          sx={{
-                            borderRadius: 2,
-                            color: 'text.secondary',
-                          }}
-                        >
-                          <MoreVertIcon />
-                        </IconButton>
-                      ) : (
-                        <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                          Solo lectura
-                        </Typography>
-                      )}
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        sx={{
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Tooltip title="Ver información completa" arrow>
+                          <IconButton
+                            onClick={() => openDetailDialog(row)}
+                            sx={{
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              borderRadius: 2,
+                              color: 'text.secondary',
+                              bgcolor: '#ffffff',
+                              '&:hover': {
+                                color: 'primary.main',
+                                bgcolor: 'primary.50',
+                              },
+                            }}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+
+                        {permissions.write ? (
+                          <Tooltip title="Más acciones" arrow>
+                            <IconButton
+                              onClick={(event) => openRowMenu(event, row)}
+                              sx={{
+                                borderRadius: 2,
+                                color: 'text.secondary',
+                              }}
+                            >
+                              <MoreVertIcon />
+                            </IconButton>
+                          </Tooltip>
+                        ) : (
+                          <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+                            Solo lectura
+                          </Typography>
+                        )}
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -2155,6 +2418,12 @@ const save = async () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <CitizenDetailDialog
+        open={detailDialogOpen}
+        row={detailRecord}
+        onClose={closeDetailDialog}
+      />
 
       <ConfirmActionDialog
         open={confirmDialogOpen}

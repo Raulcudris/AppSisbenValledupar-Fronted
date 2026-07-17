@@ -9,6 +9,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import MenuIcon from '@mui/icons-material/Menu';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import {
+    Avatar,
     Box,
     Divider,
     Drawer,
@@ -85,6 +86,10 @@ export default function DashboardMenuDrawer() {
                     borderColor: 'divider',
                     borderRadius: 2,
                     bgcolor: 'background.paper',
+                    color: 'primary.main',
+                    '&:hover': {
+                        bgcolor: 'rgba(0, 102, 204, 0.08)',
+                    },
                 }}
             >
                 <MenuIcon />
@@ -111,7 +116,7 @@ export default function DashboardMenuDrawer() {
                         height: '100%',
                         display: 'flex',
                         flexDirection: 'column',
-                        bgcolor: '#f8fafc',
+                        bgcolor: '#F4F8FC',
                     }}
                 >
                     <Box
@@ -122,35 +127,67 @@ export default function DashboardMenuDrawer() {
                             borderColor: 'divider',
                         }}
                     >
-                        <Stack
-                            direction="row"
-                            spacing={2}
+                        <Box
                             sx={{
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
+                                borderRadius: 4,
+                                p: 2,
+                                background: 'linear-gradient(135deg, #0066CC 0%, #004B99 100%)',
+                                color: '#FFFFFF',
+                                position: 'relative',
+                                overflow: 'hidden',
+                                '&::after': {
+                                    content: '""',
+                                    position: 'absolute',
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    height: 5,
+                                    background: 'linear-gradient(90deg, #FCD116 0%, #E30613 100%)',
+                                },
                             }}
                         >
-                            <Box>
-                                <Typography sx={{ fontWeight: 800 }}>
-                                    App Sisben
-                                </Typography>
-
-                                <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                                    Menú principal
-                                </Typography>
-                            </Box>
-
-                            <IconButton
-                                onClick={closeMenu}
+                            <Stack
+                                direction="row"
+                                spacing={1.5}
                                 sx={{
-                                    border: '1px solid',
-                                    borderColor: 'divider',
-                                    borderRadius: 2,
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
                                 }}
                             >
-                                <CloseIcon />
-                            </IconButton>
-                        </Stack>
+                                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                                    <Avatar
+                                        sx={{
+                                            bgcolor: '#FFFFFF',
+                                            color: '#0066CC',
+                                            fontWeight: 900,
+                                        }}
+                                    >
+                                        S
+                                    </Avatar>
+
+                                    <Box>
+                                        <Typography sx={{ fontWeight: 900 }}>
+                                            Sisbén
+                                        </Typography>
+
+                                        <Typography sx={{ fontSize: 13, opacity: 0.92, fontWeight: 700 }}>
+                                            Sistema de información
+                                        </Typography>
+                                    </Box>
+                                </Stack>
+
+                                <IconButton
+                                    onClick={closeMenu}
+                                    sx={{
+                                        border: '1px solid rgba(255,255,255,0.40)',
+                                        color: '#FFFFFF',
+                                        borderRadius: 2,
+                                    }}
+                                >
+                                    <CloseIcon />
+                                </IconButton>
+                            </Stack>
+                        </Box>
                     </Box>
 
                     <List sx={{ p: 1.5 }}>
@@ -166,16 +203,20 @@ export default function DashboardMenuDrawer() {
                                     onClick={closeMenu}
                                     sx={{
                                         mb: 0.5,
-                                        borderRadius: 2,
+                                        borderRadius: 2.5,
                                         '&.Mui-selected': {
                                             bgcolor: 'primary.main',
                                             color: 'primary.contrastText',
+                                            boxShadow: '0 10px 24px rgba(0, 102, 204, 0.20)',
                                             '& .MuiListItemIcon-root': {
                                                 color: 'primary.contrastText',
                                             },
                                         },
                                         '&.Mui-selected:hover': {
                                             bgcolor: 'primary.dark',
+                                        },
+                                        '&:hover': {
+                                            bgcolor: 'rgba(0, 102, 204, 0.08)',
                                         },
                                     }}
                                 >
@@ -189,9 +230,8 @@ export default function DashboardMenuDrawer() {
                                     </ListItemIcon>
 
                                     <ListItemText
-
                                         primary={
-                                            <Typography sx={{ fontWeight: selected ? 800 : 600, fontSize: 14 }}>
+                                            <Typography sx={{ fontWeight: selected ? 900 : 700, fontSize: 14 }}>
                                                 {item.label}
                                             </Typography>
                                         }
@@ -205,8 +245,7 @@ export default function DashboardMenuDrawer() {
                         <Divider sx={{ mb: 2 }} />
 
                         <Typography color="text.secondary" sx={{ fontSize: 12 }}>
-                            Este menú está disponible en toda la aplicación para facilitar la navegación en escritorio,
-                            tablet y celular.
+                            Plataforma de gestión, consulta, reportes y exportaciones del sistema de información.
                         </Typography>
                     </Box>
                 </Box>

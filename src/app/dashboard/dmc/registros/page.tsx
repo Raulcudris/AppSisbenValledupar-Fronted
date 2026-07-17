@@ -127,6 +127,8 @@ export default function DmcRegistrosPage() {
   const [menuRecord, setMenuRecord] = useState<DmcResponse | null>(null);
 
   const [snackbar, setSnackbar] = useState<SnackbarState>(initialSnackbar);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [duplicateDialogMessage, setDuplicateDialogMessage] = useState('');
 
   const allowWrite = useMemo(() => canWriteDmc(), []);
   const allowExport = useMemo(() => canExport(), []);
@@ -386,23 +388,92 @@ export default function DmcRegistrosPage() {
       return 'La fecha es obligatoria.';
     }
 
-    if (!form.tipoDmcId) {
+    const today = getTodayDate();
+
+    if (form.fecha > today) {
+      return 'La fecha no puede ser mayor al día actual.';
+    }
+
+    if (!form.tipoDmcId || Number(form.tipoDmcId) <= 0) {
       return 'Selecciona el tipo DMC.';
     }
 
-    if (!form.encuestadorId) {
+    if (!form.encuestadorId || Number(form.encuestadorId) <= 0) {
       return 'Selecciona el encuestador.';
     }
 
-    if (!form.cantidad || Number(form.cantidad) <= 0) {
+    if (!form.cantidad) {
+      return 'La cantidad es obligatoria.';
+    }
+
+    const cantidad = Number(form.cantidad);
+
+    if (Number.isNaN(cantidad)) {
+      return 'La cantidad debe ser un número válido.';
+    }
+
+    if (!Number.isInteger(cantidad)) {
+      return 'La cantidad debe ser un número entero.';
+    }
+
+    if (cantidad <= 0) {
       return 'La cantidad debe ser mayor que cero.';
     }
 
-    if (!form.barrioId) {
+    if (!form.barrioId || Number(form.barrioId) <= 0) {
       return 'Selecciona el barrio.';
     }
 
+    if (form.observacion.trim().length > 500) {
+      return 'La observación no puede superar los 500 caracteres.';
+    }
+
     return '';
+  };
+
+  const isDuplicateDmcError = (err: unknown) => {
+    if (err instanceof ApiClientError && err.status === 409) {
+      return true;
+    }
+
+    if (!(err instanceof Error)) {
+      return false;
+    }
+
+    const message = err.message.toLowerCase();
+
+    return (
+      message.includes('duplicate entry')
+      || message.includes('uq_dmc_fecha_tipo_encuestador')
+      || message.includes('dmc_duplicate_record')
+      || message.includes('registro dmc guardado previamente')
+      || message.includes('misma fecha, tipo dmc y encuestador')
+      || message.includes('constraint')
+      || message.includes('unique')
+      || message.includes('duplicado')
+      || message.includes('ya existe')
+      || message.includes('ya ha realizado')
+      || message.includes('guardado anterior')
+    );
+  };
+
+  const openDuplicateDmcDialog = () => {
+    setError('');
+
+    const activeElement = document.activeElement;
+
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+
+    setDialogOpen(false);
+
+    window.setTimeout(() => {
+      setDuplicateDialogMessage(
+        'No se puede guardar este registro porque ya existe un registro DMC guardado previamente con la misma fecha, tipo DMC y encuestador. Por favor revisa la información antes de intentar guardarlo nuevamente.'
+      );
+      setDuplicateDialogOpen(true);
+    }, 150);
   };
 
   const save = async () => {
@@ -437,6 +508,11 @@ export default function DmcRegistrosPage() {
 
       load(filter);
     } catch (err) {
+      if (isDuplicateDmcError(err)) {
+        openDuplicateDmcDialog();
+        return;
+      }
+
       const message = err instanceof Error
         ? err.message
         : 'No fue posible guardar el registro.';
@@ -988,6 +1064,7 @@ export default function DmcRegistrosPage() {
                     label="Fecha"
                     type="date"
                     size="small"
+                    disabled
                     required
                     value={form.fecha}
                     onChange={(event) => updateForm('fecha', event.target.value)}
@@ -1053,7 +1130,7 @@ export default function DmcRegistrosPage() {
             borderTop: '1px solid',
             borderColor: 'divider',
             bgcolor: 'background.paper',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-end',
           }}
         >
           <Button
@@ -1070,6 +1147,57 @@ export default function DmcRegistrosPage() {
             onClick={save}
           >
             {form.id ? 'Actualizar registro' : 'Guardar registro'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={duplicateDialogOpen}
+        onClose={() => setDuplicateDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 900,
+            color: 'warning.main',
+          }}
+        >
+          Registro DMC duplicado
+        </DialogTitle>
+
+        <DialogContent>
+          <Stack spacing={2}>
+            <Alert severity="warning">
+              {duplicateDialogMessage}
+            </Alert>
+
+            <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+              Este control evita que se registren dos veces los mismos datos para la misma fecha,
+              tipo DMC y encuestador.
+            </Typography>
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="inherit"
+            onClick={() => setDuplicateDialogOpen(false)}
+          >
+            Entendido
+          </Button>
+
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={() => {
+              setDuplicateDialogOpen(false);
+              setDialogOpen(false);
+              search();
+            }}
+          >
+            Revisar registros
           </Button>
         </DialogActions>
       </Dialog>

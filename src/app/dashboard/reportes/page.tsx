@@ -2051,7 +2051,7 @@ export default function ReportesPage() {
                 }
               >
                 <MenuItem value="SOLICITUDES">
-                  Solicitudes por tipo
+                  Solicitudes por ventanilla
                 </MenuItem>
 
                 <MenuItem value="FUNCIONARIOS">

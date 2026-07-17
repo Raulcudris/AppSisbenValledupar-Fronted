@@ -115,7 +115,7 @@ const exportOptions: ExportOptionConfig[] = [
   },
   {
     value: 'SOLICITUDES_TIPO',
-    label: 'Solicitudes por tipo',
+    label: 'Solicitudes por ventanilla',
     description: 'Consolidado por tipo de solicitud de Ventanilla.',
     category: 'Reporte consolidado',
     officialBackendDownload: false,
@@ -826,48 +826,6 @@ export default function ExportacionesPage() {
           </Paper>
         </Stack>
       </SectionCard>
-
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
-          gap: 2,
-        }}
-      >
-        <SectionCard title="Listados operativos" subtitle="Datos registro por registro.">
-          <Stack spacing={1}>
-            {exportOptions
-              .filter((option) => option.category === 'Listado operativo')
-              .map((option) => (
-                <Typography key={option.value} sx={{ fontSize: 14 }}>
-                  • {option.label}
-                </Typography>
-              ))}
-          </Stack>
-        </SectionCard>
-
-        <SectionCard title="Reportes consolidados" subtitle="Indicadores agrupados para análisis.">
-          <Stack spacing={1}>
-            {exportOptions
-              .filter((option) => option.category === 'Reporte consolidado')
-              .slice(0, 4)
-              .map((option) => (
-                <Typography key={option.value} sx={{ fontSize: 14 }}>
-                  • {option.label}
-                </Typography>
-              ))}
-          </Stack>
-        </SectionCard>
-
-        <SectionCard title="Recomendación" subtitle="Exportaciones más útiles para seguimiento.">
-          <Stack spacing={1}>
-            <Typography sx={{ fontSize: 14 }}>• Registros de Ventanilla</Typography>
-            <Typography sx={{ fontSize: 14 }}>• Productividad por funcionario</Typography>
-            <Typography sx={{ fontSize: 14 }}>• Ciudadanos frecuentes</Typography>
-            <Typography sx={{ fontSize: 14 }}>• Totales por comuna</Typography>
-          </Stack>
-        </SectionCard>
-      </Box>
 
       {preview ? (
         <SectionCard

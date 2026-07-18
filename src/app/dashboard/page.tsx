@@ -25,6 +25,8 @@ import {
   normalizeRole,
 } from '@/lib/roleAccess';
 import { AuthUserResponse } from '@/types/auth.types';
+import PeopleIcon from '@mui/icons-material/People';
+import LockResetIcon from '@mui/icons-material/LockReset';
 
 const actionIcons: Record<DashboardIconKey, ReactNode> = {
   dashboard: <DashboardIcon />,
@@ -32,6 +34,9 @@ const actionIcons: Record<DashboardIconKey, ReactNode> = {
   dmc: <BarChartIcon />,
   auditoria: <SecurityIcon />,
   exportaciones: <CloudDownloadIcon />,
+  usuarios: <PeopleIcon />,
+  password: <LockResetIcon />,
+  reportes: <CloudDownloadIcon />,
 };
 
 function getRoleFriendlyName(role?: string | null) {

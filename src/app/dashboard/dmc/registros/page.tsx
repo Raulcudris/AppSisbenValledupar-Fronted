@@ -1064,7 +1064,6 @@ export default function DmcRegistrosPage() {
                     label="Fecha"
                     type="date"
                     size="small"
-                    disabled
                     required
                     value={form.fecha}
                     onChange={(event) => updateForm('fecha', event.target.value)}

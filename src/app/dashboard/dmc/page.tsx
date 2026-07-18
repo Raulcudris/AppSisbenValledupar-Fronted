@@ -75,7 +75,10 @@ export default function DmcDashboardPage() {
       <PageTitle
         title="Dashboard DMC"
         subtitle="Seguimiento por tipo DMC, encuestador, funcionario y comuna."
-        action={<Button variant="contained" onClick={handleExport} disabled={exporting}>{exporting ? 'Exportando...' : 'Exportar reporte'}</Button>}
+        action={<Button variant="contained" 
+                        onClick={handleExport} 
+                        disabled={exporting}>{exporting ? 'Exportando...' : 'Exportar reporte'}
+                </Button>}
       />
 
       <SectionCard title="Filtros">

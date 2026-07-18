@@ -11,7 +11,6 @@ import PeopleIcon from '@mui/icons-material/People';
 import SecurityIcon from '@mui/icons-material/Security';
 import {
   AppBar,
-  Avatar,
   Box,
   Divider,
   Drawer,
@@ -38,8 +37,9 @@ import {
 } from '@/lib/roleAccess';
 import { AuthUserResponse } from '@/types/auth.types';
 
-const drawerWidth = 304;
+const drawerWidth = 288;
 const collapsedDrawerWidth = 78;
+const sisbenLogoPath = '/images/logo-sisben.png';
 
 const dashboardIcons: Record<DashboardIconKey, ReactNode> = {
   dashboard: <DashboardIcon />,
@@ -81,7 +81,62 @@ function getCurrentModuleLabel(pathname: string) {
     return 'Usuarios';
   }
 
+  if (pathname.includes('/dashboard/password')) {
+    return 'Cambiar contraseña';
+  }
+
   return 'Inicio';
+}
+
+function SisbenLogo({
+  compact,
+}: {
+  compact: boolean;
+}) {
+  return (
+    <Box
+      sx={{
+        px: compact ? 1 : 2,
+        py: compact ? 1.5 : 1.8,
+        bgcolor: '#FFFFFF',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        display: 'flex',
+        justifyContent: 'center',
+      }}
+    >
+      <Box
+        sx={{
+          width: compact ? 50 : '100%',
+          height: compact ? 48 : 64,
+          borderRadius: compact ? 3 : 4,
+          bgcolor: '#FFFFFF',
+          border: '1px solid',
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: compact ? 0.6 : 1.4,
+          py: compact ? 0.6 : 1,
+          boxShadow: compact ? 'none' : '0 10px 24px rgba(0, 77, 153, 0.08)',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <Box
+          component="img"
+          src={sisbenLogoPath}
+          alt="Logo Sisbén"
+          sx={{
+            width: compact ? 36 : 118,
+            height: compact ? 36 : 42,
+            objectFit: 'contain',
+            display: 'block',
+          }}
+        />
+      </Box>
+    </Box>
+  );
 }
 
 export default function DashboardShell({ children }: DashboardShellProps) {
@@ -106,7 +161,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
     return getDashboardMenuByRole(roleCode);
   }, [roleCode]);
 
-  const currentDrawerWidth = sidebarExpanded ? drawerWidth : collapsedDrawerWidth;
+  const expanded = sidebarExpanded || !isDesktop;
+  const currentDrawerWidth = isDesktop
+    ? sidebarExpanded ? drawerWidth : collapsedDrawerWidth
+    : drawerWidth;
   const currentModule = getCurrentModuleLabel(pathname);
 
   useEffect(() => {
@@ -168,70 +226,15 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         overflowX: 'hidden',
       }}
     >
+      <SisbenLogo compact={!expanded} />
+
       <Box
         sx={{
-          p: sidebarExpanded ? 2.2 : 1.2,
-          bgcolor: '#FFFFFF',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
+          px: expanded ? 1.7 : 1,
+          py: 1.5,
         }}
       >
-        <Box
-          sx={{
-            borderRadius: sidebarExpanded || !isDesktop ? 4 : 3,
-            p: sidebarExpanded || !isDesktop ? 2 : 1,
-            background: 'linear-gradient(135deg, #0066CC 0%, #004B99 100%)',
-            color: '#FFFFFF',
-            position: 'relative',
-            overflow: 'hidden',
-            '&::after': {
-              content: '""',
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 5,
-              background: 'linear-gradient(90deg, #FCD116 0%, #E30613 100%)',
-            },
-          }}
-        >
-          <Stack
-            direction="row"
-            spacing={sidebarExpanded ? 1.5 : 0}
-            sx={{
-              alignItems: 'center',
-              justifyContent: sidebarExpanded || !isDesktop ? 'flex-start' : 'center',
-            }}
-          >
-            <Avatar
-              sx={{
-                bgcolor: '#FFFFFF',
-                color: '#0066CC',
-                fontWeight: 900,
-                width: 42,
-                height: 42,
-              }}
-            >
-              S
-            </Avatar>
-
-            {sidebarExpanded || !isDesktop ? (
-              <Box>
-                <Typography variant="h6" sx={{ lineHeight: 1.1, fontWeight: 900 }}>
-                  Sisbén
-                </Typography>
-
-                <Typography sx={{ fontSize: 13, fontWeight: 700, opacity: 0.92 }}>
-                  Sistema de información
-                </Typography>
-              </Box>
-            ) : null}
-          </Stack>
-        </Box>
-      </Box>
-
-      <Box sx={{ px: sidebarExpanded || !isDesktop ? 2 : 1.2, py: 1.5 }}>
-        {sidebarExpanded || !isDesktop ? (
+        {expanded ? (
           <Typography
             sx={{
               fontSize: 12,
@@ -240,6 +243,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               textTransform: 'uppercase',
               letterSpacing: 0.8,
               mb: 1,
+              px: 0.7,
             }}
           >
             Navegación
@@ -262,11 +266,12 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                   }
                 }}
                 sx={{
-                  borderRadius: 2.5,
+                  borderRadius: 3,
                   mb: 0.7,
                   py: 1.15,
-                  px: sidebarExpanded || !isDesktop ? 1.4 : 1,
-                  justifyContent: sidebarExpanded || !isDesktop ? 'flex-start' : 'center',
+                  px: expanded ? 1.4 : 1,
+                  minHeight: 46,
+                  justifyContent: expanded ? 'flex-start' : 'center',
                   '&.Mui-selected': {
                     bgcolor: 'primary.main',
                     color: 'primary.contrastText',
@@ -285,7 +290,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               >
                 <ListItemIcon
                   sx={{
-                    minWidth: sidebarExpanded || !isDesktop ? 42 : 0,
+                    minWidth: expanded ? 42 : 0,
                     color: selected ? 'primary.contrastText' : 'text.secondary',
                     justifyContent: 'center',
                   }}
@@ -293,10 +298,11 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                   {dashboardIcons[item.iconKey]}
                 </ListItemIcon>
 
-                {sidebarExpanded || !isDesktop ? (
+                {expanded ? (
                   <ListItemText
                     primary={
                       <Typography
+                        noWrap
                         sx={{
                           fontWeight: selected ? 900 : 700,
                           fontSize: 14,
@@ -310,7 +316,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               </ListItemButton>
             );
 
-            if (!sidebarExpanded && isDesktop) {
+            if (!expanded) {
               return (
                 <Tooltip key={item.href} title={item.label} placement="right">
                   {button}
@@ -325,9 +331,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
 
       <Divider sx={{ mt: 'auto' }} />
 
-      <Box sx={{ p: sidebarExpanded || !isDesktop ? 2 : 1.2 }}>
-        <Stack spacing={1.5}>
-          {sidebarExpanded || !isDesktop ? (
+      <Box sx={{ p: expanded ? 1.7 : 1 }}>
+        <Stack spacing={1.4}>
+          {expanded ? (
             <Box
               sx={{
                 p: 1.5,
@@ -337,29 +343,30 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 borderColor: 'divider',
               }}
             >
-              <Typography color="text.primary" sx={{ fontWeight: 900 }}>
+              <Typography noWrap color="text.primary" sx={{ fontWeight: 900 }}>
                 {user.username ?? 'Usuario'}
               </Typography>
 
-              <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+              <Typography noWrap color="text.secondary" sx={{ fontSize: 13 }}>
                 {user.rolNombre ?? user.rolCodigo ?? 'Rol no disponible'}
               </Typography>
             </Box>
           ) : null}
 
           <Tooltip
-            title={!sidebarExpanded && isDesktop ? 'Cerrar sesión' : ''}
+            title={!expanded ? 'Cerrar sesión' : ''}
             placement="right"
           >
             <ListItemButton
               onClick={handleLogout}
               sx={{
-                borderRadius: 2.5,
+                borderRadius: 3,
                 bgcolor: 'background.paper',
                 border: '1px solid',
                 borderColor: 'divider',
-                justifyContent: sidebarExpanded || !isDesktop ? 'flex-start' : 'center',
-                px: sidebarExpanded || !isDesktop ? 1.5 : 1,
+                justifyContent: expanded ? 'flex-start' : 'center',
+                px: expanded ? 1.5 : 1,
+                minHeight: 46,
                 '&:hover': {
                   bgcolor: 'rgba(227, 6, 19, 0.08)',
                   color: 'secondary.main',
@@ -368,7 +375,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             >
               <ListItemIcon
                 sx={{
-                  minWidth: sidebarExpanded || !isDesktop ? 42 : 0,
+                  minWidth: expanded ? 42 : 0,
                   justifyContent: 'center',
                   color: 'inherit',
                 }}
@@ -376,10 +383,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 <LogoutIcon />
               </ListItemIcon>
 
-              {sidebarExpanded || !isDesktop ? (
+              {expanded ? (
                 <ListItemText
                   primary={
-                    <Typography sx={{ fontWeight: 800, fontSize: 14 }}>
+                    <Typography noWrap sx={{ fontWeight: 800, fontSize: 14 }}>
                       Cerrar sesión
                     </Typography>
                   }
@@ -412,7 +419,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         <Toolbar
           sx={{
             bgcolor: 'background.paper',
-            minHeight: '76px !important',
+            minHeight: '72px !important',
+            px: { xs: 2, md: 3 },
           }}
         >
           <IconButton
@@ -423,49 +431,52 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 2,
-              bgcolor: sidebarExpanded ? 'primary.main' : 'background.paper',
-              color: sidebarExpanded ? 'primary.contrastText' : 'text.primary',
+              bgcolor: isDesktop && sidebarExpanded ? 'primary.main' : 'background.paper',
+              color: isDesktop && sidebarExpanded ? 'primary.contrastText' : 'text.primary',
               '&:hover': {
-                bgcolor: sidebarExpanded ? 'primary.dark' : 'rgba(0, 102, 204, 0.08)',
+                bgcolor: isDesktop && sidebarExpanded ? 'primary.dark' : 'rgba(0, 102, 204, 0.08)',
               },
             }}
           >
             <MenuIcon />
           </IconButton>
 
-          <Box sx={{ flex: 1 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography
               variant="h6"
+              noWrap
               sx={{
                 fontWeight: 900,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
+                lineHeight: 1.15,
               }}
             >
               {currentModule}
             </Typography>
 
-            <Typography color="text.secondary" sx={{ fontSize: 13, fontWeight: 600 }}>
+            <Typography
+              noWrap
+              color="text.secondary"
+              sx={{
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
               Sistema de información Sisbén · {user.rolNombre ?? user.rolCodigo}
             </Typography>
           </Box>
 
           <Box
+            component="img"
+            src={sisbenLogoPath}
+            alt="Logo Sisbén"
             sx={{
               display: { xs: 'none', md: 'block' },
-              px: 1.5,
-              py: 0.7,
-              borderRadius: 999,
-              bgcolor: 'rgba(0, 102, 204, 0.08)',
-              border: '1px solid',
-              borderColor: 'divider',
+              width: 88,
+              height: 32,
+              objectFit: 'contain',
+              ml: 2,
             }}
-          >
-            <Typography sx={{ fontSize: 12, fontWeight: 900, color: 'primary.main' }}>
-              AppSisbén Valledupar
-            </Typography>
-          </Box>
+          />
         </Toolbar>
       </AppBar>
 
@@ -505,9 +516,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       <Box
         component="main"
         sx={{
-          pt: 12,
+          pt: 11,
           px: { xs: 2, md: 3 },
           pb: 4,
+          minHeight: '100vh',
           transition: 'margin-left 0.25s ease',
           ml: {
             xs: 0,

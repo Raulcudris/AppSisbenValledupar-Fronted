@@ -4,7 +4,7 @@ import { toQueryString } from '@/lib/queryString';
 import { ApiResponse } from '@/types/api.types';
 import { ExportDmcPreviewResponse, ExportVentanillaPreviewResponse } from '@/types/export.types';
 import { VentanillaFilter } from '@/types/operational.types';
-import { ReportDateRange } from '@/types/report.types';
+import { ReportDateRange, VentanillaEmployeeDetailedPerformanceResponse, VentanillaSolicitudesReportParams } from '@/types/report.types';
 
 type QueryValue = string | number | undefined;
 
@@ -128,3 +128,4 @@ export async function exportVentanillaUserHistoryPdf(cedulaUsuario: string) {
 
   downloadBlob(blob, safeFilename);
 }
+

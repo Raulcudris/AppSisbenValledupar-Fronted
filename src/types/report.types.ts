@@ -92,3 +92,27 @@ export type VentanillaEmployeeProductivityResponse = {
   porcentaje: number;
   promedioDiario: number;
 };
+
+export type VentanillaEmployeeDailyDetailResponse = {
+  fecha: string;
+  funcionarioId: number | null;
+  funcionarioUsername: string;
+  total: number;
+};
+
+export type VentanillaEmployeeDetailedPerformanceResponse = {
+  funcionarioId: number | null;
+  funcionarioUsername: string;
+  totalAtenciones: number;
+  porcentaje: number;
+  promedioDiario: number;
+  pendientes: number;
+  realizadas: number;
+  aprobadas: number;
+  rechazadas: number;
+  canceladas: number;
+  revisar: number;
+  nacionales: number;
+  extranjeros: number;
+  detalleDiario: VentanillaEmployeeDailyDetailResponse[];
+};

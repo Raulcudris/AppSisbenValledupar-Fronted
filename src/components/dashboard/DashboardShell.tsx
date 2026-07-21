@@ -39,6 +39,7 @@ import { AuthUserResponse } from '@/types/auth.types';
 
 const drawerWidth = 288;
 const collapsedDrawerWidth = 78;
+const headerHeight = 72;
 const sisbenLogoPath = '/images/logo-sisben.png';
 
 const dashboardIcons: Record<DashboardIconKey, ReactNode> = {
@@ -88,39 +89,45 @@ function getCurrentModuleLabel(pathname: string) {
   return 'Inicio';
 }
 
-function SisbenLogo({
-  compact,
-}: {
-  compact: boolean;
-}) {
+function SisbenLogo({ compact }: { compact: boolean }) {
   return (
     <Box
       sx={{
-        px: compact ? 1 : 2,
-        py: compact ? 1.5 : 1.8,
+        height: headerHeight,
+        px: compact ? 1 : 1.7,
         bgcolor: '#FFFFFF',
         borderBottom: '1px solid',
         borderColor: 'divider',
         display: 'flex',
+        alignItems: 'center',
         justifyContent: 'center',
       }}
     >
       <Box
         sx={{
-          width: compact ? 50 : '100%',
-          height: compact ? 48 : 64,
-          borderRadius: compact ? 3 : 4,
+          width: compact ? 48 : 136,
+          height: 46,
+          borderRadius: 999,
           bgcolor: '#FFFFFF',
           border: '1px solid',
           borderColor: 'divider',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          px: compact ? 0.6 : 1.4,
-          py: compact ? 0.6 : 1,
-          boxShadow: compact ? 'none' : '0 10px 24px rgba(0, 77, 153, 0.08)',
+          px: compact ? 0.7 : 1.5,
+          boxShadow: '0 8px 20px rgba(0, 77, 153, 0.08)',
           position: 'relative',
           overflow: 'hidden',
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            left: compact ? 9 : 24,
+            right: compact ? 9 : 24,
+            bottom: 5,
+            height: 3,
+            borderRadius: 999,
+            background: 'linear-gradient(90deg, #0066CC 0%, #E30613 72%, #FCD116 100%)',
+          },
         }}
       >
         <Box
@@ -128,10 +135,11 @@ function SisbenLogo({
           src={sisbenLogoPath}
           alt="Logo Sisbén"
           sx={{
-            width: compact ? 36 : 118,
-            height: compact ? 36 : 42,
+            width: compact ? 32 : 88,
+            height: compact ? 32 : 30,
             objectFit: 'contain',
             display: 'block',
+            transform: compact ? 'none' : 'translateY(-1px)',
           }}
         />
       </Box>
@@ -419,8 +427,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         <Toolbar
           sx={{
             bgcolor: 'background.paper',
-            minHeight: '72px !important',
+            minHeight: `${headerHeight}px !important`,
+            height: headerHeight,
             px: { xs: 2, md: 3 },
+            alignItems: 'center',
           }}
         >
           <IconButton
@@ -428,6 +438,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             onClick={toggleSidebar}
             sx={{
               mr: 1.5,
+              width: 38,
+              height: 38,
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 2,
@@ -438,10 +450,18 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               },
             }}
           >
-            <MenuIcon />
+            <MenuIcon fontSize="small" />
           </IconButton>
 
-          <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+            }}
+          >
             <Typography
               variant="h6"
               noWrap
@@ -457,8 +477,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               noWrap
               color="text.secondary"
               sx={{
-                fontSize: 13,
+                fontSize: 12.5,
                 fontWeight: 600,
+                mt: 0.2,
               }}
             >
               Sistema de información Sisbén · {user.rolNombre ?? user.rolCodigo}
@@ -471,8 +492,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             alt="Logo Sisbén"
             sx={{
               display: { xs: 'none', md: 'block' },
-              width: 88,
-              height: 32,
+              width: 82,
+              height: 30,
               objectFit: 'contain',
               ml: 2,
             }}
@@ -516,7 +537,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       <Box
         component="main"
         sx={{
-          pt: 11,
+          pt: `${headerHeight + 24}px`,
           px: { xs: 2, md: 3 },
           pb: 4,
           minHeight: '100vh',

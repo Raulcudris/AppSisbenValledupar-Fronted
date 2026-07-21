@@ -7,6 +7,7 @@ import {
   ReportDateRange,
   ReportGroupResponse,
   VentanillaDailyTrendResponse,
+  VentanillaEmployeeDetailedPerformanceResponse,
   VentanillaEmployeeProductivityResponse,
   VentanillaFrequentCitizenResponse,
   VentanillaFuncionarioPerformanceResponse,
@@ -151,6 +152,16 @@ export async function getVentanillaEmployeeProductivity(
       ...filter,
       grouping,
     })}`
+  );
+
+  return response.data;
+}
+
+export async function getVentanillaEmployeeDetailedPerformance(
+  params: VentanillaSolicitudesReportParams
+) {
+  const response = await apiRequest<ApiResponse<VentanillaEmployeeDetailedPerformanceResponse[]>>(
+    `/api/reportes/ventanilla/funcionarios/desempeno-detallado${buildQuery(params)}`
   );
 
   return response.data;

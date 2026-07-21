@@ -37,7 +37,7 @@ import {
 } from '@/lib/roleAccess';
 import { AuthUserResponse } from '@/types/auth.types';
 
-const drawerWidth = 288;
+const drawerWidth = 278;
 const collapsedDrawerWidth = 78;
 const headerHeight = 72;
 const sisbenLogoPath = '/images/logo-sisben.png';
@@ -58,55 +58,39 @@ type DashboardShellProps = {
 };
 
 function getCurrentModuleLabel(pathname: string) {
-  if (pathname.includes('/dashboard/ventanilla')) {
-    return 'Ventanilla';
-  }
-
-  if (pathname.includes('/dashboard/dmc')) {
-    return 'DMC';
-  }
-
-  if (pathname.includes('/dashboard/reportes')) {
-    return 'Reportes';
-  }
-
-  if (pathname.includes('/dashboard/exportaciones')) {
-    return 'Exportaciones';
-  }
-
-  if (pathname.includes('/dashboard/auditoria')) {
-    return 'Auditoría';
-  }
-
-  if (pathname.includes('/dashboard/usuarios')) {
-    return 'Usuarios';
-  }
-
-  if (pathname.includes('/dashboard/password')) {
-    return 'Cambiar contraseña';
-  }
+  if (pathname.includes('/dashboard/ventanilla')) return 'Ventanilla';
+  if (pathname.includes('/dashboard/dmc')) return 'DMC';
+  if (pathname.includes('/dashboard/reportes')) return 'Reportes';
+  if (pathname.includes('/dashboard/exportaciones')) return 'Exportaciones';
+  if (pathname.includes('/dashboard/auditoria')) return 'Auditoría';
+  if (pathname.includes('/dashboard/usuarios')) return 'Usuarios';
+  if (pathname.includes('/dashboard/password')) return 'Cambiar contraseña';
 
   return 'Inicio';
 }
 
-function SisbenLogo({ compact }: { compact: boolean }) {
+function SidebarLogo({ compact }: { compact: boolean }) {
   return (
     <Box
       sx={{
+        width: '100%',
         height: headerHeight,
-        px: compact ? 1 : 1.7,
+        minHeight: headerHeight,
+        maxHeight: headerHeight,
+        px: compact ? 1 : 2,
         bgcolor: '#FFFFFF',
         borderBottom: '1px solid',
         borderColor: 'divider',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        flexShrink: 0,
       }}
     >
       <Box
         sx={{
-          width: compact ? 48 : 136,
-          height: 46,
+          width: compact ? 48 : 132,
+          height: compact ? 48 : 46,
           borderRadius: 999,
           bgcolor: '#FFFFFF',
           border: '1px solid',
@@ -114,8 +98,8 @@ function SisbenLogo({ compact }: { compact: boolean }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          px: compact ? 0.7 : 1.5,
-          boxShadow: '0 8px 20px rgba(0, 77, 153, 0.08)',
+          px: compact ? 0.7 : 1.4,
+          boxShadow: '0 8px 22px rgba(0, 77, 153, 0.08)',
           position: 'relative',
           overflow: 'hidden',
           '&::after': {
@@ -135,11 +119,10 @@ function SisbenLogo({ compact }: { compact: boolean }) {
           src={sisbenLogoPath}
           alt="Logo Sisbén"
           sx={{
-            width: compact ? 32 : 88,
+            width: compact ? 32 : 84,
             height: compact ? 32 : 30,
             objectFit: 'contain',
             display: 'block',
-            transform: compact ? 'none' : 'translateY(-1px)',
           }}
         />
       </Box>
@@ -171,7 +154,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
 
   const expanded = sidebarExpanded || !isDesktop;
   const currentDrawerWidth = isDesktop
-    ? sidebarExpanded ? drawerWidth : collapsedDrawerWidth
+    ? sidebarExpanded
+      ? drawerWidth
+      : collapsedDrawerWidth
     : drawerWidth;
   const currentModule = getCurrentModuleLabel(pathname);
 
@@ -234,14 +219,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         overflowX: 'hidden',
       }}
     >
-      <SisbenLogo compact={!expanded} />
+      <SidebarLogo compact={!expanded} />
 
-      <Box
-        sx={{
-          px: expanded ? 1.7 : 1,
-          py: 1.5,
-        }}
-      >
+      <Box sx={{ px: expanded ? 1.7 : 1, py: 1.5 }}>
         {expanded ? (
           <Typography
             sx={{
@@ -309,13 +289,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 {expanded ? (
                   <ListItemText
                     primary={
-                      <Typography
-                        noWrap
-                        sx={{
-                          fontWeight: selected ? 900 : 700,
-                          fontSize: 14,
-                        }}
-                      >
+                      <Typography noWrap sx={{ fontWeight: selected ? 900 : 700, fontSize: 14 }}>
                         {item.label}
                       </Typography>
                     }
@@ -351,20 +325,17 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 borderColor: 'divider',
               }}
             >
-              <Typography noWrap color="text.primary" sx={{ fontWeight: 900 }}>
+              <Typography noWrap color="text.primary" align='center' sx={{ fontWeight: 900 }}>
                 {user.username ?? 'Usuario'}
               </Typography>
 
-              <Typography noWrap color="text.secondary" sx={{ fontSize: 13 }}>
+              <Typography noWrap color="text.secondary" align='center' sx={{ fontSize: 13 }}>
                 {user.rolNombre ?? user.rolCodigo ?? 'Rol no disponible'}
               </Typography>
             </Box>
           ) : null}
 
-          <Tooltip
-            title={!expanded ? 'Cerrar sesión' : ''}
-            placement="right"
-          >
+          <Tooltip title={!expanded ? 'Cerrar sesión' : ''} placement="right">
             <ListItemButton
               onClick={handleLogout}
               sx={{
@@ -394,7 +365,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               {expanded ? (
                 <ListItemText
                   primary={
-                    <Typography noWrap sx={{ fontWeight: 800, fontSize: 14 }}>
+                    <Typography  noWrap sx={{ fontWeight: 800, fontSize: 14 }}>
                       Cerrar sesión
                     </Typography>
                   }
@@ -430,6 +401,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             minHeight: `${headerHeight}px !important`,
             height: headerHeight,
             px: { xs: 2, md: 3 },
+            borderBottom: '1px solid',
+            borderColor: 'divider',
             alignItems: 'center',
           }}
         >
@@ -462,26 +435,11 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               justifyContent: 'center',
             }}
           >
-            <Typography
-              variant="h6"
-              noWrap
-              sx={{
-                fontWeight: 900,
-                lineHeight: 1.15,
-              }}
-            >
+            <Typography variant="h6" noWrap sx={{ fontWeight: 900, lineHeight: 1.15 }}>
               {currentModule}
             </Typography>
 
-            <Typography
-              noWrap
-              color="text.secondary"
-              sx={{
-                fontSize: 12.5,
-                fontWeight: 600,
-                mt: 0.2,
-              }}
-            >
+            <Typography noWrap color="text.secondary" sx={{ fontSize: 12.5, fontWeight: 600, mt: 0.2 }}>
               Sistema de información Sisbén · {user.rolNombre ?? user.rolCodigo}
             </Typography>
           </Box>

@@ -92,9 +92,13 @@ type FormState = {
 };
 
 const MAX_RANGE_DAYS = 1825;
-const PDF_MARGIN_MM = 8;
-const PDF_EXPORT_CANVAS_SCALE = 2.6;
-const PDF_EXPORT_WIDTH_PX = 1600;
+const PDF_MARGIN_MM = 9;
+const PDF_PAGE_HEADER_HEIGHT_MM = 18;
+const PDF_PAGE_FOOTER_HEIGHT_MM = 10;
+const PDF_EXPORT_CANVAS_SCALE = 2.8;
+const PDF_EXPORT_WIDTH_PX = 1680;
+const PDF_EXPORT_MIN_HEIGHT_PX = 760;
+const SISBEN_LOGO_PATH = '/images/logo-sisben.png';
 
 const initialSnackbar: SnackbarState = {
   open: false,
@@ -191,6 +195,25 @@ function getReportTitle(tipoReporte: ReportType) {
   };
 
   return titles[tipoReporte];
+}
+
+
+function getReportDescription(tipoReporte: ReportType) {
+  const descriptions: Record<ReportType, string> = {
+    SOLICITUDES: 'Consolidado por tipo de solicitud, días hábiles, totales y comportamiento diario del módulo de Ventanilla.',
+    DMC: 'Resumen operativo de registros DMC, cargadas, descargadas y distribución territorial por comuna.',
+    CIUDADANOS_FRECUENTES: 'Ranking de ciudadanos con mayor recurrencia, visitas, trámites y fechas de atención registradas.',
+    DESEMPENO_DETALLADO_VENTANILLA: 'Evaluación detallada de atenciones por funcionario, estados de gestión, promedio diario y detalle por fecha.',
+  };
+
+  return descriptions[tipoReporte];
+}
+
+function formatDateTimeLabel() {
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date());
 }
 
 function normalizeSheetName(name: string) {
@@ -432,6 +455,177 @@ function getEmployeeDetailedTop(data: VentanillaEmployeeDetailedPerformanceRespo
   )[0];
 }
 
+
+function PdfReportHeader({
+  title,
+  description,
+  fechaInicio,
+  fechaFin,
+  totalDays,
+}: {
+  title: string;
+  description: string;
+  fechaInicio: string;
+  fechaFin: string;
+  totalDays: number;
+}) {
+  return (
+    <Card
+      className="report-export-section report-pdf-header"
+      sx={{
+        ...reportCardSx,
+        overflow: 'hidden',
+        bgcolor: '#FFFFFF',
+      }}
+    >
+      <Box
+        sx={{
+          height: 8,
+          background: 'linear-gradient(90deg, #0066CC 0%, #0066CC 58%, #E30613 78%, #FCD116 100%)',
+        }}
+      />
+
+      <CardContent sx={{ p: { xs: 2.4, md: 3.2 } }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2.4}
+          sx={{
+            alignItems: { xs: 'flex-start', md: 'center' },
+            justifyContent: 'space-between',
+            mb: 2.4,
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
+            <Typography
+              sx={{
+                fontSize: 12,
+                fontWeight: 900,
+                letterSpacing: 0.9,
+                color: 'primary.main',
+                textTransform: 'uppercase',
+                mb: 0.7,
+              }}
+            >
+              AppSisbén Valledupar · Vista de reporte PDF
+            </Typography>
+
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 900,
+                color: '#263238',
+                lineHeight: 1.08,
+              }}
+            >
+              {title}
+            </Typography>
+
+            <Typography
+              color="text.secondary"
+              sx={{
+                mt: 1,
+                fontSize: 14,
+                fontWeight: 600,
+                maxWidth: 920,
+              }}
+            >
+              {description}
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              width: 132,
+              height: 54,
+              borderRadius: 999,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              boxShadow: '0 8px 22px rgba(0, 77, 153, 0.08)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                left: 24,
+                right: 24,
+                bottom: 6,
+                height: 3,
+                borderRadius: 999,
+                background: 'linear-gradient(90deg, #0066CC 0%, #E30613 72%, #FCD116 100%)',
+              },
+            }}
+          >
+            <Box
+              component="img"
+              src={SISBEN_LOGO_PATH}
+              alt="Logo Sisbén"
+              sx={{
+                width: 86,
+                height: 32,
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          </Box>
+        </Stack>
+
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, 1fr)',
+              md: 'repeat(4, 1fr)',
+            },
+            gap: 1.4,
+          }}
+        >
+          <Box sx={{ p: 1.4, borderRadius: 3, bgcolor: '#F4F8FC', border: '1px solid #E2E8F0' }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 900, color: 'text.secondary', textTransform: 'uppercase' }}>
+              Fecha inicio
+            </Typography>
+            <Typography sx={{ fontSize: 16, fontWeight: 900, color: '#263238' }}>
+              {formatDateLabel(fechaInicio)}
+            </Typography>
+          </Box>
+
+          <Box sx={{ p: 1.4, borderRadius: 3, bgcolor: '#F4F8FC', border: '1px solid #E2E8F0' }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 900, color: 'text.secondary', textTransform: 'uppercase' }}>
+              Fecha fin
+            </Typography>
+            <Typography sx={{ fontSize: 16, fontWeight: 900, color: '#263238' }}>
+              {formatDateLabel(fechaFin)}
+            </Typography>
+          </Box>
+
+          <Box sx={{ p: 1.4, borderRadius: 3, bgcolor: '#F4F8FC', border: '1px solid #E2E8F0' }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 900, color: 'text.secondary', textTransform: 'uppercase' }}>
+              Rango analizado
+            </Typography>
+            <Typography sx={{ fontSize: 16, fontWeight: 900, color: '#263238' }}>
+              {formatNumber(totalDays)} día(s)
+            </Typography>
+          </Box>
+
+          <Box sx={{ p: 1.4, borderRadius: 3, bgcolor: '#F4F8FC', border: '1px solid #E2E8F0' }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 900, color: 'text.secondary', textTransform: 'uppercase' }}>
+              Generado
+            </Typography>
+            <Typography sx={{ fontSize: 16, fontWeight: 900, color: '#263238' }}>
+              {formatDateTimeLabel()}
+            </Typography>
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}
+
 function KpiCard({
   title,
   value,
@@ -539,6 +733,7 @@ function HorizontalGroupBarChart({
                   fill={color}
                   radius={[0, 8, 8, 0]}
                   minPointSize={16}
+                  isAnimationActive={false}
                 >
                   <LabelList
                     dataKey="totalLabel"
@@ -590,6 +785,7 @@ function PieGroupChart({
             <ResponsiveContainer>
               <PieChart>
                 <Pie
+                  isAnimationActive={false}
                   data={chartData}
                   dataKey="total"
                   nameKey="nombre"
@@ -896,6 +1092,7 @@ function SolicitudesBarChart({
                   fill="#0066CC"
                   radius={[0, 8, 8, 0]}
                   minPointSize={16}
+                  isAnimationActive={false}
                 >
                   <LabelList
                     dataKey="totalLabel"
@@ -974,6 +1171,7 @@ function SolicitudesTrendChart({
                     stroke: '#0066CC',
                   }}
                   activeDot={{ r: 7 }}
+                  isAnimationActive={false}
                 >
                   <LabelList
                     dataKey="totalLabel"
@@ -990,6 +1188,140 @@ function SolicitudesTrendChart({
       </CardContent>
     </Card>
   );
+}
+
+
+function drawPdfPageFrame({
+  pdf,
+  pageNumber,
+  title,
+  fechaInicio,
+  fechaFin,
+}: {
+  pdf: jsPDF;
+  pageNumber: number;
+  title: string;
+  fechaInicio: string;
+  fechaFin: string;
+}) {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const headerBottomY = PDF_MARGIN_MM + PDF_PAGE_HEADER_HEIGHT_MM - 3;
+
+  pdf.setFillColor(255, 255, 255);
+  pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+
+  pdf.setFillColor(0, 102, 204);
+  pdf.rect(0, 0, pageWidth * 0.62, 3.2, 'F');
+  pdf.setFillColor(227, 6, 19);
+  pdf.rect(pageWidth * 0.62, 0, pageWidth * 0.24, 3.2, 'F');
+  pdf.setFillColor(252, 209, 22);
+  pdf.rect(pageWidth * 0.86, 0, pageWidth * 0.14, 3.2, 'F');
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(10);
+  pdf.setTextColor(38, 50, 56);
+  pdf.text('AppSisbén Valledupar', PDF_MARGIN_MM, PDF_MARGIN_MM + 2.5);
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8);
+  pdf.setTextColor(96, 125, 139);
+  pdf.text(
+    `${title} · ${formatDateLabel(fechaInicio)} a ${formatDateLabel(fechaFin)}`,
+    PDF_MARGIN_MM,
+    PDF_MARGIN_MM + 8
+  );
+
+  pdf.setDrawColor(226, 232, 240);
+  pdf.setLineWidth(0.2);
+  pdf.line(PDF_MARGIN_MM, headerBottomY, pageWidth - PDF_MARGIN_MM, headerBottomY);
+  pdf.line(PDF_MARGIN_MM, pageHeight - PDF_PAGE_FOOTER_HEIGHT_MM + 2, pageWidth - PDF_MARGIN_MM, pageHeight - PDF_PAGE_FOOTER_HEIGHT_MM + 2);
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8);
+  pdf.setTextColor(96, 125, 139);
+  pdf.text(`Generado: ${formatDateTimeLabel()}`, PDF_MARGIN_MM, pageHeight - 5.2);
+  pdf.text(`Página ${pageNumber}`, pageWidth - PDF_MARGIN_MM, pageHeight - 5.2, {
+    align: 'right',
+  });
+}
+
+function addPdfCloneStyles(clonedDocument: Document, renderWidth: number) {
+  clonedDocument.body.style.backgroundColor = '#ffffff';
+  clonedDocument.body.style.fontFamily = 'Arial, Helvetica, sans-serif';
+  clonedDocument.body.style.width = `${renderWidth}px`;
+  clonedDocument.body.style.margin = '0';
+
+  const style = clonedDocument.createElement('style');
+
+  style.innerHTML = `
+    .report-export-section,
+    .report-pdf-header {
+      width: ${renderWidth}px !important;
+      max-width: none !important;
+      overflow: visible !important;
+      background: #ffffff !important;
+      box-shadow: none !important;
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+      border-radius: 18px !important;
+    }
+
+    .report-export-section * {
+      box-sizing: border-box !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    .report-export-section .MuiCardContent-root {
+      padding: 28px !important;
+    }
+
+    .report-export-section .MuiTableContainer-root {
+      max-height: none !important;
+      overflow: visible !important;
+      width: 100% !important;
+      border-radius: 12px !important;
+    }
+
+    .report-export-section table {
+      border-collapse: collapse !important;
+      width: 100% !important;
+    }
+
+    .report-export-section .MuiTableCell-root {
+      position: static !important;
+      left: auto !important;
+      right: auto !important;
+      top: auto !important;
+      z-index: auto !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+      line-height: 1.35 !important;
+      vertical-align: middle !important;
+    }
+
+    .report-export-section .MuiTableHead-root .MuiTableCell-root {
+      background-color: #EAF3FC !important;
+      color: #263238 !important;
+      font-weight: 900 !important;
+      white-space: nowrap !important;
+    }
+
+    .report-export-section .MuiTableBody-root .MuiTableRow-root:nth-of-type(even) .MuiTableCell-root {
+      background-color: #FAFCFF !important;
+    }
+
+    .report-export-section .MuiChip-root {
+      border-radius: 999px !important;
+      font-weight: 800 !important;
+    }
+
+    .report-export-section svg {
+      overflow: visible !important;
+    }
+  `;
+
+  clonedDocument.head.appendChild(style);
 }
 
 export default function ReportesPage() {
@@ -1468,7 +1800,7 @@ export default function ReportesPage() {
     try {
       const sections = Array.from(
         reportContentRef.current.querySelectorAll<HTMLElement>('.report-export-section')
-      );
+      ).filter((section) => section.offsetWidth > 0 && section.offsetHeight > 0);
 
       if (!sections.length) {
         showSnackbar('No se encontraron secciones del reporte para exportar.', 'warning');
@@ -1490,62 +1822,48 @@ export default function ReportesPage() {
 
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const availableWidth = pageWidth - PDF_MARGIN_MM * 2;
-      const availableHeight = pageHeight - PDF_MARGIN_MM * 2;
-      let hasPage = false;
+      const contentX = PDF_MARGIN_MM;
+      const contentY = PDF_MARGIN_MM + PDF_PAGE_HEADER_HEIGHT_MM;
+      const contentWidth = pageWidth - PDF_MARGIN_MM * 2;
+      const contentHeight = pageHeight
+        - PDF_MARGIN_MM * 2
+        - PDF_PAGE_HEADER_HEIGHT_MM
+        - PDF_PAGE_FOOTER_HEIGHT_MM;
 
-      const addPdfPage = () => {
-        if (hasPage) {
+      let pageNumber = 0;
+
+      const addPage = () => {
+        if (pageNumber > 0) {
           pdf.addPage('a4', 'landscape');
-        } else {
-          hasPage = true;
         }
+
+        pageNumber += 1;
+
+        drawPdfPageFrame({
+          pdf,
+          pageNumber,
+          title: getReportTitle(form.tipoReporte),
+          fechaInicio: form.fechaInicio,
+          fechaFin: form.fechaFin,
+        });
       };
 
       for (const section of sections) {
+        const renderWidth = Math.max(
+          PDF_EXPORT_WIDTH_PX,
+          section.scrollWidth,
+          section.offsetWidth
+        );
+
         const canvas = await html2canvas(section, {
           scale: PDF_EXPORT_CANVAS_SCALE,
           backgroundColor: '#ffffff',
           useCORS: true,
           logging: false,
-          windowWidth: Math.max(PDF_EXPORT_WIDTH_PX, section.scrollWidth),
-          windowHeight: Math.max(section.scrollHeight, 1200),
+          windowWidth: renderWidth,
+          windowHeight: Math.max(section.scrollHeight, PDF_EXPORT_MIN_HEIGHT_PX),
           onclone: (clonedDocument) => {
-            clonedDocument.body.style.backgroundColor = '#ffffff';
-
-            clonedDocument
-              .querySelectorAll<HTMLElement>('.report-export-section')
-              .forEach((exportSection) => {
-                exportSection.style.width = `${Math.max(PDF_EXPORT_WIDTH_PX, section.scrollWidth)}px`;
-                exportSection.style.maxWidth = 'none';
-                exportSection.style.overflow = 'visible';
-                exportSection.style.backgroundColor = '#ffffff';
-                exportSection.style.boxShadow = 'none';
-              });
-
-            clonedDocument
-              .querySelectorAll<HTMLElement>('.report-export-section .MuiTableContainer-root')
-              .forEach((tableContainer) => {
-                tableContainer.style.maxHeight = 'none';
-                tableContainer.style.overflow = 'visible';
-                tableContainer.style.width = '100%';
-              });
-
-            clonedDocument
-              .querySelectorAll<HTMLElement>('.report-export-section .MuiTableCell-root')
-              .forEach((tableCell) => {
-                tableCell.style.position = 'static';
-                tableCell.style.left = 'auto';
-                tableCell.style.top = 'auto';
-                tableCell.style.zIndex = 'auto';
-                tableCell.style.backgroundColor = '#ffffff';
-              });
-
-            clonedDocument
-              .querySelectorAll<HTMLElement>('.report-export-section svg')
-              .forEach((svg) => {
-                svg.style.overflow = 'visible';
-              });
+            addPdfCloneStyles(clonedDocument, renderWidth);
           },
         });
 
@@ -1553,8 +1871,28 @@ export default function ReportesPage() {
           continue;
         }
 
-        const pxPerMm = canvas.width / availableWidth;
-        const maxSliceHeightPx = Math.max(1, Math.floor(availableHeight * pxPerMm));
+        const pxPerMm = canvas.width / contentWidth;
+        const maxSliceHeightPx = Math.max(1, Math.floor(contentHeight * pxPerMm));
+
+        if (canvas.height <= maxSliceHeightPx) {
+          const imageData = canvas.toDataURL('image/png', 1.0);
+          const imageHeightMm = Math.min(canvas.height / pxPerMm, contentHeight);
+
+          addPage();
+
+          pdf.addImage(
+            imageData,
+            'PNG',
+            contentX,
+            contentY,
+            contentWidth,
+            imageHeightMm,
+            undefined,
+            'FAST'
+          );
+
+          continue;
+        }
 
         for (let offsetY = 0; offsetY < canvas.height; offsetY += maxSliceHeightPx) {
           const sliceHeightPx = Math.min(maxSliceHeightPx, canvas.height - offsetY);
@@ -1583,16 +1921,16 @@ export default function ReportesPage() {
           );
 
           const imageData = sliceCanvas.toDataURL('image/png', 1.0);
-          const imageHeightMm = sliceHeightPx / pxPerMm;
+          const imageHeightMm = Math.min(sliceHeightPx / pxPerMm, contentHeight);
 
-          addPdfPage();
+          addPage();
 
           pdf.addImage(
             imageData,
             'PNG',
-            PDF_MARGIN_MM,
-            PDF_MARGIN_MM,
-            availableWidth,
+            contentX,
+            contentY,
+            contentWidth,
             imageHeightMm,
             undefined,
             'FAST'
@@ -1601,7 +1939,7 @@ export default function ReportesPage() {
       }
 
       pdf.save(buildPdfFilename(form.tipoReporte, form.fechaInicio, form.fechaFin));
-      showSnackbar('Documento completo exportado correctamente y ajustado a impresión.', 'success');
+      showSnackbar('Documento completo exportado correctamente con presentación organizada.', 'success');
     } catch (err) {
       const message = err instanceof Error
         ? err.message
@@ -1839,7 +2177,26 @@ export default function ReportesPage() {
         </CardContent>
       </Card>
 
-      <Box ref={reportContentRef}>
+      <Box
+        ref={reportContentRef}
+        sx={{
+          '& .report-export-section': {
+            mb: 3,
+          },
+        }}
+      >
+        {hasReportData ? (
+          <Box sx={{ mb: 3 }}>
+            <PdfReportHeader
+              title={getReportTitle(form.tipoReporte)}
+              description={getReportDescription(form.tipoReporte)}
+              fechaInicio={form.fechaInicio}
+              fechaFin={form.fechaFin}
+              totalDays={totalDays}
+            />
+          </Box>
+        ) : null}
+
         {form.tipoReporte === 'SOLICITUDES' && solicitudesPreview ? (
           <Stack spacing={3}>
             <SolicitudesTable

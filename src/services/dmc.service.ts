@@ -21,6 +21,7 @@ export async function searchDmc(filter: DmcFilter) {
 
 export async function getDmcById(id: number) {
   const response = await apiRequest<ApiResponse<DmcResponse>>(`/api/dmc/${id}`);
+
   return response.data;
 }
 
@@ -37,6 +38,14 @@ export async function updateDmc(id: number, request: DmcRequest) {
   const response = await apiRequest<ApiResponse<DmcResponse>>(`/api/dmc/${id}`, {
     method: 'PUT',
     body: request,
+  });
+
+  return response.data;
+}
+
+export async function deleteDmc(id: number) {
+  const response = await apiRequest<ApiResponse<void>>(`/api/dmc/${id}`, {
+    method: 'DELETE',
   });
 
   return response.data;

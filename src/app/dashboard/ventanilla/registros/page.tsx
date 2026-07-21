@@ -671,6 +671,7 @@ export default function VentanillaRegistrosPage() {
       row.nombreUsuario,
       row.cedulaUsuario,
       row.solicitudNombre,
+      row.categoriaNombre,
       row.estadoSolicitudNombre,
       row.direccion,
       row.barrioNombre,
@@ -687,7 +688,7 @@ export default function VentanillaRegistrosPage() {
   });
 
   const menuOpen = Boolean(menuAnchorEl);
-  const emptyTableColSpan = 7;
+  const emptyTableColSpan = 8;
 
   const showSuccess = (message: string, title = 'Operación exitosa') => {
     setFeedback({
@@ -1709,7 +1710,7 @@ const save = async () => {
             }}
           >
             <TextField
-              placeholder="Buscar ciudadano, cédula, solicitud, frecuencia..."
+              placeholder="Buscar ciudadano, cédula, categoría, solicitud, frecuencia..."
               size="small"
               value={tableSearch}
               onChange={(event) => setTableSearch(event.target.value)}
@@ -1756,7 +1757,7 @@ const save = async () => {
           <Box sx={{ overflowX: 'auto' }}>
             <Table
               sx={{
-                minWidth: 1180,
+                minWidth: 1300,
                 '& .MuiTableCell-root': {
                   borderBottom: '1px solid',
                   borderColor: 'divider',
@@ -1789,6 +1790,10 @@ const save = async () => {
 
                   <TableCell sx={{ fontWeight: 800, minWidth: 260 }}>
                     Ciudadano
+                  </TableCell>
+
+                  <TableCell sx={{ fontWeight: 800, minWidth: 180 }}>
+                    Categoría
                   </TableCell>
 
                   <TableCell sx={{ fontWeight: 800, minWidth: 230 }}>
@@ -1845,15 +1850,26 @@ const save = async () => {
                     </TableCell>
 
                     <TableCell>
-                      <Stack spacing={0.3} sx={{ minWidth: 190 }}>
-                        <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
-                          {row.solicitudNombre || 'Sin solicitud'}
-                        </Typography>
+                      <Chip
+                        label={row.categoriaNombre || 'Sin categoría'}
+                        size="small"
+                        color="secondary"
+                        variant="outlined"
+                        sx={{
+                          maxWidth: 170,
+                          fontWeight: 800,
+                          '& .MuiChip-label': {
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          },
+                        }}
+                      />
+                    </TableCell>
 
-                        <Typography color="text.secondary" sx={{ fontSize: 12 }}>
-                          {row.categoriaNombre || 'Sin categoría'}
-                        </Typography>
-                      </Stack>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 800, fontSize: 13, minWidth: 190 }}>
+                        {row.solicitudNombre || 'Sin solicitud'}
+                      </Typography>
                     </TableCell>
 
                     <TableCell>

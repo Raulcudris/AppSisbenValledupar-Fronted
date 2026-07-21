@@ -33,11 +33,14 @@ import {
   Typography,
 } from '@mui/material';
 import { ChangeEvent, KeyboardEvent, useEffect, useState } from 'react';
+
+import AccessMessage from '@/components/dashboard/AccessMessage';
 import LoadingState from '@/components/dashboard/LoadingState';
 import AppSnackbar, {
   AppSnackbarState,
   initialSnackbarState,
 } from '@/components/ui/AppSnackbar';
+import { canViewUserHistory } from '@/lib/roleAccess';
 import {
   exportVentanillaUserHistory,
   exportVentanillaUserHistoryPdf,
@@ -76,6 +79,8 @@ function buildUserLabel(row: VentanillaUserHistorySummaryResponse) {
 }
 
 export default function VentanillaHistorialUsuarioPage() {
+  const allowViewHistory = canViewUserHistory();
+
   const [filter, setFilter] = useState<VentanillaUserHistoryFilter>({
     search: '',
     page: 0,
@@ -120,6 +125,12 @@ export default function VentanillaHistorialUsuarioPage() {
   };
 
   const load = async (customFilter: VentanillaUserHistoryFilter = filter) => {
+    if (!allowViewHistory) {
+      setLoading(false);
+      setPageData(null);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -143,14 +154,24 @@ export default function VentanillaHistorialUsuarioPage() {
   };
 
   useEffect(() => {
+    if (!allowViewHistory) {
+      setLoading(false);
+      setPageData(null);
+      return;
+    }
+
     load({
       search: '',
       page: 0,
       size: 10,
     });
-  }, []);
+  }, [allowViewHistory]);
 
   const search = () => {
+    if (!allowViewHistory) {
+      return;
+    }
+
     load({
       ...filter,
       page: 0,
@@ -158,6 +179,10 @@ export default function VentanillaHistorialUsuarioPage() {
   };
 
   const clearFilters = () => {
+    if (!allowViewHistory) {
+      return;
+    }
+
     const cleared: VentanillaUserHistoryFilter = {
       search: '',
       page: 0,
@@ -178,6 +203,10 @@ export default function VentanillaHistorialUsuarioPage() {
   };
 
   const handleChangePage = (_: unknown, newPage: number) => {
+    if (!allowViewHistory) {
+      return;
+    }
+
     load({
       ...filter,
       page: newPage,
@@ -185,6 +214,10 @@ export default function VentanillaHistorialUsuarioPage() {
   };
 
   const handleChangeRowsPerPage = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!allowViewHistory) {
+      return;
+    }
+
     load({
       ...filter,
       page: 0,
@@ -193,6 +226,10 @@ export default function VentanillaHistorialUsuarioPage() {
   };
 
   const openHistory = async (row: VentanillaUserHistorySummaryResponse) => {
+    if (!allowViewHistory) {
+      return;
+    }
+
     setSelectedUser(row);
     setSelectedHistory(null);
     setDetailOpen(true);
@@ -223,6 +260,10 @@ export default function VentanillaHistorialUsuarioPage() {
   };
 
   const downloadHistory = async (cedulaUsuario: string) => {
+    if (!allowViewHistory) {
+      return;
+    }
+
     setDownloadLoading(true);
 
     try {
@@ -244,6 +285,10 @@ export default function VentanillaHistorialUsuarioPage() {
   };
 
   const downloadHistoryPdf = async (cedulaUsuario: string) => {
+    if (!allowViewHistory) {
+      return;
+    }
+
     setPdfLoading(true);
 
     try {
@@ -263,6 +308,10 @@ export default function VentanillaHistorialUsuarioPage() {
       setPdfLoading(false);
     }
   };
+
+  if (!allowViewHistory) {
+    return <AccessMessage />;
+  }
 
   if (loading && !pageData) {
     return <LoadingState />;

@@ -556,8 +556,6 @@ export default function ExportacionesPage() {
           { key: 'nombreUsuario', label: 'Ciudadano', minWidth: 260 },
           { key: 'telefono', label: 'Teléfono', minWidth: 150 },
           { key: 'totalVisitas', label: 'Total visitas', minWidth: 140, align: 'right' },
-          { key: 'totalSolicitudes', label: 'Total trámites', minWidth: 150, align: 'right' },
-          { key: 'participacion', label: '% visitas', minWidth: 120, align: 'center' },
           { key: 'primeraVisita', label: 'Primera visita', minWidth: 140, align: 'center' },
           { key: 'ultimaVisita', label: 'Última visita', minWidth: 140, align: 'center' },
         ]),

@@ -60,7 +60,7 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
     label: 'Historial usuario',
     href: '/dashboard/ventanilla/historial-usuario',
     iconKey: 'ventanilla',
-    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_VENTANILLA'],
+    roles: ['ADMIN'],
   },
   {
     label: 'Ventanilla',
@@ -128,7 +128,7 @@ export const dashboardActions: DashboardActionItem[] = [
     href: '/dashboard/ventanilla/historial-usuario',
     buttonLabel: 'Abrir Historial',
     iconKey: 'ventanilla',
-    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_VENTANILLA'],
+    roles: ['ADMIN'],
   },
   {
     title: 'Consultar Ventanilla',
@@ -208,7 +208,6 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard',
     '/dashboard/ventanilla',
     '/dashboard/ventanilla/registros',
-    '/dashboard/ventanilla/historial-usuario',
     '/dashboard/dmc',
     '/dashboard/dmc/registros',
     '/dashboard/auditoria',
@@ -220,7 +219,6 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard',
     '/dashboard/ventanilla',
     '/dashboard/ventanilla/registros',
-    '/dashboard/ventanilla/historial-usuario',
     '/dashboard/cuenta/cambiar-password',
   ],
   FUNCIONARIO_DMC: [
@@ -301,7 +299,11 @@ export function canAccessDashboardPath(role: string | null | undefined, path: st
     return false;
   }
 
-  return allowedDashboardPathsByRole[normalizedRole].includes(path);
+  const allowedPaths = allowedDashboardPathsByRole[normalizedRole];
+
+  return allowedPaths.some((allowedPath) =>
+    path === allowedPath || path.startsWith(`${allowedPath}/`)
+  );
 }
 
 export function canWriteVentanilla(role: string | null | undefined = currentRole()) {
@@ -347,6 +349,12 @@ export function canHardDeleteVentanilla(role: string | null | undefined = curren
 }
 
 export function canManageUsers(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return normalizedRole === 'ADMIN';
+}
+
+export function canViewUserHistory(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return normalizedRole === 'ADMIN';

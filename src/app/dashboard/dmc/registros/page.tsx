@@ -2,6 +2,7 @@
 
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteIcon from '@mui/icons-material/Delete';
 import DownloadIcon from '@mui/icons-material/Download';
 import EditIcon from '@mui/icons-material/Edit';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -10,6 +11,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SearchIcon from '@mui/icons-material/Search';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -51,6 +53,7 @@ import {
 } from '@/services/catalog.service';
 import {
   createDmc,
+  deleteDmc,
   searchDmc,
   updateDmc,
 } from '@/services/dmc.service';
@@ -91,6 +94,14 @@ function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function normalizeSearchText(value?: string | null) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
 function getInitialForm(): FormState {
   return {
     fecha: getTodayDate(),
@@ -118,6 +129,8 @@ export default function DmcRegistrosPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const [form, setForm] = useState<FormState>(getInitialForm);
+  const [encuestadorInputText, setEncuestadorInputText] = useState('');
+  const [barrioInputText, setBarrioInputText] = useState('');
   const [restricted, setRestricted] = useState(false);
   const [error, setError] = useState('');
   const [tableSearch, setTableSearch] = useState('');
@@ -129,6 +142,10 @@ export default function DmcRegistrosPage() {
   const [snackbar, setSnackbar] = useState<SnackbarState>(initialSnackbar);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [duplicateDialogMessage, setDuplicateDialogMessage] = useState('');
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteRecord, setDeleteRecord] = useState<DmcResponse | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const allowWrite = useMemo(() => canWriteDmc(), []);
   const allowExport = useMemo(() => canExport(), []);
@@ -180,6 +197,34 @@ export default function DmcRegistrosPage() {
 
   const closeSnackbar = () => {
     setSnackbar(initialSnackbar);
+  };
+
+  const getEncuestadorLabelById = (encuestadorId?: string | number | null) => {
+    if (!encuestadorId) {
+      return '';
+    }
+
+    return encuestadores.find((option) => String(option.id) === String(encuestadorId))?.label ?? '';
+  };
+
+  const getBarrioLabelById = (barrioId?: string | number | null) => {
+    if (!barrioId) {
+      return '';
+    }
+
+    return barrios.find((option) => String(option.id) === String(barrioId))?.label ?? '';
+  };
+
+  const filterCatalogOptions = (options: SelectOption[], inputValue: string) => {
+    const searchText = normalizeSearchText(inputValue);
+
+    if (!searchText) {
+      return options;
+    }
+
+    return options.filter((option) =>
+      normalizeSearchText(option.label).includes(searchText)
+    );
   };
 
   const loadCatalogs = async () => {
@@ -242,6 +287,30 @@ export default function DmcRegistrosPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!dialogOpen || !form.encuestadorId) {
+      return;
+    }
+
+    const selectedEncuestadorLabel = getEncuestadorLabelById(form.encuestadorId);
+
+    if (selectedEncuestadorLabel) {
+      setEncuestadorInputText(selectedEncuestadorLabel);
+    }
+  }, [dialogOpen, encuestadores, form.encuestadorId]);
+
+  useEffect(() => {
+    if (!dialogOpen || !form.barrioId) {
+      return;
+    }
+
+    const selectedBarrioLabel = getBarrioLabelById(form.barrioId);
+
+    if (selectedBarrioLabel) {
+      setBarrioInputText(selectedBarrioLabel);
+    }
+  }, [dialogOpen, barrios, form.barrioId]);
+
   const updateFilter = (key: keyof DmcFilter, value: string) => {
     setFilter((current) => ({
       ...current,
@@ -285,26 +354,37 @@ export default function DmcRegistrosPage() {
 
   const openCreate = () => {
     setError('');
+    setEncuestadorInputText('');
+    setBarrioInputText('');
     setForm(getInitialForm());
     setDialogOpen(true);
   };
 
   const openEdit = (row: DmcResponse) => {
+    const encuestadorId = row.encuestadorId ? String(row.encuestadorId) : '';
+    const encuestadorLabel = row.encuestadorNombre || getEncuestadorLabelById(encuestadorId);
+    const barrioId = row.barrioId ? String(row.barrioId) : '';
+    const barrioLabel = row.barrioNombre || getBarrioLabelById(barrioId);
+
     setError('');
+    setEncuestadorInputText(encuestadorLabel);
+    setBarrioInputText(barrioLabel);
     setForm({
       id: row.id,
       fecha: row.fecha,
       tipoDmcId: String(row.tipoDmcId),
-      encuestadorId: String(row.encuestadorId),
+      encuestadorId,
       cantidad: String(row.cantidad),
       observacion: row.observacion ?? '',
-      barrioId: String(row.barrioId),
+      barrioId,
     });
 
     setDialogOpen(true);
   };
 
   const closeFormDialog = () => {
+    setEncuestadorInputText('');
+    setBarrioInputText('');
     setDialogOpen(false);
   };
 
@@ -367,6 +447,57 @@ export default function DmcRegistrosPage() {
     openEdit(record);
   };
 
+  const handleMenuDelete = () => {
+    if (!menuRecord) {
+      return;
+    }
+
+    setDeleteRecord(menuRecord);
+    setDeleteDialogOpen(true);
+    closeRowMenu();
+  };
+
+  const closeDeleteDialog = () => {
+    if (deleting) {
+      return;
+    }
+
+    setDeleteDialogOpen(false);
+    setDeleteRecord(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteRecord) {
+      return;
+    }
+
+    setDeleting(true);
+    setError('');
+
+    try {
+      await deleteDmc(deleteRecord.id);
+
+      showSnackbar('Registro DMC eliminado correctamente.', 'success');
+      setDeleteDialogOpen(false);
+      setDeleteRecord(null);
+      setDialogOpen(false);
+
+      await load({
+        ...filter,
+        page: 0,
+      });
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible eliminar el registro DMC.';
+
+      setError(message);
+      showSnackbar(message, 'error');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const updateForm = (key: keyof FormState, value: string) => {
     setForm((current) => ({
       ...current,
@@ -399,7 +530,7 @@ export default function DmcRegistrosPage() {
     }
 
     if (!form.encuestadorId || Number(form.encuestadorId) <= 0) {
-      return 'Selecciona el encuestador.';
+      return 'Escribe y selecciona el encuestador.';
     }
 
     if (!form.cantidad) {
@@ -421,7 +552,7 @@ export default function DmcRegistrosPage() {
     }
 
     if (!form.barrioId || Number(form.barrioId) <= 0) {
-      return 'Selecciona el barrio.';
+      return 'Escribe y selecciona el barrio.';
     }
 
     if (form.observacion.trim().length > 500) {
@@ -492,21 +623,38 @@ export default function DmcRegistrosPage() {
         await updateDmc(form.id, buildRequest());
 
         showSnackbar(
-          'Registro DMC actualizado correctamente. Puedes seguir revisando o cerrar el formulario.',
-          'success'
-        );
-      } else {
-        await createDmc(buildRequest());
-
-        showSnackbar(
-          'Registro DMC creado correctamente. Puedes registrar uno nuevo o cerrar el formulario.',
+          'Registro DMC actualizado correctamente.',
           'success'
         );
 
+        setDialogOpen(false);
+        setEncuestadorInputText('');
+        setBarrioInputText('');
         setForm(getInitialForm());
+
+        await load({
+          ...filter,
+          page: 0,
+        });
+
+        return;
       }
 
-      load(filter);
+      await createDmc(buildRequest());
+
+      showSnackbar(
+        'Registro DMC creado correctamente. El formulario quedó listo para registrar otro.',
+        'success'
+      );
+
+      setEncuestadorInputText('');
+      setBarrioInputText('');
+      setForm(getInitialForm());
+
+      await load({
+        ...filter,
+        page: 0,
+      });
     } catch (err) {
       if (isDuplicateDmcError(err)) {
         openDuplicateDmcDialog();
@@ -664,18 +812,66 @@ export default function DmcRegistrosPage() {
                 onChange={(value) => updateFilter('tipoDmcId', value)}
               />
 
-              <SelectField
-                label="Encuestador"
-                value={filter.encuestadorId ?? ''}
+              <Autocomplete
                 options={encuestadores}
-                onChange={(value) => updateFilter('encuestadorId', value)}
+                value={
+                  encuestadores.find((option) => String(option.id) === String(filter.encuestadorId ?? '')) ?? null
+                }
+                onChange={(_, selectedOption) =>
+                  updateFilter('encuestadorId', selectedOption ? String(selectedOption.id) : '')
+                }
+                getOptionLabel={(option) => option.label ?? ''}
+                isOptionEqualToValue={(option, value) =>
+                  String(option.id) === String(value.id)
+                }
+                filterOptions={(options, state) =>
+                  filterCatalogOptions(options, state.inputValue)
+                }
+                autoHighlight
+                clearOnEscape
+                noOptionsText="No se encontraron encuestadores"
+                clearText="Limpiar"
+                openText="Abrir"
+                closeText="Cerrar"
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Encuestador"
+                    size="small"
+                    placeholder="Escribe el nombre del encuestador"
+                  />
+                )}
               />
 
-              <SelectField
-                label="Barrio"
-                value={filter.barrioId ?? ''}
+              <Autocomplete
                 options={barrios}
-                onChange={(value) => updateFilter('barrioId', value)}
+                value={
+                  barrios.find((option) => String(option.id) === String(filter.barrioId ?? '')) ?? null
+                }
+                onChange={(_, selectedOption) =>
+                  updateFilter('barrioId', selectedOption ? String(selectedOption.id) : '')
+                }
+                getOptionLabel={(option) => option.label ?? ''}
+                isOptionEqualToValue={(option, value) =>
+                  String(option.id) === String(value.id)
+                }
+                filterOptions={(options, state) =>
+                  filterCatalogOptions(options, state.inputValue)
+                }
+                autoHighlight
+                clearOnEscape
+                noOptionsText="No se encontraron barrios"
+                clearText="Limpiar"
+                openText="Abrir"
+                closeText="Cerrar"
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Barrio"
+                    size="small"
+                    placeholder="Escribe el nombre del barrio"
+                  />
+                )}
               />
 
               <Stack direction="row" spacing={1}>
@@ -977,7 +1173,19 @@ export default function DmcRegistrosPage() {
               }}
             >
               <EditIcon fontSize="small" />
-              Actualizar
+              Modificar
+            </MenuItem>
+
+            <MenuItem
+              onClick={handleMenuDelete}
+              sx={{
+                gap: 1.5,
+                color: 'error.main',
+                fontWeight: 700,
+              }}
+            >
+              <DeleteIcon fontSize="small" />
+              Eliminar
             </MenuItem>
           </Menu>
         </CardContent>
@@ -1082,12 +1290,50 @@ export default function DmcRegistrosPage() {
                     onChange={(value) => updateForm('tipoDmcId', value)}
                   />
 
-                  <SelectField
-                    label="Encuestador"
-                    value={form.encuestadorId}
+                  <Autocomplete
                     options={encuestadores}
-                    required
-                    onChange={(value) => updateForm('encuestadorId', value)}
+                    value={
+                      encuestadores.find((option) => String(option.id) === String(form.encuestadorId)) ?? null
+                    }
+                    inputValue={encuestadorInputText}
+                    onInputChange={(_, newInputValue, reason) => {
+                      if (reason === 'input') {
+                        setEncuestadorInputText(newInputValue);
+                        updateForm('encuestadorId', '');
+                        return;
+                      }
+
+                      if (reason === 'clear') {
+                        setEncuestadorInputText('');
+                        updateForm('encuestadorId', '');
+                      }
+                    }}
+                    onChange={(_, selectedOption) => {
+                      updateForm('encuestadorId', selectedOption ? String(selectedOption.id) : '');
+                      setEncuestadorInputText(selectedOption?.label ?? '');
+                    }}
+                    getOptionLabel={(option) => option.label ?? ''}
+                    isOptionEqualToValue={(option, value) =>
+                      String(option.id) === String(value.id)
+                    }
+                    filterOptions={(options, state) =>
+                      filterCatalogOptions(options, state.inputValue)
+                    }
+                    autoHighlight
+                    clearOnEscape
+                    noOptionsText="No se encontraron encuestadores"
+                    clearText="Limpiar"
+                    openText="Abrir"
+                    closeText="Cerrar"
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Encuestador"
+                        size="small"
+                        required
+                        helperText="Escribe las primeras letras y selecciona el encuestador."
+                      />
+                    )}
                   />
 
                   <TextField
@@ -1099,12 +1345,50 @@ export default function DmcRegistrosPage() {
                     onChange={(event) => updateForm('cantidad', event.target.value)}
                   />
 
-                  <SelectField
-                    label="Barrio"
-                    value={form.barrioId}
+                  <Autocomplete
                     options={barrios}
-                    required
-                    onChange={(value) => updateForm('barrioId', value)}
+                    value={
+                      barrios.find((option) => String(option.id) === String(form.barrioId)) ?? null
+                    }
+                    inputValue={barrioInputText}
+                    onInputChange={(_, newInputValue, reason) => {
+                      if (reason === 'input') {
+                        setBarrioInputText(newInputValue);
+                        updateForm('barrioId', '');
+                        return;
+                      }
+
+                      if (reason === 'clear') {
+                        setBarrioInputText('');
+                        updateForm('barrioId', '');
+                      }
+                    }}
+                    onChange={(_, selectedOption) => {
+                      updateForm('barrioId', selectedOption ? String(selectedOption.id) : '');
+                      setBarrioInputText(selectedOption?.label ?? '');
+                    }}
+                    getOptionLabel={(option) => option.label ?? ''}
+                    isOptionEqualToValue={(option, value) =>
+                      String(option.id) === String(value.id)
+                    }
+                    filterOptions={(options, state) =>
+                      filterCatalogOptions(options, state.inputValue)
+                    }
+                    autoHighlight
+                    clearOnEscape
+                    noOptionsText="No se encontraron barrios"
+                    clearText="Limpiar"
+                    openText="Abrir"
+                    closeText="Cerrar"
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Barrio"
+                        size="small"
+                        required
+                        helperText="Escribe las primeras letras y selecciona el barrio."
+                      />
+                    )}
                   />
 
                   <TextField
@@ -1146,6 +1430,72 @@ export default function DmcRegistrosPage() {
             onClick={save}
           >
             {form.id ? 'Actualizar registro' : 'Guardar registro'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={closeDeleteDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 900,
+            color: 'error.main',
+          }}
+        >
+          Eliminar registro DMC
+        </DialogTitle>
+
+        <DialogContent>
+          <Stack spacing={2}>
+            <Alert severity="warning">
+              Esta acción eliminará el registro seleccionado de la vista de registros DMC.
+            </Alert>
+
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 3,
+                bgcolor: '#F8FAFC',
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              <Typography sx={{ fontWeight: 900 }}>
+                {deleteRecord?.tipoDmcNombre ?? 'Registro DMC'}
+              </Typography>
+
+              <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                Fecha: {deleteRecord?.fecha ?? '-'} · Encuestador: {deleteRecord?.encuestadorNombre ?? '-'}
+              </Typography>
+
+              <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                Barrio: {deleteRecord?.barrioNombre ?? '-'} · Cantidad: {deleteRecord?.cantidad ?? '-'}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="inherit"
+            onClick={closeDeleteDialog}
+            disabled={deleting}
+          >
+            Cancelar
+          </Button>
+
+          <Button
+            variant="contained"
+            color="error"
+            onClick={confirmDelete}
+            disabled={deleting}
+          >
+            {deleting ? 'Eliminando...' : 'Eliminar'}
           </Button>
         </DialogActions>
       </Dialog>

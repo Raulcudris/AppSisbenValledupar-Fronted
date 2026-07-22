@@ -2,8 +2,18 @@ import type { Metadata } from 'next';
 import Providers from './providers';
 
 export const metadata: Metadata = {
-  title: 'AppSisbenValledupar',
-  description: 'Dashboard administrativo AppSisbenValledupar',
+  title: 'AppSisbén Valledupar',
+  description: 'Dashboard administrativo AppSisbén Valledupar',
+  icons: {
+    icon: [
+      {
+        url: '/images/icono.ico',
+        sizes: '32x32',
+        type: 'image/x-icon',
+      },
+    ],
+    shortcut: ['/images/icono.ico'],
+  },
 };
 
 export default function RootLayout({

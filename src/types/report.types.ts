@@ -116,3 +116,23 @@ export type VentanillaEmployeeDetailedPerformanceResponse = {
   extranjeros: number;
   detalleDiario: VentanillaEmployeeDailyDetailResponse[];
 };
+
+export type DmcEncuestadorPerformanceResponse = {
+  encuestadorId: number | null;
+  encuestadorNombre: string | null;
+  cargadas: number;
+  efectivas: number;
+  noEfectivas: number;
+  cumplimiento: number;
+  desempeno: string;
+  total: number;
+};
+
+export type DmcComunaTotalResponse = {
+  comunaId: number | null;
+  comunaCodigo: string | null;
+  comunaNombre: string | null;
+  cargadas: number;
+  descargadas: number;
+  total: number;
+};

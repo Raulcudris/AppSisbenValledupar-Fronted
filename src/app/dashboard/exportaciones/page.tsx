@@ -43,7 +43,7 @@ import {
   getDmcSummary,
   getVentanillaEmployeeProductivity,
   getVentanillaFrequentCitizens,
-  getVentanillaFuncionariosPerformance,
+  getVentanillaFuncionariosDesempeno as getVentanillaFuncionariosPerformance,
   getVentanillaGroup,
   getVentanillaSummary,
 } from '@/services/report.service';

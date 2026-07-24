@@ -6,6 +6,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import DescriptionIcon from '@mui/icons-material/Description';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import HistoryIcon from '@mui/icons-material/History';
+import LocationCityIcon from '@mui/icons-material/LocationCity';
 import MenuIcon from '@mui/icons-material/Menu';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import {
@@ -24,6 +25,7 @@ import {
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import ApartmentIcon from '@mui/icons-material/Apartment';
 
 type MenuItem = {
     label: string;
@@ -56,6 +58,16 @@ const menuItems: MenuItem[] = [
         label: 'Registros DMC',
         href: '/dashboard/dmc/registros',
         icon: <DescriptionIcon />,
+    },
+    {
+        label: 'Barrios',
+        href: '/dashboard/territory/barrios',
+        icon: <LocationCityIcon />,
+    },
+    {
+        label: 'comunas',
+        href: '/dashboard/territory/comunas',
+        icon: <ApartmentIcon  />,
     },
     {
         label: 'Exportaciones',
@@ -192,7 +204,8 @@ export default function DashboardMenuDrawer() {
 
                     <List sx={{ p: 1.5 }}>
                         {menuItems.map((item) => {
-                            const selected = pathname === item.href;
+                            const selected =
+                                pathname === item.href || pathname.startsWith(`${item.href}/`);
 
                             return (
                                 <ListItemButton

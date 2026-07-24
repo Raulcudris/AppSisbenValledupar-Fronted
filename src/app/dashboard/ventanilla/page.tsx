@@ -44,6 +44,7 @@ import {
   Typography,
 } from '@mui/material';
 import { ChangeEvent, KeyboardEvent, MouseEvent, useEffect, useState } from 'react';
+
 import LoadingState from '@/components/dashboard/LoadingState';
 import SelectField from '@/components/operational/SelectField';
 import AppSnackbar, {
@@ -61,7 +62,6 @@ import {
   currentRole,
 } from '@/lib/roleAccess';
 import {
-  getBarriosOptions,
   getCategoriasOptions,
   getEstadosSolicitudOptions,
   getSolicitudesOptions,
@@ -84,6 +84,7 @@ import {
   VentanillaRequest,
   VentanillaResponse,
 } from '@/types/operational.types';
+import { getBarriosOptions } from '@/services/territory.service';
 
 type FormState = {
   id?: number;
@@ -322,7 +323,6 @@ function CitizenFrequencyField({ row }: { row: VentanillaResponse }) {
   );
 }
 
-
 function getOptionalRecordValue(row: VentanillaResponse | null, key: string) {
   if (!row) {
     return '-';
@@ -385,12 +385,7 @@ function CitizenDetailDialog({
     : 'Sin visita anterior';
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-    >
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle
         sx={{
           fontWeight: 900,
@@ -713,6 +708,17 @@ export default function VentanillaRegistrosPage() {
     return barrios.find((option) => String(option.id) === String(barrioId))?.label ?? '';
   };
 
+  const getBarrioLabelByIdFromOptions = (
+    options: SelectOption[],
+    barrioId?: string | number | null
+  ) => {
+    if (!barrioId) {
+      return '';
+    }
+
+    return options.find((option) => String(option.id) === String(barrioId))?.label ?? '';
+  };
+
   const buildBackendFilter = (
     baseFilter: VentanillaFilter,
     admin: boolean = isAdminUser,
@@ -769,6 +775,29 @@ export default function VentanillaRegistrosPage() {
 
       setError(message);
       showError(message, 'Error al cargar catálogos');
+    } finally {
+      setCatalogLoading(false);
+    }
+  };
+
+  const refreshBarriosCatalog = async () => {
+    setCatalogLoading(true);
+
+    try {
+      const barriosData = await getBarriosOptions();
+
+      setBarrios(barriosData);
+
+      return barriosData;
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible actualizar el listado de barrios.';
+
+      setError(message);
+      showError(message, 'Error al actualizar barrios');
+
+      return barrios;
     } finally {
       setCatalogLoading(false);
     }
@@ -915,9 +944,12 @@ export default function VentanillaRegistrosPage() {
     });
   };
 
-  const openCreate = () => {
+  const openCreate = async () => {
     setError('');
     clearForm();
+
+    await refreshBarriosCatalog();
+
     setDialogOpen(true);
   };
 
@@ -938,12 +970,18 @@ export default function VentanillaRegistrosPage() {
     closeFormDialog();
   };
 
-  const openEdit = (row: VentanillaResponse) => {
+  const openEdit = async (row: VentanillaResponse) => {
+    const barriosActualizados = await refreshBarriosCatalog();
+
     const barrioId = row.barrioId ? String(row.barrioId) : '';
-    const barrioLabel = row.barrioNombre || getBarrioLabelById(barrioId);
+    const barrioLabel =
+      getBarrioLabelByIdFromOptions(barriosActualizados, barrioId)
+      || row.barrioNombre
+      || getBarrioLabelById(barrioId);
 
     setError('');
     setBarrioInputText(barrioLabel);
+
     setForm({
       id: row.id,
       fecha: row.fecha,
@@ -1156,8 +1194,12 @@ export default function VentanillaRegistrosPage() {
         return;
       }
 
+      const barriosActualizados = await refreshBarriosCatalog();
       const recordBarrioId = record.barrioId ? String(record.barrioId) : '';
-      const recordBarrioLabel = record.barrioNombre || getBarrioLabelById(recordBarrioId);
+      const recordBarrioLabel =
+        getBarrioLabelByIdFromOptions(barriosActualizados, recordBarrioId)
+        || record.barrioNombre
+        || getBarrioLabelById(recordBarrioId);
 
       setForm((current) => ({
         ...current,
@@ -1175,7 +1217,7 @@ export default function VentanillaRegistrosPage() {
       }
 
       showSuccess(
-        'Datos del ciudadano cargados correctamente, incluyendo categoría y condición de extranjero.',
+        'Datos del ciudadano cargados correctamente, incluyendo categoría, barrio actualizado y condición de extranjero.',
         'Ciudadano encontrado'
       );
     } catch (err) {
@@ -2200,6 +2242,10 @@ export default function VentanillaRegistrosPage() {
 
                   <Autocomplete
                     options={barrios}
+                    loading={catalogLoading}
+                    onOpen={() => {
+                      refreshBarriosCatalog();
+                    }}
                     value={
                       barrios.find((option) => String(option.id) === String(form.barrioId)) ?? null
                     }
@@ -2238,6 +2284,7 @@ export default function VentanillaRegistrosPage() {
                     autoHighlight
                     clearOnEscape
                     noOptionsText="No se encontraron barrios"
+                    loadingText="Actualizando barrios..."
                     clearText="Limpiar"
                     openText="Abrir"
                     closeText="Cerrar"
@@ -2247,7 +2294,11 @@ export default function VentanillaRegistrosPage() {
                         label="Barrio"
                         size="small"
                         required
-                        helperText="Escribe letras del barrio y selecciona una opción."
+                        helperText={
+                          catalogLoading
+                            ? 'Actualizando barrios desde el módulo de Barrios...'
+                            : 'Escribe letras del barrio y selecciona una opción.'
+                        }
                       />
                     )}
                   />

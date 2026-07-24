@@ -4,6 +4,8 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import LocationCityIcon from '@mui/icons-material/LocationCity';
+import ApartmentIcon from '@mui/icons-material/Apartment';
 import LockResetIcon from '@mui/icons-material/LockReset';
 import LogoutIcon from '@mui/icons-material/Logout';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -51,6 +53,8 @@ const dashboardIcons: Record<DashboardIconKey, ReactNode> = {
   usuarios: <PeopleIcon />,
   password: <LockResetIcon />,
   reportes: <CloudDownloadIcon />,
+  barrios: <LocationCityIcon />,
+  comunas: <ApartmentIcon />,
 };
 
 type DashboardShellProps = {

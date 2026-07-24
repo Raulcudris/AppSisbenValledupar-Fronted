@@ -16,6 +16,8 @@ export type DashboardIconKey =
   | 'exportaciones'
   | 'usuarios'
   | 'password'
+  | 'barrios'
+  | 'comunas'
   | 'reportes';
 
 export type DashboardMenuItem = {
@@ -79,6 +81,18 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
     href: '/dashboard/dmc',
     iconKey: 'dmc',
     roles: ['CONSULTA'],
+  },
+  {
+    label: 'Barrios',
+    href: '/dashboard/territory/barrios',
+    iconKey: 'barrios',
+    roles: ['ADMIN'],
+  },
+  {
+    label: 'Comunas',
+    href: '/dashboard/territory/comunas',
+    iconKey: 'comunas',
+    roles: ['ADMIN'],
   },
   {
     label: 'Auditoría',
@@ -157,6 +171,22 @@ export const dashboardActions: DashboardActionItem[] = [
     roles: ['CONSULTA'],
   },
   {
+    title: 'Administrar barrios',
+    description: 'Consulta, crea, actualiza, activa e inactiva barrios por comuna.',
+    href: '/dashboard/territory/barrios',
+    buttonLabel: 'Abrir Barrios',
+    iconKey: 'barrios',
+    roles: ['ADMIN'],
+  },
+  {
+    title: 'Administrar comunas',
+    description: 'Consulta, crea, actualiza, activa e inactiva comunas.',
+    href: '/dashboard/territory/comunas',
+    buttonLabel: 'Abrir Comunas',
+    iconKey: 'comunas',
+    roles: ['ADMIN'],
+  },
+  {
     title: 'Revisar Auditoría',
     description: 'Consulta la trazabilidad de ingresos, cambios, registros y exportaciones.',
     href: '/dashboard/auditoria',
@@ -198,6 +228,8 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard/ventanilla/historial-usuario',
     '/dashboard/dmc',
     '/dashboard/dmc/registros',
+    '/dashboard/territory/barrios',
+    '/dashboard/territory/comunas',
     '/dashboard/auditoria',
     '/dashboard/reportes',
     '/dashboard/exportaciones',
@@ -358,4 +390,10 @@ export function canViewUserHistory(role: string | null | undefined = currentRole
   const normalizedRole = normalizeRole(role);
 
   return normalizedRole === 'ADMIN';
+}
+
+export function canManageTerritory(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return ['ADMIN'].includes(normalizedRole);
 }

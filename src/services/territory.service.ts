@@ -99,10 +99,6 @@ export async function deactivateBarrio(id: number) {
   return response.data;
 }
 
-/**
- * Carga todos los barrios activos desde el módulo Territory.
- * No depende de una sola página, para que Ventanilla vea barrios nuevos o actualizados.
- */
 export async function getBarriosOptions(): Promise<SelectOption[]> {
   const pageSize = 100;
   let page = 0;
@@ -146,7 +142,7 @@ export async function searchComunas(filter: ComunaFilter = {}) {
   const response = await apiRequest<ApiResponse<PageResponse<ComunaResponse>>>(
     `/api/territory/comunas${toQueryString({
       page: filter.page ?? 0,
-      size: filter.size ?? 100,
+      size: filter.size ?? 10,
       q: filter.q,
       activo: filter.activo,
       _t: Date.now(),
@@ -208,4 +204,39 @@ export async function deactivateComuna(id: number) {
   );
 
   return response.data;
+}
+
+export async function getComunasOptions(): Promise<SelectOption[]> {
+  const pageSize = 100;
+  let page = 0;
+  let totalPages = 1;
+  const allComunas: ComunaResponse[] = [];
+
+  do {
+    const response = await searchComunas({
+      page,
+      size: pageSize,
+      activo: true,
+    });
+
+    allComunas.push(...(response.content ?? []));
+
+    totalPages = response.totalPages ?? 1;
+    page += 1;
+  } while (page < totalPages);
+
+  const uniqueById = new Map<number, SelectOption>();
+
+  allComunas.forEach((comuna) => {
+    uniqueById.set(comuna.id, {
+      id: comuna.id,
+      label: comuna.codigo
+        ? `${comuna.codigo} - ${comuna.nombre}`
+        : comuna.nombre,
+    });
+  });
+
+  return Array.from(uniqueById.values()).sort((a, b) =>
+    a.label.localeCompare(b.label, 'es')
+  );
 }

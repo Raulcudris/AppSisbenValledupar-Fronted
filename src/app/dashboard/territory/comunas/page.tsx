@@ -1,11 +1,10 @@
 'use client';
 
 import AddIcon from '@mui/icons-material/Add';
-import ApartmentIcon from '@mui/icons-material/Apartment';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
 import FilterListIcon from '@mui/icons-material/FilterList';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import RestoreIcon from '@mui/icons-material/Restore';
 import SearchIcon from '@mui/icons-material/Search';
@@ -16,19 +15,19 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
-  FormControlLabel,
   IconButton,
   InputAdornment,
+  Menu,
   MenuItem,
   Snackbar,
   Stack,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -36,12 +35,15 @@ import {
   TablePagination,
   TableRow,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, MouseEvent, useEffect, useMemo, useState } from 'react';
 
+import AccessMessage from '@/components/dashboard/AccessMessage';
 import LoadingState from '@/components/dashboard/LoadingState';
+import CrudPageHeader from '@/components/operational/CrudPageHeader';
+import { ApiClientError } from '@/lib/apiClient';
+import { currentRole } from '@/lib/roleAccess';
 import {
   activateComuna,
   createComuna,
@@ -50,7 +52,11 @@ import {
   updateComuna,
 } from '@/services/territory.service';
 import { PageResponse } from '@/types/api.types';
-import { ComunaResponse, TerritoryStatusFilter } from '@/types/territory.types';
+import {
+  ComunaFilter,
+  ComunaRequest,
+  ComunaResponse,
+} from '@/types/territory.types';
 
 type FormState = {
   id?: number;
@@ -69,10 +75,14 @@ type SnackbarState = {
   severity: SnackbarSeverity;
 };
 
-type ConfirmAction = {
-  open: boolean;
-  row: ComunaResponse | null;
-  action: 'ACTIVATE' | 'DEACTIVATE' | null;
+type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
+
+type ConfirmAction = 'ACTIVATE' | 'DEACTIVATE';
+
+const initialSnackbar: SnackbarState = {
+  open: false,
+  message: '',
+  severity: 'success',
 };
 
 const initialForm: FormState = {
@@ -83,167 +93,376 @@ const initialForm: FormState = {
   activo: true,
 };
 
-const initialSnackbar: SnackbarState = {
-  open: false,
-  message: '',
-  severity: 'success',
-};
-
-const initialConfirmAction: ConfirmAction = {
-  open: false,
-  row: null,
-  action: null,
-};
-
-function statusToActivo(status: TerritoryStatusFilter) {
-  if (status === 'ACTIVE') return true;
-  if (status === 'INACTIVE') return false;
-  return undefined;
+function normalizeSearchText(value?: string | number | boolean | null) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
-function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+function matchesByFirstLetters(
+  value: string | number | boolean | null | undefined,
+  searchValue: string
+) {
+  const searchText = normalizeSearchText(searchValue);
+
+  if (!searchText) {
+    return true;
+  }
+
+  const normalizedValue = normalizeSearchText(value);
+
+  if (!normalizedValue) {
+    return false;
+  }
+
+  return normalizedValue
+    .split(/[\s\-_.]+/)
+    .filter(Boolean)
+    .some((word) => word.startsWith(searchText));
+}
+
+function matchesAnyByFirstLetters(
+  searchValue: string,
+  values: Array<string | number | boolean | null | undefined>
+) {
+  const searchText = normalizeSearchText(searchValue);
+
+  if (!searchText) {
+    return true;
+  }
+
+  return values.some((value) => matchesByFirstLetters(value, searchText));
 }
 
 function normalizeText(value: string) {
-  return value.trim().toUpperCase();
+  return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
-function formatEstrato(value: number | null | undefined) {
-  return value ? `Estrato ${value}` : 'Sin estrato';
-}
-
-function truncateText(value: string | null | undefined, maxLength = 90) {
-  const safeValue = value?.trim();
-
-  if (!safeValue) {
-    return 'Sin descripción';
+function getActivoFromStatus(status: StatusFilter) {
+  if (status === 'ACTIVE') {
+    return true;
   }
 
-  if (safeValue.length <= maxLength) {
-    return safeValue;
+  if (status === 'INACTIVE') {
+    return false;
   }
 
-  return `${safeValue.slice(0, maxLength)}...`;
+  return undefined;
 }
 
-function SummaryCard({
-  title,
-  value,
-  helper,
-}: {
-  title: string;
-  value: number;
-  helper: string;
-}) {
-  return (
-    <Card
-      sx={{
-        borderRadius: 4,
-        border: '1px solid',
-        borderColor: 'divider',
-        height: '100%',
-      }}
-    >
-      <CardContent>
-        <Typography
-          color="text.secondary"
-          sx={{
-            fontSize: 12,
-            fontWeight: 900,
-            textTransform: 'uppercase',
-          }}
-        >
-          {title}
-        </Typography>
+function canManageTerritory() {
+  const role = currentRole();
 
-        <Typography variant="h4" sx={{ fontWeight: 900, mt: 0.5 }}>
-          {value}
-        </Typography>
-
-        <Typography color="text.secondary" sx={{ fontSize: 13, mt: 0.5 }}>
-          {helper}
-        </Typography>
-      </CardContent>
-    </Card>
-  );
+  return role === 'ADMIN' || role === 'SUPERVISOR';
 }
 
 export default function ComunasPage() {
+  const [filter, setFilter] = useState<ComunaFilter>({
+    page: 0,
+    size: 10,
+  });
+
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [pageData, setPageData] = useState<PageResponse<ComunaResponse> | null>(null);
 
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(10);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<TerritoryStatusFilter>('ALL');
-
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [processingAction, setProcessingAction] = useState(false);
+  const [restricted, setRestricted] = useState(false);
   const [error, setError] = useState('');
-
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(initialForm);
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(initialConfirmAction);
-  const [feedback, setFeedback] = useState<SnackbarState>(initialSnackbar);
 
-  const rows = pageData?.content ?? [];
+  const [tableSearch, setTableSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
+  const [menuRecord, setMenuRecord] = useState<ComunaResponse | null>(null);
+
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [confirmRecord, setConfirmRecord] = useState<ComunaResponse | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>('DEACTIVATE');
+  const [processingAction, setProcessingAction] = useState(false);
+
+  const [snackbar, setSnackbar] = useState<SnackbarState>(initialSnackbar);
+
+  const allowWrite = useMemo(() => canManageTerritory(), []);
+
   const totalRecords = pageData?.totalElements ?? 0;
-  const currentPage = pageData?.page ?? page;
-  const currentSize = pageData?.size ?? size;
+  const currentPage = pageData?.page ?? 0;
+  const currentSize = pageData?.size ?? 10;
+  const menuOpen = Boolean(menuAnchorEl);
 
-  const pageActiveCount = useMemo(() => {
-    return rows.filter((row) => row.activo).length;
-  }, [rows]);
+ const visibleRows = (pageData?.content ?? []).filter((row) =>
+  matchesAnyByFirstLetters(tableSearch, [
+    row.codigo,
+    row.nombre,
+    row.estrato ? `estrato ${row.estrato}` : '',
+    row.descripcion,
+    row.activo ? 'activo' : 'inactivo',
+  ])
+);
 
-  const pageInactiveCount = useMemo(() => {
-    return rows.filter((row) => !row.activo).length;
-  }, [rows]);
+  const visibleSelectedCount = visibleRows.filter((row) =>
+    selectedIds.includes(row.id)
+  ).length;
 
-  const showFeedback = (message: string, severity: SnackbarSeverity = 'success') => {
-    setFeedback({
+  const allVisibleSelected = visibleRows.length > 0
+    && visibleSelectedCount === visibleRows.length;
+
+  const showSnackbar = (
+    message: string,
+    severity: SnackbarSeverity = 'success'
+  ) => {
+    setSnackbar({
       open: true,
       message,
       severity,
     });
   };
 
-  const closeFeedback = () => {
-    setFeedback(initialSnackbar);
+  const closeSnackbar = () => {
+    setSnackbar(initialSnackbar);
   };
 
   const load = async (
-    nextPage: number = page,
-    nextSize: number = size,
-    nextStatus: TerritoryStatusFilter = statusFilter
+    customFilter: ComunaFilter = filter,
+    customStatus: StatusFilter = statusFilter
   ) => {
     setLoading(true);
+    setRestricted(false);
     setError('');
 
     try {
       const response = await searchComunas({
-        page: nextPage,
-        size: nextSize,
-        q: search,
-        activo: statusToActivo(nextStatus),
+        ...customFilter,
+        activo: getActivoFromStatus(customStatus),
       });
 
       setPageData(response);
-      setPage(response.page ?? nextPage);
-      setSize(response.size ?? nextSize);
+      setFilter(customFilter);
+      setStatusFilter(customStatus);
+      setSelectedIds([]);
     } catch (err) {
-      const message = getErrorMessage(err, 'No fue posible consultar las comunas.');
-      setError(message);
-      showFeedback(message, 'error');
+      if (err instanceof ApiClientError && err.status === 403) {
+        setRestricted(true);
+      } else {
+        const message = err instanceof Error
+          ? err.message
+          : 'No fue posible consultar las comunas.';
+
+        setError(message);
+        showSnackbar(message, 'error');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    load(0, size, statusFilter);
+    load({
+      page: 0,
+      size: 10,
+    }, 'ALL');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const updateFilter = (key: keyof ComunaFilter, value: string) => {
+    setFilter((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const search = () => {
+    load({
+      ...filter,
+      page: 0,
+    }, statusFilter);
+  };
+
+  const clearFilters = () => {
+    const cleared = {
+      page: 0,
+      size: filter.size ?? 10,
+    };
+
+    setFilter(cleared);
+    setStatusFilter('ALL');
+    setTableSearch('');
+    setSelectedIds([]);
+    load(cleared, 'ALL');
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    const nextStatus = (value || 'ALL') as StatusFilter;
+
+    load({
+      ...filter,
+      page: 0,
+    }, nextStatus);
+  };
+
+  const handleChangePage = (_: unknown, newPage: number) => {
+    load({
+      ...filter,
+      page: newPage,
+    }, statusFilter);
+  };
+
+  const handleChangeRowsPerPage = (event: ChangeEvent<HTMLInputElement>) => {
+    load({
+      ...filter,
+      page: 0,
+      size: Number(event.target.value),
+    }, statusFilter);
+  };
+
+  const openCreate = () => {
+    setError('');
+    setForm(initialForm);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (row: ComunaResponse) => {
+    setError('');
+    setForm({
+      id: row.id,
+      codigo: row.codigo ?? '',
+      nombre: row.nombre ?? '',
+      estrato: row.estrato ? String(row.estrato) : '',
+      descripcion: row.descripcion ?? '',
+      activo: row.activo,
+    });
+    setDialogOpen(true);
+  };
+
+  const closeFormDialog = () => {
+    setDialogOpen(false);
+    setForm(initialForm);
+    setError('');
+  };
+
+  const handleFormDialogClose = (
+    _: unknown,
+    reason?: 'backdropClick' | 'escapeKeyDown'
+  ) => {
+    if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+      return;
+    }
+
+    closeFormDialog();
+  };
+
+  const openRowMenu = (
+    event: MouseEvent<HTMLButtonElement>,
+    row: ComunaResponse
+  ) => {
+    setMenuAnchorEl(event.currentTarget);
+    setMenuRecord(row);
+  };
+
+  const closeRowMenu = () => {
+    setMenuAnchorEl(null);
+    setMenuRecord(null);
+  };
+
+  const handleMenuEdit = () => {
+    if (!menuRecord) {
+      return;
+    }
+
+    const record = menuRecord;
+    closeRowMenu();
+    openEdit(record);
+  };
+
+  const openConfirmDialog = (row: ComunaResponse, action: ConfirmAction) => {
+    setConfirmRecord(row);
+    setConfirmAction(action);
+    setConfirmDialogOpen(true);
+  };
+
+  const handleMenuStatus = () => {
+    if (!menuRecord) {
+      return;
+    }
+
+    const record = menuRecord;
+    closeRowMenu();
+    openConfirmDialog(record, record.activo ? 'DEACTIVATE' : 'ACTIVATE');
+  };
+
+  const closeConfirmDialog = () => {
+    if (processingAction) {
+      return;
+    }
+
+    setConfirmDialogOpen(false);
+    setConfirmRecord(null);
+  };
+
+  const confirmStatusAction = async () => {
+    if (!confirmRecord) {
+      return;
+    }
+
+    setProcessingAction(true);
+    setError('');
+
+    try {
+      if (confirmAction === 'ACTIVATE') {
+        await activateComuna(confirmRecord.id);
+        showSnackbar('Comuna activada correctamente.', 'success');
+      } else {
+        await deactivateComuna(confirmRecord.id);
+        showSnackbar('Comuna inactivada correctamente.', 'success');
+      }
+
+      setConfirmDialogOpen(false);
+      setConfirmRecord(null);
+
+      await load({
+        ...filter,
+        page: 0,
+      }, statusFilter);
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible cambiar el estado de la comuna.';
+
+      setError(message);
+      showSnackbar(message, 'error');
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds((current) => {
+      if (current.includes(id)) {
+        return current.filter((item) => item !== id);
+      }
+
+      return [...current, id];
+    });
+  };
+
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedIds((current) =>
+        current.filter((id) => !visibleRows.some((row) => row.id === id))
+      );
+
+      return;
+    }
+
+    setSelectedIds((current) => {
+      const ids = visibleRows.map((row) => row.id);
+      const merged = new Set([...current, ...ids]);
+
+      return Array.from(merged);
+    });
+  };
 
   const updateForm = (key: keyof FormState, value: string | boolean) => {
     setForm((current) => ({
@@ -252,170 +471,76 @@ export default function ComunasPage() {
     }));
   };
 
-  const openCreateDialog = () => {
-    setForm(initialForm);
-    setDialogOpen(true);
-  };
-
-  const openEditDialog = (row: ComunaResponse) => {
-    setForm({
-      id: row.id,
-      codigo: row.codigo ?? '',
-      nombre: row.nombre ?? '',
-      estrato: row.estrato ? String(row.estrato) : '',
-      descripcion: row.descripcion ?? '',
-      activo: Boolean(row.activo),
-    });
-
-    setDialogOpen(true);
-  };
-
-  const closeDialog = () => {
-    if (saving) return;
-
-    setDialogOpen(false);
-    setForm(initialForm);
-  };
-
   const validateForm = () => {
     if (!form.nombre.trim()) {
       return 'El nombre de la comuna es obligatorio.';
     }
 
     if (form.nombre.trim().length > 120) {
-      return 'El nombre de la comuna no puede superar 120 caracteres.';
+      return 'El nombre no puede superar los 120 caracteres.';
     }
 
     if (!form.estrato) {
-      return 'El estrato de la comuna es obligatorio.';
+      return 'Selecciona el estrato principal.';
     }
 
-    const estratoNumber = Number(form.estrato);
+    const estrato = Number(form.estrato);
 
-    if (!Number.isInteger(estratoNumber) || estratoNumber < 1 || estratoNumber > 6) {
-      return 'El estrato de la comuna debe estar entre 1 y 6.';
+    if (!Number.isInteger(estrato) || estrato < 1 || estrato > 6) {
+      return 'El estrato debe estar entre 1 y 6.';
     }
 
     if (form.descripcion.trim().length > 1000) {
-      return 'La descripción no puede superar 1000 caracteres.';
+      return 'La descripción no puede superar los 1000 caracteres.';
     }
 
     return '';
   };
 
+  const buildRequest = (): ComunaRequest => ({
+    codigo: form.codigo || undefined,
+    nombre: normalizeText(form.nombre),
+    estrato: Number(form.estrato),
+    descripcion: form.descripcion.trim() || null,
+    activo: form.activo,
+  });
+
   const save = async () => {
+    setError('');
+
     const validationMessage = validateForm();
 
     if (validationMessage) {
-      showFeedback(validationMessage, 'warning');
+      setError(validationMessage);
+      showSnackbar(validationMessage, 'warning');
       return;
     }
 
-    setSaving(true);
-
     try {
-      const payload = {
-        nombre: normalizeText(form.nombre),
-        estrato: Number(form.estrato),
-        descripcion: form.descripcion.trim() || null,
-        activo: form.activo,
-      };
-
       if (form.id) {
-        await updateComuna(form.id, payload);
-        showFeedback('Comuna actualizada correctamente.');
+        await updateComuna(form.id, buildRequest());
+
+        showSnackbar('Comuna actualizada correctamente.', 'success');
       } else {
-        await createComuna(payload);
-        showFeedback('Comuna creada correctamente.');
+        await createComuna(buildRequest());
+
+        showSnackbar('Comuna creada correctamente.', 'success');
       }
 
       setDialogOpen(false);
       setForm(initialForm);
 
-      await load(currentPage, currentSize, statusFilter);
-    } catch (err) {
-      showFeedback(getErrorMessage(err, 'No fue posible guardar la comuna.'), 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const clearFilters = async () => {
-    setSearch('');
-    setStatusFilter('ALL');
-    setPage(0);
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const response = await searchComunas({
+      await load({
+        ...filter,
         page: 0,
-        size,
-        activo: undefined,
-      });
-
-      setPageData(response);
-      setPage(response.page ?? 0);
-      setSize(response.size ?? size);
+      }, statusFilter);
     } catch (err) {
-      const message = getErrorMessage(err, 'No fue posible consultar las comunas.');
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible guardar la comuna.';
+
       setError(message);
-      showFeedback(message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const changePage = async (_event: unknown, nextPage: number) => {
-    setPage(nextPage);
-    await load(nextPage, currentSize, statusFilter);
-  };
-
-  const changeRowsPerPage = async (event: ChangeEvent<HTMLInputElement>) => {
-    const nextSize = Number(event.target.value);
-
-    setSize(nextSize);
-    setPage(0);
-
-    await load(0, nextSize, statusFilter);
-  };
-
-  const openConfirmAction = (row: ComunaResponse, action: 'ACTIVATE' | 'DEACTIVATE') => {
-    setConfirmAction({
-      open: true,
-      row,
-      action,
-    });
-  };
-
-  const closeConfirmAction = () => {
-    if (processingAction) return;
-
-    setConfirmAction(initialConfirmAction);
-  };
-
-  const confirmStatusAction = async () => {
-    if (!confirmAction.row || !confirmAction.action) return;
-
-    setProcessingAction(true);
-
-    try {
-      if (confirmAction.action === 'ACTIVATE') {
-        await activateComuna(confirmAction.row.id);
-        showFeedback('Comuna activada correctamente.');
-      } else {
-        await deactivateComuna(confirmAction.row.id);
-        showFeedback('Comuna inactivada correctamente.');
-      }
-
-      setConfirmAction(initialConfirmAction);
-
-      await load(currentPage, currentSize, statusFilter);
-    } catch (err) {
-      showFeedback(getErrorMessage(err, 'No fue posible cambiar el estado de la comuna.'), 'error');
-    } finally {
-      setProcessingAction(false);
+      showSnackbar(message, 'error');
     }
   };
 
@@ -425,108 +550,81 @@ export default function ComunasPage() {
 
   return (
     <Stack spacing={3}>
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: {
-            xs: 'column',
-            md: 'row',
-          },
-          justifyContent: 'space-between',
-          gap: 2,
-        }}
-      >
-        <Box>
-          <Stack direction="row" spacing={1.2} sx={{ alignItems: 'center' }}>
-            <ApartmentIcon color="primary" />
+      <CrudPageHeader
+        title="Comunas"
+        subtitle="Consulta, filtra, crea y actualiza las comunas del territorio."
+        primaryAction={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={openCreate}
+            disabled={!allowWrite}
+          >
+            Nueva comuna
+          </Button>
+        }
+      />
 
-            <Typography variant="h4" sx={{ fontWeight: 900 }}>
-              Administración de comunas
-            </Typography>
-          </Stack>
+      {!allowWrite ? (
+        <Alert severity="info">
+          Tu rol permite consultar, pero no crear ni actualizar comunas.
+        </Alert>
+      ) : null}
 
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-            Consulta, creación, modificación e inactivación lógica de comunas.
-          </Typography>
-        </Box>
+      {restricted ? <AccessMessage /> : null}
 
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateDialog}>
-          Nueva comuna
-        </Button>
-      </Box>
+      {error ? (
+        <Alert severity="error">
+          {error}
+        </Alert>
+      ) : null}
 
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: {
-            xs: '1fr',
-            md: 'repeat(3, 1fr)',
-          },
-          gap: 2,
-        }}
-      >
-        <SummaryCard
-          title="Total encontrado"
-          value={totalRecords}
-          helper="Registros según filtros aplicados"
-        />
-
-        <SummaryCard
-          title="Activas en página"
-          value={pageActiveCount}
-          helper="Comunas activas visibles actualmente"
-        />
-
-        <SummaryCard
-          title="Inactivas en página"
-          value={pageInactiveCount}
-          helper="Comunas inactivas visibles actualmente"
-        />
-      </Box>
-
-      {error ? <Alert severity="error">{error}</Alert> : null}
-
-      <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent>
+      <Card sx={{ borderRadius: 3 }}>
+        <CardContent sx={{ p: 3 }}>
           <Stack spacing={2}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <FilterListIcon color="primary" />
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1}
+              sx={{
+                alignItems: { xs: 'flex-start', md: 'center' },
+                justifyContent: 'space-between',
+              }}
+            >
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Buscar comunas
+                </Typography>
 
-              <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                Filtros de búsqueda
-              </Typography>
-            </Box>
+                <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                  Puedes buscar por código, nombre, estrato o descripción.
+                </Typography>
+              </Box>
+
+              <Chip
+                label={`${totalRecords} comuna${totalRecords === 1 ? '' : 's'}`}
+                color="primary"
+                variant="outlined"
+              />
+            </Stack>
+
+            <Divider />
 
             <Box
               sx={{
                 display: 'grid',
                 gridTemplateColumns: {
                   xs: '1fr',
-                  md: '1.4fr 1fr auto auto',
+                  md: 'repeat(4, 1fr)',
                 },
                 gap: 2,
-                alignItems: 'center',
               }}
             >
               <TextField
-                label="Buscar código, nombre o descripción"
+                label="Buscar"
                 size="small"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    load(0, currentSize, statusFilter);
-                  }
-                }}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
+                value={filter.q ?? ''}
+                onChange={(event) => updateFilter('q', event.target.value)}
+                placeholder="Código, nombre o descripción"
               />
 
               <TextField
@@ -534,151 +632,240 @@ export default function ComunasPage() {
                 label="Estado"
                 size="small"
                 value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as TerritoryStatusFilter)
-                }
+                onChange={(event) => handleStatusFilterChange(event.target.value)}
               >
                 <MenuItem value="ALL">Todos</MenuItem>
-                <MenuItem value="ACTIVE">Activas</MenuItem>
-                <MenuItem value="INACTIVE">Inactivas</MenuItem>
+                <MenuItem value="ACTIVE">Activos</MenuItem>
+                <MenuItem value="INACTIVE">Inactivos</MenuItem>
               </TextField>
 
-              <Button
-                variant="contained"
-                startIcon={<SearchIcon />}
-                onClick={() => load(0, currentSize, statusFilter)}
-                disabled={loading}
-              >
-                Consultar
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="contained"
+                  startIcon={<SearchIcon />}
+                  onClick={search}
+                  disabled={loading}
+                >
+                  Buscar
+                </Button>
 
-              <Button
-                variant="outlined"
-                color="inherit"
-                startIcon={<RestartAltIcon />}
-                onClick={clearFilters}
-                disabled={loading}
-              >
-                Limpiar
-              </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<RestartAltIcon />}
+                  onClick={clearFilters}
+                  disabled={loading}
+                >
+                  Limpiar
+                </Button>
+              </Stack>
             </Box>
           </Stack>
         </CardContent>
       </Card>
 
-      <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent>
+      <Card
+        sx={{
+          borderRadius: 4,
+          overflow: 'hidden',
+          border: '1px solid',
+          borderColor: 'divider',
+          boxShadow: '0 16px 40px rgba(15, 23, 42, 0.08)',
+        }}
+      >
+        <CardContent sx={{ p: 0 }}>
           <Box
             sx={{
+              px: { xs: 2, md: 2.5 },
+              py: 2,
               display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
               gap: 2,
-              mb: 2,
+              alignItems: { xs: 'stretch', sm: 'center' },
+              justifyContent: 'space-between',
+              flexDirection: { xs: 'column', sm: 'row' },
+              bgcolor: 'background.paper',
             }}
           >
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                Comunas registradas
-              </Typography>
+            <TextField
+              placeholder="Buscar código, nombre, estrato, descripción..."
+              size="small"
+              value={tableSearch}
+              onChange={(event) => setTableSearch(event.target.value)}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              sx={{
+                width: { xs: '100%', sm: 520, md: 620 },
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2.5,
+                  bgcolor: '#ffffff',
+                },
+              }}
+            />
 
-              <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                Total encontrado: {totalRecords}
-              </Typography>
-            </Box>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Chip
+                label={`${visibleRows.length} visible${visibleRows.length === 1 ? '' : 's'}`}
+                size="small"
+                color="primary"
+                variant="outlined"
+              />
 
-            {loading ? <Chip label="Actualizando..." color="info" /> : null}
+              {visibleSelectedCount > 0 ? (
+                <Chip
+                  label={`${visibleSelectedCount} seleccionado${visibleSelectedCount === 1 ? '' : 's'}`}
+                  size="small"
+                  color="success"
+                  variant="outlined"
+                />
+              ) : null}
+
+              <IconButton
+                onClick={search}
+                disabled={loading}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                }}
+              >
+                <FilterListIcon />
+              </IconButton>
+            </Stack>
           </Box>
 
-          <Divider sx={{ mb: 2 }} />
-
           <Box sx={{ overflowX: 'auto' }}>
-            <Table size="small" sx={{ minWidth: 980 }}>
+            <Table
+              sx={{
+                minWidth: 980,
+                '& .MuiTableCell-root': {
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                },
+                '& .MuiTableHead-root .MuiTableCell-root': {
+                  bgcolor: '#f8fafc',
+                  color: 'text.secondary',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  py: 1.6,
+                },
+                '& .MuiTableBody-root .MuiTableCell-root': {
+                  py: 1.7,
+                  fontSize: 14,
+                },
+                '& .MuiTableRow-root:hover': {
+                  bgcolor: '#f8fafc',
+                },
+              }}
+            >
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 900 }}>Código</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Nombre de la comuna</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 900 }}>
-                    Estrato
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      size="small"
+                      checked={allVisibleSelected}
+                      indeterminate={visibleSelectedCount > 0 && !allVisibleSelected}
+                      onChange={toggleAllVisible}
+                    />
                   </TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Descripción</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 900 }}>
-                    Estado
-                  </TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 900 }}>
-                    Acciones
-                  </TableCell>
+                  <TableCell>Código</TableCell>
+                  <TableCell>Nombre</TableCell>
+                  <TableCell>Estrato</TableCell>
+                  <TableCell>Descripción</TableCell>
+                  <TableCell>Estado</TableCell>
+                  <TableCell align="center">Acciones</TableCell>
                 </TableRow>
               </TableHead>
 
               <TableBody>
-                {rows.map((row) => (
+                {visibleRows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell sx={{ fontWeight: 900 }}>{row.codigo}</TableCell>
-
-                    <TableCell sx={{ fontWeight: 800 }}>{row.nombre}</TableCell>
-
-                    <TableCell align="center">
-                      <Chip
+                    <TableCell padding="checkbox">
+                      <Checkbox
                         size="small"
-                        label={formatEstrato(row.estrato)}
-                        color={row.estrato ? 'primary' : 'default'}
-                        variant="outlined"
+                        checked={selectedIds.includes(row.id)}
+                        onChange={() => toggleSelected(row.id)}
                       />
                     </TableCell>
 
-                    <TableCell sx={{ maxWidth: 320 }}>
-                      <Typography
-                        color={row.descripcion ? 'text.primary' : 'text.secondary'}
-                        sx={{ fontSize: 13 }}
-                      >
-                        {truncateText(row.descripcion)}
+                    <TableCell>
+                      <Chip
+                        label={row.codigo || '-'}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        sx={{ fontWeight: 700 }}
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 700, minWidth: 220 }}>
+                        {row.nombre || 'Sin nombre'}
                       </Typography>
                     </TableCell>
 
-                    <TableCell align="center">
+                    <TableCell>
                       <Chip
+                        label={row.estrato ? `Estrato ${row.estrato}` : 'Sin estrato'}
                         size="small"
-                        label={row.activo ? 'Activa' : 'Inactiva'}
-                        color={row.activo ? 'success' : 'default'}
-                        variant={row.activo ? 'filled' : 'outlined'}
+                        variant="outlined"
+                        sx={{ fontWeight: 700 }}
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography color="text.secondary" sx={{ minWidth: 260, fontSize: 13 }}>
+                        {row.descripcion || 'Sin descripción'}
+                      </Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      <Chip
+                        label={row.activo ? 'Activo' : 'Inactivo'}
+                        size="small"
+                        color={row.activo ? 'success' : 'warning'}
+                        variant="outlined"
+                        sx={{ fontWeight: 700 }}
                       />
                     </TableCell>
 
                     <TableCell align="center">
-                      <Tooltip title="Editar comuna">
-                        <IconButton color="info" onClick={() => openEditDialog(row)}>
-                          <EditIcon />
+                      {allowWrite ? (
+                        <IconButton
+                          onClick={(event) => openRowMenu(event, row)}
+                          sx={{
+                            borderRadius: 2,
+                            color: 'text.secondary',
+                          }}
+                        >
+                          <MoreVertIcon />
                         </IconButton>
-                      </Tooltip>
-
-                      {row.activo ? (
-                        <Tooltip title="Inactivar comuna">
-                          <IconButton
-                            color="warning"
-                            onClick={() => openConfirmAction(row, 'DEACTIVATE')}
-                          >
-                            <ToggleOffIcon />
-                          </IconButton>
-                        </Tooltip>
                       ) : (
-                        <Tooltip title="Reactivar comuna">
-                          <IconButton
-                            color="success"
-                            onClick={() => openConfirmAction(row, 'ACTIVATE')}
-                          >
-                            <RestoreIcon />
-                          </IconButton>
-                        </Tooltip>
+                        <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+                          Solo lectura
+                        </Typography>
                       )}
                     </TableCell>
                   </TableRow>
                 ))}
 
-                {!rows.length ? (
+                {!visibleRows.length ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 5 }}>
-                      No se encontraron comunas con los filtros seleccionados.
+                    <TableCell colSpan={7}>
+                      <Box sx={{ py: 5, textAlign: 'center' }}>
+                        <Typography variant="h6">
+                          No hay comunas para mostrar
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ mt: 1 }}>
+                          Intenta limpiar los filtros o realizar una nueva búsqueda.
+                        </Typography>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ) : null}
@@ -690,216 +877,333 @@ export default function ComunasPage() {
             component="div"
             count={totalRecords}
             page={currentPage}
+            onPageChange={handleChangePage}
             rowsPerPage={currentSize}
-            onPageChange={changePage}
-            onRowsPerPageChange={changeRowsPerPage}
-            rowsPerPageOptions={[10, 20, 50, 100]}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[10, 20, 50]}
             labelRowsPerPage="Filas por página"
+            labelDisplayedRows={({ from, to, count }) =>
+              `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
+            }
+            sx={{
+              borderTop: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+            }}
           />
+
+          <Menu
+            anchorEl={menuAnchorEl}
+            open={menuOpen}
+            onClose={closeRowMenu}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+            slotProps={{
+              paper: {
+                sx: {
+                  mt: 1,
+                  minWidth: 190,
+                  borderRadius: 3,
+                  boxShadow: '0 16px 40px rgba(15, 23, 42, 0.16)',
+                },
+              },
+            }}
+          >
+            <MenuItem
+              onClick={handleMenuEdit}
+              sx={{
+                gap: 1.5,
+                color: 'info.main',
+                fontWeight: 700,
+              }}
+            >
+              <EditIcon fontSize="small" />
+              Modificar
+            </MenuItem>
+
+            <MenuItem
+              onClick={handleMenuStatus}
+              sx={{
+                gap: 1.5,
+                color: menuRecord?.activo ? 'error.main' : 'success.main',
+                fontWeight: 700,
+              }}
+            >
+              {menuRecord?.activo ? (
+                <ToggleOffIcon fontSize="small" />
+              ) : (
+                <RestoreIcon fontSize="small" />
+              )}
+              {menuRecord?.activo ? 'Inactivar' : 'Activar'}
+            </MenuItem>
+          </Menu>
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onClose={closeDialog} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ pb: 1.5 }}>
-          <Stack direction="row" spacing={1.4} sx={{ alignItems: 'center' }}>
-            <Box
-              sx={{
-                width: 42,
-                height: 42,
-                borderRadius: 3,
-                bgcolor: 'primary.main',
-                color: 'primary.contrastText',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <ApartmentIcon />
-            </Box>
-
+      <Dialog
+        open={dialogOpen}
+        onClose={handleFormDialogClose}
+        fullScreen
+      >
+        <DialogTitle
+          sx={{
+            px: { xs: 2, md: 4 },
+            py: 2,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
             <Box>
-              <Typography sx={{ fontWeight: 900, fontSize: 20 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
                 {form.id ? 'Editar comuna' : 'Nueva comuna'}
               </Typography>
 
-              <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                El código se genera automáticamente en formato C001, C002, C003.
+              <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                Completa la información territorial de la comuna.
               </Typography>
             </Box>
-          </Stack>
-        </DialogTitle>
 
-        <DialogContent dividers>
-          <Stack spacing={2.5} sx={{ pt: 1 }}>
-            <Box>
-              <Typography sx={{ fontWeight: 900, mb: 1 }}>
-                Información básica
-              </Typography>
-
-              <Stack spacing={2}>
-                <TextField
-                  label="Código de la comuna"
-                  size="small"
-                  value={form.codigo || (form.id ? '' : 'Se generará automáticamente')}
-                  disabled
-                  helperText={
-                    form.id
-                      ? 'El código no se modifica para conservar la trazabilidad.'
-                      : 'El backend asignará el siguiente código disponible.'
-                  }
-                />
-
-                <TextField
-                  label="Nombre de la comuna"
-                  size="small"
-                  required
-                  value={form.nombre}
-                  onChange={(event) => updateForm('nombre', event.target.value.toUpperCase())}
-                  autoFocus
-                  helperText="Nombre oficial de la comuna."
-                  slotProps={{
-                    htmlInput: {
-                      maxLength: 120,
-                    },
-                  }}
-                />
-
-                <TextField
-                  select
-                  label="Estrato de la comuna"
-                  size="small"
-                  required
-                  value={form.estrato}
-                  onChange={(event) => updateForm('estrato', event.target.value)}
-                  helperText="Selecciona un solo estrato principal para la comuna."
-                >
-                  <MenuItem value="">Seleccione un estrato</MenuItem>
-
-                  {[1, 2, 3, 4, 5, 6].map((estrato) => (
-                    <MenuItem key={estrato} value={String(estrato)}>
-                      Estrato {estrato}
-                    </MenuItem>
-                  ))}
-                </TextField>
-
-                <TextField
-                  label="Descripción"
-                  size="small"
-                  value={form.descripcion}
-                  onChange={(event) => updateForm('descripcion', event.target.value)}
-                  multiline
-                  minRows={3}
-                  helperText={`${form.descripcion.trim().length}/1000 caracteres. Describe características generales o referencias de la comuna.`}
-                  slotProps={{
-                    htmlInput: {
-                      maxLength: 1000,
-                    },
-                  }}
-                />
-              </Stack>
-            </Box>
-
-            <Box
+            <IconButton
+              onClick={closeFormDialog}
               sx={{
                 border: '1px solid',
                 borderColor: 'divider',
-                borderRadius: 3,
-                p: 2,
-                bgcolor: '#F8FBFF',
+                borderRadius: 2,
               }}
             >
-              <Typography sx={{ fontWeight: 900, mb: 0.5 }}>
-                Estado del registro
-              </Typography>
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
 
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.activo}
-                    onChange={(event) => updateForm('activo', event.target.checked)}
+        <DialogContent
+          sx={{
+            p: { xs: 2, md: 4 },
+            bgcolor: '#f8fafc',
+          }}
+        >
+          <Stack
+            spacing={3}
+            sx={{
+              maxWidth: 1100,
+              mx: 'auto',
+              pt: 1,
+            }}
+          >
+            <Card
+              sx={{
+                borderRadius: 4,
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      md: 'repeat(2, 1fr)',
+                    },
+                    gap: 2,
+                  }}
+                >
+                  <TextField
+                    label="Código"
+                    size="small"
+                    value={form.codigo || 'Se genera automáticamente'}
+                    disabled
+                    helperText="El código se asigna automáticamente desde el backend."
                   />
-                }
-                label={form.activo ? 'Comuna activa' : 'Comuna inactiva'}
-              />
 
-              <Alert severity="info" icon={<InfoOutlinedIcon />} sx={{ mt: 1 }}>
-                Las comunas inactivas se conservan para historial, pero no deberían usarse en nuevos registros.
-              </Alert>
-            </Box>
+                  <TextField
+                    label="Nombre de la comuna"
+                    size="small"
+                    required
+                    value={form.nombre}
+                    onChange={(event) => updateForm('nombre', event.target.value)}
+                    slotProps={{
+                      htmlInput: {
+                        maxLength: 120,
+                      },
+                    }}
+                  />
+
+                  <TextField
+                    select
+                    label="Estrato principal"
+                    size="small"
+                    required
+                    value={form.estrato}
+                    onChange={(event) => updateForm('estrato', event.target.value)}
+                  >
+                    <MenuItem value="">Seleccione un estrato</MenuItem>
+
+                    {[1, 2, 3, 4, 5, 6].map((estrato) => (
+                      <MenuItem key={estrato} value={String(estrato)}>
+                        Estrato {estrato}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField
+                    select
+                    label="Estado"
+                    size="small"
+                    value={form.activo ? 'ACTIVE' : 'INACTIVE'}
+                    onChange={(event) => updateForm('activo', event.target.value === 'ACTIVE')}
+                  >
+                    <MenuItem value="ACTIVE">Activo</MenuItem>
+                    <MenuItem value="INACTIVE">Inactivo</MenuItem>
+                  </TextField>
+
+                  <TextField
+                    label="Descripción"
+                    size="small"
+                    multiline
+                    minRows={4}
+                    value={form.descripcion}
+                    onChange={(event) => updateForm('descripcion', event.target.value)}
+                    helperText={`${form.descripcion.trim().length}/1000 caracteres`}
+                    sx={{ gridColumn: { md: '1 / -1' } }}
+                    slotProps={{
+                      htmlInput: {
+                        maxLength: 1000,
+                      },
+                    }}
+                  />
+                </Box>
+              </CardContent>
+            </Card>
           </Stack>
         </DialogContent>
 
-        <DialogActions sx={{ px: 3, py: 2 }}>
+        <DialogActions
+          sx={{
+            px: { xs: 2, md: 4 },
+            py: 2,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            justifyContent: 'flex-end',
+          }}
+        >
           <Button
+            variant="outlined"
             color="inherit"
-            startIcon={<CloseIcon />}
-            onClick={closeDialog}
-            disabled={saving}
+            onClick={closeFormDialog}
           >
-            Cancelar
-          </Button>
-
-          <Button variant="contained" onClick={save} disabled={saving}>
-            {saving ? 'Guardando...' : form.id ? 'Actualizar comuna' : 'Guardar comuna'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={confirmAction.open} onClose={closeConfirmAction} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 900 }}>
-          {confirmAction.action === 'ACTIVATE' ? 'Reactivar comuna' : 'Inactivar comuna'}
-        </DialogTitle>
-
-        <DialogContent dividers>
-          <Typography>
-            {confirmAction.action === 'ACTIVATE'
-              ? `¿Deseas reactivar la comuna ${confirmAction.row?.nombre ?? ''}?`
-              : `¿Deseas inactivar la comuna ${confirmAction.row?.nombre ?? ''}?`}
-          </Typography>
-
-          {confirmAction.action === 'DEACTIVATE' ? (
-            <Alert severity="info" sx={{ mt: 2 }}>
-              La comuna no será eliminada físicamente. Solo dejará de aparecer como activa para nuevos registros.
-            </Alert>
-          ) : null}
-        </DialogContent>
-
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button color="inherit" onClick={closeConfirmAction} disabled={processingAction}>
             Cancelar
           </Button>
 
           <Button
             variant="contained"
-            color={confirmAction.action === 'ACTIVATE' ? 'success' : 'warning'}
+            color={form.id ? 'info' : 'primary'}
+            onClick={save}
+            disabled={!allowWrite}
+          >
+            {form.id ? 'Actualizar comuna' : 'Guardar comuna'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={confirmDialogOpen}
+        onClose={closeConfirmDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 900,
+            color: confirmAction === 'ACTIVATE' ? 'success.main' : 'error.main',
+          }}
+        >
+          {confirmAction === 'ACTIVATE' ? 'Activar comuna' : 'Inactivar comuna'}
+        </DialogTitle>
+
+        <DialogContent>
+          <Stack spacing={2}>
+            <Alert severity={confirmAction === 'ACTIVATE' ? 'info' : 'warning'}>
+              {confirmAction === 'ACTIVATE'
+                ? 'La comuna volverá a estar disponible para ser usada en barrios y catálogos.'
+                : 'La comuna quedará inactiva y dejará de estar disponible para nuevas selecciones.'}
+            </Alert>
+
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 3,
+                bgcolor: '#F8FAFC',
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              <Typography sx={{ fontWeight: 900 }}>
+                {confirmRecord?.nombre ?? 'Comuna seleccionada'}
+              </Typography>
+
+              <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                Código: {confirmRecord?.codigo ?? '-'} · Estrato: {confirmRecord?.estrato ?? '-'}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="inherit"
+            onClick={closeConfirmDialog}
+            disabled={processingAction}
+          >
+            Cancelar
+          </Button>
+
+          <Button
+            variant="contained"
+            color={confirmAction === 'ACTIVATE' ? 'success' : 'error'}
             onClick={confirmStatusAction}
             disabled={processingAction}
           >
             {processingAction
               ? 'Procesando...'
-              : confirmAction.action === 'ACTIVATE'
-                ? 'Reactivar'
-                : 'Inactivar'}
+              : confirmAction === 'ACTIVATE' ? 'Activar' : 'Inactivar'}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Snackbar
-        open={feedback.open}
-        autoHideDuration={5000}
-        onClose={closeFeedback}
+        open={snackbar.open}
+        autoHideDuration={3500}
+        onClose={() => closeSnackbar()}
         anchorOrigin={{
           vertical: 'bottom',
-          horizontal: 'right',
+          horizontal: 'center',
         }}
       >
         <Alert
-          onClose={closeFeedback}
-          severity={feedback.severity}
+          severity={snackbar.severity}
           variant="filled"
+          onClose={closeSnackbar}
           sx={{ width: '100%' }}
         >
-          {feedback.message}
+          {snackbar.message}
         </Alert>
       </Snackbar>
     </Stack>

@@ -4,8 +4,7 @@ import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
 import FilterListIcon from '@mui/icons-material/FilterList';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import LocationCityIcon from '@mui/icons-material/LocationCity';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import RestoreIcon from '@mui/icons-material/Restore';
 import SearchIcon from '@mui/icons-material/Search';
@@ -17,19 +16,19 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
-  FormControlLabel,
   IconButton,
   InputAdornment,
+  Menu,
   MenuItem,
   Snackbar,
   Stack,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -37,31 +36,35 @@ import {
   TablePagination,
   TableRow,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, MouseEvent, useEffect, useMemo, useState } from 'react';
 
+import AccessMessage from '@/components/dashboard/AccessMessage';
 import LoadingState from '@/components/dashboard/LoadingState';
+import CrudPageHeader from '@/components/operational/CrudPageHeader';
+import { ApiClientError } from '@/lib/apiClient';
+import { currentRole } from '@/lib/roleAccess';
 import {
   activateBarrio,
   createBarrio,
   deactivateBarrio,
+  getComunasOptions,
   searchBarrios,
-  searchComunas,
   updateBarrio,
 } from '@/services/territory.service';
 import { PageResponse } from '@/types/api.types';
+import { SelectOption } from '@/types/catalog.types';
 import {
+  BarrioFilter,
+  BarrioRequest,
   BarrioResponse,
-  ComunaResponse,
-  TerritoryStatusFilter,
 } from '@/types/territory.types';
 
 type FormState = {
   id?: number;
-  nombre: string;
   comunaId: string;
+  nombre: string;
   activo: boolean;
 };
 
@@ -73,17 +76,9 @@ type SnackbarState = {
   severity: SnackbarSeverity;
 };
 
-type ConfirmAction = {
-  open: boolean;
-  row: BarrioResponse | null;
-  action: 'ACTIVATE' | 'DEACTIVATE' | null;
-};
+type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
 
-const initialForm: FormState = {
-  nombre: '',
-  comunaId: '',
-  activo: true,
-};
+type ConfirmAction = 'ACTIVATE' | 'DEACTIVATE';
 
 const initialSnackbar: SnackbarState = {
   open: false,
@@ -91,156 +86,472 @@ const initialSnackbar: SnackbarState = {
   severity: 'success',
 };
 
-const initialConfirmAction: ConfirmAction = {
-  open: false,
-  row: null,
-  action: null,
+const initialForm: FormState = {
+  comunaId: '',
+  nombre: '',
+  activo: true,
 };
 
-function statusToActivo(status: TerritoryStatusFilter) {
-  if (status === 'ACTIVE') return true;
-  if (status === 'INACTIVE') return false;
-  return undefined;
+function normalizeSearchText(value?: string | null) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
-function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+function matchesByFirstLetters(
+  value: string | number | boolean | null | undefined,
+  searchValue: string
+) {
+  const searchText = normalizeSearchText(searchValue);
+
+  if (!searchText) {
+    return true;
+  }
+
+  const normalizedValue = normalizeSearchText(String(value ?? ''));
+
+  if (!normalizedValue) {
+    return false;
+  }
+
+  return normalizedValue
+    .split(/[\s\-_.]+/)
+    .filter(Boolean)
+    .some((word) => word.startsWith(searchText));
+}
+
+function matchesAnyByFirstLetters(
+  searchValue: string,
+  values: Array<string | number | boolean | null | undefined>
+) {
+  const searchText = normalizeSearchText(searchValue);
+
+  if (!searchText) {
+    return true;
+  }
+
+  return values.some((value) => matchesByFirstLetters(value, searchText));
 }
 
 function normalizeText(value: string) {
-  return value.trim().toUpperCase();
+  return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
-function SummaryCard({
-  title,
-  value,
-  helper,
-}: {
-  title: string;
-  value: number;
-  helper: string;
-}) {
-  return (
-    <Card
-      sx={{
-        borderRadius: 4,
-        border: '1px solid',
-        borderColor: 'divider',
-        height: '100%',
-      }}
-    >
-      <CardContent>
-        <Typography color="text.secondary" sx={{ fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
-          {title}
-        </Typography>
+function getActivoFromStatus(status: StatusFilter) {
+  if (status === 'ACTIVE') {
+    return true;
+  }
 
-        <Typography variant="h4" sx={{ fontWeight: 900, mt: 0.5 }}>
-          {value}
-        </Typography>
+  if (status === 'INACTIVE') {
+    return false;
+  }
 
-        <Typography color="text.secondary" sx={{ fontSize: 13, mt: 0.5 }}>
-          {helper}
-        </Typography>
-      </CardContent>
-    </Card>
-  );
+  return undefined;
+}
+
+function canManageTerritory() {
+  const role = currentRole();
+
+  return role === 'ADMIN' || role === 'SUPERVISOR';
 }
 
 export default function BarriosPage() {
-  const [pageData, setPageData] = useState<PageResponse<BarrioResponse> | null>(null);
-  const [comunas, setComunas] = useState<ComunaResponse[]>([]);
+  const [filter, setFilter] = useState<BarrioFilter>({
+    page: 0,
+    size: 10,
+  });
 
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(10);
-  const [search, setSearch] = useState('');
-  const [comunaId, setComunaId] = useState('');
-  const [statusFilter, setStatusFilter] = useState<TerritoryStatusFilter>('ALL');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [pageData, setPageData] = useState<PageResponse<BarrioResponse> | null>(null);
+  const [comunas, setComunas] = useState<SelectOption[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [processingAction, setProcessingAction] = useState(false);
+  const [restricted, setRestricted] = useState(false);
   const [error, setError] = useState('');
-
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(initialForm);
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(initialConfirmAction);
-  const [feedback, setFeedback] = useState<SnackbarState>(initialSnackbar);
+  const [comunaInputText, setComunaInputText] = useState('');
 
-  const rows = pageData?.content ?? [];
+  const [tableSearch, setTableSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
+  const [menuRecord, setMenuRecord] = useState<BarrioResponse | null>(null);
+
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [confirmRecord, setConfirmRecord] = useState<BarrioResponse | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>('DEACTIVATE');
+  const [processingAction, setProcessingAction] = useState(false);
+
+  const [snackbar, setSnackbar] = useState<SnackbarState>(initialSnackbar);
+
+  const allowWrite = useMemo(() => canManageTerritory(), []);
+
   const totalRecords = pageData?.totalElements ?? 0;
-  const currentPage = pageData?.page ?? page;
-  const currentSize = pageData?.size ?? size;
+  const currentPage = pageData?.page ?? 0;
+  const currentSize = pageData?.size ?? 10;
+  const menuOpen = Boolean(menuAnchorEl);
 
-  const pageActiveCount = useMemo(() => rows.filter((row) => row.activo).length, [rows]);
-  const pageInactiveCount = useMemo(() => rows.filter((row) => !row.activo).length, [rows]);
+const visibleRows = (pageData?.content ?? []).filter((row) =>
+  matchesAnyByFirstLetters(tableSearch, [
+    row.nombre,
+    row.comunaNombre,
+    row.activo ? 'activo' : 'inactivo',
+  ])
+);
 
-  const selectedFormComuna = useMemo(() => {
-    return comunas.find((comuna) => String(comuna.id) === form.comunaId) ?? null;
-  }, [comunas, form.comunaId]);
+  const visibleSelectedCount = visibleRows.filter((row) =>
+    selectedIds.includes(row.id)
+  ).length;
 
-  const showFeedback = (message: string, severity: SnackbarSeverity = 'success') => {
-    setFeedback({ open: true, message, severity });
+  const allVisibleSelected = visibleRows.length > 0
+    && visibleSelectedCount === visibleRows.length;
+
+  const showSnackbar = (
+    message: string,
+    severity: SnackbarSeverity = 'success'
+  ) => {
+    setSnackbar({
+      open: true,
+      message,
+      severity,
+    });
   };
 
-  const closeFeedback = () => {
-    setFeedback(initialSnackbar);
+  const closeSnackbar = () => {
+    setSnackbar(initialSnackbar);
   };
 
-  const loadComunas = async () => {
+  const filterCatalogOptions = (options: SelectOption[], inputValue: string) => {
+  const searchText = normalizeSearchText(inputValue);
+
+  if (!searchText) {
+    return options;
+  }
+
+  return options.filter((option) =>
+    matchesByFirstLetters(option.label, searchText)
+  );
+};
+
+  const getComunaLabelById = (comunaId?: string | number | null) => {
+    if (!comunaId) {
+      return '';
+    }
+
+    return comunas.find((option) => String(option.id) === String(comunaId))?.label ?? '';
+  };
+
+  const loadCatalogs = async () => {
     setCatalogLoading(true);
 
     try {
-      const response = await searchComunas({
-        page: 0,
-        size: 100,
-        activo: true,
-      });
+      const comunasData = await getComunasOptions();
 
-      setComunas(response.content ?? []);
+      setComunas(comunasData);
     } catch (err) {
-      const message = getErrorMessage(err, 'No fue posible cargar las comunas.');
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible cargar las comunas.';
+
       setError(message);
-      showFeedback(message, 'error');
+      showSnackbar(message, 'error');
+    } finally {
+      setCatalogLoading(false);
+    }
+  };
+
+  const refreshComunasCatalog = async () => {
+    setCatalogLoading(true);
+
+    try {
+      const comunasData = await getComunasOptions();
+
+      setComunas(comunasData);
+
+      return comunasData;
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible actualizar el listado de comunas.';
+
+      setError(message);
+      showSnackbar(message, 'error');
+
+      return comunas;
     } finally {
       setCatalogLoading(false);
     }
   };
 
   const load = async (
-    nextPage: number = page,
-    nextSize: number = size,
-    nextStatus: TerritoryStatusFilter = statusFilter
+    customFilter: BarrioFilter = filter,
+    customStatus: StatusFilter = statusFilter
   ) => {
     setLoading(true);
+    setRestricted(false);
     setError('');
 
     try {
       const response = await searchBarrios({
-        page: nextPage,
-        size: nextSize,
-        q: search,
-        comunaId,
-        activo: statusToActivo(nextStatus),
+        ...customFilter,
+        activo: getActivoFromStatus(customStatus),
       });
 
       setPageData(response);
-      setPage(response.page ?? nextPage);
-      setSize(response.size ?? nextSize);
+      setFilter(customFilter);
+      setStatusFilter(customStatus);
+      setSelectedIds([]);
     } catch (err) {
-      const message = getErrorMessage(err, 'No fue posible consultar los barrios.');
-      setError(message);
-      showFeedback(message, 'error');
+      if (err instanceof ApiClientError && err.status === 403) {
+        setRestricted(true);
+      } else {
+        const message = err instanceof Error
+          ? err.message
+          : 'No fue posible consultar los barrios.';
+
+        setError(message);
+        showSnackbar(message, 'error');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadComunas();
-    load(0, size, statusFilter);
+    loadCatalogs();
+    load({
+      page: 0,
+      size: 10,
+    }, 'ALL');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!dialogOpen || !form.comunaId) {
+      return;
+    }
+
+    const selectedComunaLabel = getComunaLabelById(form.comunaId);
+
+    if (selectedComunaLabel) {
+      setComunaInputText(selectedComunaLabel);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, comunas, form.comunaId]);
+
+  const updateFilter = (key: keyof BarrioFilter, value: string) => {
+    setFilter((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const search = () => {
+    load({
+      ...filter,
+      page: 0,
+    }, statusFilter);
+  };
+
+  const clearFilters = () => {
+    const cleared = {
+      page: 0,
+      size: filter.size ?? 10,
+    };
+
+    setFilter(cleared);
+    setStatusFilter('ALL');
+    setTableSearch('');
+    setSelectedIds([]);
+    load(cleared, 'ALL');
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    const nextStatus = (value || 'ALL') as StatusFilter;
+
+    load({
+      ...filter,
+      page: 0,
+    }, nextStatus);
+  };
+
+  const handleChangePage = (_: unknown, newPage: number) => {
+    load({
+      ...filter,
+      page: newPage,
+    }, statusFilter);
+  };
+
+  const handleChangeRowsPerPage = (event: ChangeEvent<HTMLInputElement>) => {
+    load({
+      ...filter,
+      page: 0,
+      size: Number(event.target.value),
+    }, statusFilter);
+  };
+
+  const openCreate = async () => {
+    setError('');
+    setComunaInputText('');
+    setForm(initialForm);
+
+    await refreshComunasCatalog();
+
+    setDialogOpen(true);
+  };
+
+  const openEdit = async (row: BarrioResponse) => {
+    const comunasActualizadas = await refreshComunasCatalog();
+
+    const comunaId = row.comunaId ? String(row.comunaId) : '';
+    const comunaLabel =
+      comunasActualizadas.find((option) => String(option.id) === comunaId)?.label
+      || row.comunaNombre
+      || getComunaLabelById(comunaId);
+
+    setError('');
+    setComunaInputText(comunaLabel);
+    setForm({
+      id: row.id,
+      comunaId,
+      nombre: row.nombre ?? '',
+      activo: row.activo,
+    });
+
+    setDialogOpen(true);
+  };
+
+  const closeFormDialog = () => {
+    setDialogOpen(false);
+    setComunaInputText('');
+    setForm(initialForm);
+    setError('');
+  };
+
+  const handleFormDialogClose = (
+    _: unknown,
+    reason?: 'backdropClick' | 'escapeKeyDown'
+  ) => {
+    if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+      return;
+    }
+
+    closeFormDialog();
+  };
+
+  const openRowMenu = (
+    event: MouseEvent<HTMLButtonElement>,
+    row: BarrioResponse
+  ) => {
+    setMenuAnchorEl(event.currentTarget);
+    setMenuRecord(row);
+  };
+
+  const closeRowMenu = () => {
+    setMenuAnchorEl(null);
+    setMenuRecord(null);
+  };
+
+  const handleMenuEdit = () => {
+    if (!menuRecord) {
+      return;
+    }
+
+    const record = menuRecord;
+    closeRowMenu();
+    openEdit(record);
+  };
+
+  const openConfirmDialog = (row: BarrioResponse, action: ConfirmAction) => {
+    setConfirmRecord(row);
+    setConfirmAction(action);
+    setConfirmDialogOpen(true);
+  };
+
+  const handleMenuStatus = () => {
+    if (!menuRecord) {
+      return;
+    }
+
+    const record = menuRecord;
+    closeRowMenu();
+    openConfirmDialog(record, record.activo ? 'DEACTIVATE' : 'ACTIVATE');
+  };
+
+  const closeConfirmDialog = () => {
+    if (processingAction) {
+      return;
+    }
+
+    setConfirmDialogOpen(false);
+    setConfirmRecord(null);
+  };
+
+  const confirmStatusAction = async () => {
+    if (!confirmRecord) {
+      return;
+    }
+
+    setProcessingAction(true);
+    setError('');
+
+    try {
+      if (confirmAction === 'ACTIVATE') {
+        await activateBarrio(confirmRecord.id);
+        showSnackbar('Barrio activado correctamente.', 'success');
+      } else {
+        await deactivateBarrio(confirmRecord.id);
+        showSnackbar('Barrio inactivado correctamente.', 'success');
+      }
+
+      setConfirmDialogOpen(false);
+      setConfirmRecord(null);
+
+      await load({
+        ...filter,
+        page: 0,
+      }, statusFilter);
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible cambiar el estado del barrio.';
+
+      setError(message);
+      showSnackbar(message, 'error');
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds((current) => {
+      if (current.includes(id)) {
+        return current.filter((item) => item !== id);
+      }
+
+      return [...current, id];
+    });
+  };
+
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedIds((current) =>
+        current.filter((id) => !visibleRows.some((row) => row.id === id))
+      );
+
+      return;
+    }
+
+    setSelectedIds((current) => {
+      const ids = visibleRows.map((row) => row.id);
+      const merged = new Set([...current, ...ids]);
+
+      return Array.from(merged);
+    });
+  };
 
   const updateForm = (key: keyof FormState, value: string | boolean) => {
     setForm((current) => ({
@@ -249,143 +560,65 @@ export default function BarriosPage() {
     }));
   };
 
-  const openCreateDialog = () => {
-    setForm(initialForm);
-    setDialogOpen(true);
-  };
-
-  const openEditDialog = (row: BarrioResponse) => {
-    setForm({
-      id: row.id,
-      nombre: row.nombre ?? '',
-      comunaId: String(row.comunaId ?? ''),
-      activo: Boolean(row.activo),
-    });
-    setDialogOpen(true);
-  };
-
-  const closeDialog = () => {
-    if (saving) return;
-    setDialogOpen(false);
-    setForm(initialForm);
-  };
-
   const validateForm = () => {
-    if (!form.nombre.trim()) return 'El nombre del barrio es obligatorio.';
-    if (form.nombre.trim().length > 150) return 'El nombre del barrio no puede superar 150 caracteres.';
-    if (!form.comunaId) return 'Debe seleccionar una comuna.';
-    if (Number.isNaN(Number(form.comunaId))) return 'La comuna seleccionada no es válida.';
+    if (!form.comunaId || Number(form.comunaId) <= 0) {
+      return 'Escribe y selecciona la comuna.';
+    }
+
+    if (!form.nombre.trim()) {
+      return 'El nombre del barrio es obligatorio.';
+    }
+
+    if (form.nombre.trim().length > 150) {
+      return 'El nombre no puede superar los 150 caracteres.';
+    }
+
     return '';
   };
 
+  const buildRequest = (): BarrioRequest => ({
+    comunaId: Number(form.comunaId),
+    nombre: normalizeText(form.nombre),
+    activo: form.activo,
+  });
+
   const save = async () => {
+    setError('');
+
     const validationMessage = validateForm();
 
     if (validationMessage) {
-      showFeedback(validationMessage, 'warning');
+      setError(validationMessage);
+      showSnackbar(validationMessage, 'warning');
       return;
     }
 
-    setSaving(true);
-
     try {
-      const payload = {
-        nombre: normalizeText(form.nombre),
-        comunaId: Number(form.comunaId),
-        activo: form.activo,
-      };
-
       if (form.id) {
-        await updateBarrio(form.id, payload);
-        showFeedback('Barrio actualizado correctamente.');
+        await updateBarrio(form.id, buildRequest());
+
+        showSnackbar('Barrio actualizado correctamente.', 'success');
       } else {
-        await createBarrio(payload);
-        showFeedback('Barrio creado correctamente.');
+        await createBarrio(buildRequest());
+
+        showSnackbar('Barrio creado correctamente.', 'success');
       }
 
       setDialogOpen(false);
+      setComunaInputText('');
       setForm(initialForm);
-      await load(currentPage, currentSize, statusFilter);
-    } catch (err) {
-      showFeedback(getErrorMessage(err, 'No fue posible guardar el barrio.'), 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
 
-  const clearFilters = async () => {
-    setSearch('');
-    setComunaId('');
-    setStatusFilter('ALL');
-    setPage(0);
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const response = await searchBarrios({
+      await load({
+        ...filter,
         page: 0,
-        size,
-        activo: undefined,
-      });
-
-      setPageData(response);
-      setPage(response.page ?? 0);
-      setSize(response.size ?? size);
+      }, statusFilter);
     } catch (err) {
-      const message = getErrorMessage(err, 'No fue posible consultar los barrios.');
+      const message = err instanceof Error
+        ? err.message
+        : 'No fue posible guardar el barrio.';
+
       setError(message);
-      showFeedback(message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const changePage = async (_event: unknown, nextPage: number) => {
-    setPage(nextPage);
-    await load(nextPage, currentSize, statusFilter);
-  };
-
-  const changeRowsPerPage = async (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const nextSize = Number(event.target.value);
-    setSize(nextSize);
-    setPage(0);
-    await load(0, nextSize, statusFilter);
-  };
-
-  const openConfirmAction = (row: BarrioResponse, action: 'ACTIVATE' | 'DEACTIVATE') => {
-    setConfirmAction({
-      open: true,
-      row,
-      action,
-    });
-  };
-
-  const closeConfirmAction = () => {
-    if (processingAction) return;
-    setConfirmAction(initialConfirmAction);
-  };
-
-  const confirmStatusAction = async () => {
-    if (!confirmAction.row || !confirmAction.action) return;
-
-    setProcessingAction(true);
-
-    try {
-      if (confirmAction.action === 'ACTIVATE') {
-        await activateBarrio(confirmAction.row.id);
-        showFeedback('Barrio activado correctamente.');
-      } else {
-        await deactivateBarrio(confirmAction.row.id);
-        showFeedback('Barrio inactivado correctamente.');
-      }
-
-      setConfirmAction(initialConfirmAction);
-      await load(currentPage, currentSize, statusFilter);
-    } catch (err) {
-      showFeedback(getErrorMessage(err, 'No fue posible cambiar el estado del barrio.'), 'error');
-    } finally {
-      setProcessingAction(false);
+      showSnackbar(message, 'error');
     }
   };
 
@@ -395,241 +628,341 @@ export default function BarriosPage() {
 
   return (
     <Stack spacing={3}>
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: {
-            xs: 'column',
-            md: 'row',
-          },
-          justifyContent: 'space-between',
-          gap: 2,
-        }}
-      >
-        <Box>
-          <Stack direction="row" spacing={1.2} sx={{ alignItems: 'center' }}>
-            <LocationCityIcon color="primary" />
-            <Typography variant="h4" sx={{ fontWeight: 900 }}>
-              Administración de barrios
-            </Typography>
-          </Stack>
+      <CrudPageHeader
+        title="Barrios"
+        subtitle="Consulta, filtra, crea y actualiza los barrios por comuna."
+        primaryAction={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={openCreate}
+            disabled={!allowWrite || catalogLoading}
+          >
+            Nuevo barrio
+          </Button>
+        }
+      />
 
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-            Consulta, creación, modificación e inactivación lógica de barrios por comuna.
-          </Typography>
-        </Box>
+      {!allowWrite ? (
+        <Alert severity="info">
+          Tu rol permite consultar, pero no crear ni actualizar barrios.
+        </Alert>
+      ) : null}
 
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={openCreateDialog}
-          disabled={catalogLoading}
-        >
-          Nuevo barrio
-        </Button>
-      </Box>
+      {restricted ? <AccessMessage /> : null}
 
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: {
-            xs: '1fr',
-            md: 'repeat(3, 1fr)',
-          },
-          gap: 2,
-        }}
-      >
-        <SummaryCard title="Total encontrado" value={totalRecords} helper="Registros según filtros aplicados" />
-        <SummaryCard title="Activos en página" value={pageActiveCount} helper="Barrios activos visibles actualmente" />
-        <SummaryCard title="Inactivos en página" value={pageInactiveCount} helper="Barrios inactivos visibles actualmente" />
-      </Box>
+      {error ? (
+        <Alert severity="error">
+          {error}
+        </Alert>
+      ) : null}
 
-      {error ? <Alert severity="error">{error}</Alert> : null}
-
-      <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent>
+      <Card sx={{ borderRadius: 3 }}>
+        <CardContent sx={{ p: 3 }}>
           <Stack spacing={2}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <FilterListIcon color="primary" />
-              <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                Filtros de búsqueda
-              </Typography>
-            </Box>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1}
+              sx={{
+                alignItems: { xs: 'flex-start', md: 'center' },
+                justifyContent: 'space-between',
+              }}
+            >
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Buscar barrios
+                </Typography>
+
+                <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                  Puedes buscar por nombre, comuna o estado.
+                </Typography>
+              </Box>
+
+              <Chip
+                label={`${totalRecords} barrio${totalRecords === 1 ? '' : 's'}`}
+                color="primary"
+                variant="outlined"
+              />
+            </Stack>
+
+            <Divider />
 
             <Box
               sx={{
                 display: 'grid',
                 gridTemplateColumns: {
                   xs: '1fr',
-                  md: '1.4fr 1fr 1fr auto auto',
+                  md: 'repeat(4, 1fr)',
                 },
                 gap: 2,
-                alignItems: 'center',
               }}
             >
               <TextField
-                label="Buscar barrio o comuna"
+                label="Buscar"
                 size="small"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    load(0, currentSize, statusFilter);
-                  }
-                }}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
+                value={filter.q ?? ''}
+                onChange={(event) => updateFilter('q', event.target.value)}
+                placeholder="Nombre del barrio"
               />
 
-              <TextField
-                select
-                label="Comuna"
-                size="small"
-                value={comunaId}
-                onChange={(event) => setComunaId(event.target.value)}
-                disabled={catalogLoading}
-              >
-                <MenuItem value="">Todas</MenuItem>
-                {comunas.map((comuna) => (
-                  <MenuItem key={comuna.id} value={String(comuna.id)}>
-                    {comuna.codigo} - {comuna.nombre}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <Autocomplete
+                options={comunas}
+                loading={catalogLoading}
+                value={
+                  comunas.find((option) => String(option.id) === String(filter.comunaId ?? '')) ?? null
+                }
+                onOpen={() => {
+                  refreshComunasCatalog();
+                }}
+                onChange={(_, selectedOption) =>
+                  updateFilter('comunaId', selectedOption ? String(selectedOption.id) : '')
+                }
+                getOptionLabel={(option) => option.label ?? ''}
+                isOptionEqualToValue={(option, value) =>
+                  String(option.id) === String(value.id)
+                }
+                filterOptions={(options, state) =>
+                  filterCatalogOptions(options, state.inputValue)
+                }
+                autoHighlight
+                clearOnEscape
+                noOptionsText="No se encontraron comunas"
+                loadingText="Actualizando comunas..."
+                clearText="Limpiar"
+                openText="Abrir"
+                closeText="Cerrar"
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Comuna"
+                    size="small"
+                    placeholder="Escribe el nombre de la comuna"
+                  />
+                )}
+              />
 
               <TextField
                 select
                 label="Estado"
                 size="small"
                 value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as TerritoryStatusFilter)
-                }
+                onChange={(event) => handleStatusFilterChange(event.target.value)}
               >
                 <MenuItem value="ALL">Todos</MenuItem>
                 <MenuItem value="ACTIVE">Activos</MenuItem>
                 <MenuItem value="INACTIVE">Inactivos</MenuItem>
               </TextField>
 
-              <Button
-                variant="contained"
-                startIcon={<SearchIcon />}
-                onClick={() => load(0, currentSize, statusFilter)}
-                disabled={loading}
-              >
-                Consultar
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="contained"
+                  startIcon={<SearchIcon />}
+                  onClick={search}
+                  disabled={loading}
+                >
+                  Buscar
+                </Button>
 
-              <Button
-                variant="outlined"
-                color="inherit"
-                startIcon={<RestartAltIcon />}
-                onClick={clearFilters}
-                disabled={loading}
-              >
-                Limpiar
-              </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<RestartAltIcon />}
+                  onClick={clearFilters}
+                  disabled={loading}
+                >
+                  Limpiar
+                </Button>
+              </Stack>
             </Box>
           </Stack>
         </CardContent>
       </Card>
 
-      <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent>
+      <Card
+        sx={{
+          borderRadius: 4,
+          overflow: 'hidden',
+          border: '1px solid',
+          borderColor: 'divider',
+          boxShadow: '0 16px 40px rgba(15, 23, 42, 0.08)',
+        }}
+      >
+        <CardContent sx={{ p: 0 }}>
           <Box
             sx={{
+              px: { xs: 2, md: 2.5 },
+              py: 2,
               display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
               gap: 2,
-              mb: 2,
+              alignItems: { xs: 'stretch', sm: 'center' },
+              justifyContent: 'space-between',
+              flexDirection: { xs: 'column', sm: 'row' },
+              bgcolor: 'background.paper',
             }}
           >
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                Barrios registrados
-              </Typography>
+            <TextField
+              placeholder="Buscar barrio, comuna o estado..."
+              size="small"
+              value={tableSearch}
+              onChange={(event) => setTableSearch(event.target.value)}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              sx={{
+                width: { xs: '100%', sm: 520, md: 620 },
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2.5,
+                  bgcolor: '#ffffff',
+                },
+              }}
+            />
 
-              <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                Total encontrado: {totalRecords}
-              </Typography>
-            </Box>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Chip
+                label={`${visibleRows.length} visible${visibleRows.length === 1 ? '' : 's'}`}
+                size="small"
+                color="primary"
+                variant="outlined"
+              />
 
-            {loading ? <Chip label="Actualizando..." color="info" /> : null}
+              {visibleSelectedCount > 0 ? (
+                <Chip
+                  label={`${visibleSelectedCount} seleccionado${visibleSelectedCount === 1 ? '' : 's'}`}
+                  size="small"
+                  color="success"
+                  variant="outlined"
+                />
+              ) : null}
+
+              <IconButton
+                onClick={search}
+                disabled={loading}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                }}
+              >
+                <FilterListIcon />
+              </IconButton>
+            </Stack>
           </Box>
 
-          <Divider sx={{ mb: 2 }} />
-
           <Box sx={{ overflowX: 'auto' }}>
-            <Table size="small" sx={{ minWidth: 860 }}>
+            <Table
+              sx={{
+                minWidth: 900,
+                '& .MuiTableCell-root': {
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                },
+                '& .MuiTableHead-root .MuiTableCell-root': {
+                  bgcolor: '#f8fafc',
+                  color: 'text.secondary',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  py: 1.6,
+                },
+                '& .MuiTableBody-root .MuiTableCell-root': {
+                  py: 1.7,
+                  fontSize: 14,
+                },
+                '& .MuiTableRow-root:hover': {
+                  bgcolor: '#f8fafc',
+                },
+              }}
+            >
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 900 }}>Barrio</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Comuna</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 900 }}>
-                    Estado
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      size="small"
+                      checked={allVisibleSelected}
+                      indeterminate={visibleSelectedCount > 0 && !allVisibleSelected}
+                      onChange={toggleAllVisible}
+                    />
                   </TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 900 }}>
-                    Acciones
-                  </TableCell>
+                  <TableCell>Barrio</TableCell>
+                  <TableCell>Comuna</TableCell>
+                  <TableCell>Estado</TableCell>
+                  <TableCell align="center">Acciones</TableCell>
                 </TableRow>
               </TableHead>
 
               <TableBody>
-                {rows.map((row) => (
+                {visibleRows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell sx={{ fontWeight: 800 }}>{row.nombre}</TableCell>
-                    <TableCell>{row.comunaNombre}</TableCell>
-                    <TableCell align="center">
-                      <Chip
+                    <TableCell padding="checkbox">
+                      <Checkbox
                         size="small"
+                        checked={selectedIds.includes(row.id)}
+                        onChange={() => toggleSelected(row.id)}
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 700, minWidth: 220 }}>
+                        {row.nombre || 'Sin nombre'}
+                      </Typography>
+                    </TableCell>
+
+                    <TableCell>
+                      <Chip
+                        label={row.comunaNombre || 'Sin comuna'}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        sx={{ fontWeight: 700 }}
+                      />
+                    </TableCell>
+
+                    <TableCell>
+                      <Chip
                         label={row.activo ? 'Activo' : 'Inactivo'}
-                        color={row.activo ? 'success' : 'default'}
-                        variant={row.activo ? 'filled' : 'outlined'}
+                        size="small"
+                        color={row.activo ? 'success' : 'warning'}
+                        variant="outlined"
+                        sx={{ fontWeight: 700 }}
                       />
                     </TableCell>
 
                     <TableCell align="center">
-                      <Tooltip title="Editar barrio">
-                        <IconButton color="info" onClick={() => openEditDialog(row)}>
-                          <EditIcon />
+                      {allowWrite ? (
+                        <IconButton
+                          onClick={(event) => openRowMenu(event, row)}
+                          sx={{
+                            borderRadius: 2,
+                            color: 'text.secondary',
+                          }}
+                        >
+                          <MoreVertIcon />
                         </IconButton>
-                      </Tooltip>
-
-                      {row.activo ? (
-                        <Tooltip title="Inactivar barrio">
-                          <IconButton
-                            color="warning"
-                            onClick={() => openConfirmAction(row, 'DEACTIVATE')}
-                          >
-                            <ToggleOffIcon />
-                          </IconButton>
-                        </Tooltip>
                       ) : (
-                        <Tooltip title="Reactivar barrio">
-                          <IconButton
-                            color="success"
-                            onClick={() => openConfirmAction(row, 'ACTIVATE')}
-                          >
-                            <RestoreIcon />
-                          </IconButton>
-                        </Tooltip>
+                        <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+                          Solo lectura
+                        </Typography>
                       )}
                     </TableCell>
                   </TableRow>
                 ))}
 
-                {!rows.length ? (
+                {!visibleRows.length ? (
                   <TableRow>
-                    <TableCell colSpan={4} align="center" sx={{ py: 5 }}>
-                      No se encontraron barrios con los filtros seleccionados.
+                    <TableCell colSpan={5}>
+                      <Box sx={{ py: 5, textAlign: 'center' }}>
+                        <Typography variant="h6">
+                          No hay barrios para mostrar
+                        </Typography>
+
+                        <Typography color="text.secondary" sx={{ mt: 1 }}>
+                          Intenta limpiar los filtros o realizar una nueva búsqueda.
+                        </Typography>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ) : null}
@@ -641,189 +974,347 @@ export default function BarriosPage() {
             component="div"
             count={totalRecords}
             page={currentPage}
+            onPageChange={handleChangePage}
             rowsPerPage={currentSize}
-            onPageChange={changePage}
-            onRowsPerPageChange={changeRowsPerPage}
-            rowsPerPageOptions={[10, 20, 50, 100]}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[10, 20, 50]}
             labelRowsPerPage="Filas por página"
+            labelDisplayedRows={({ from, to, count }) =>
+              `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
+            }
+            sx={{
+              borderTop: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+            }}
           />
+
+          <Menu
+            anchorEl={menuAnchorEl}
+            open={menuOpen}
+            onClose={closeRowMenu}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+            slotProps={{
+              paper: {
+                sx: {
+                  mt: 1,
+                  minWidth: 190,
+                  borderRadius: 3,
+                  boxShadow: '0 16px 40px rgba(15, 23, 42, 0.16)',
+                },
+              },
+            }}
+          >
+            <MenuItem
+              onClick={handleMenuEdit}
+              sx={{
+                gap: 1.5,
+                color: 'info.main',
+                fontWeight: 700,
+              }}
+            >
+              <EditIcon fontSize="small" />
+              Modificar
+            </MenuItem>
+
+            <MenuItem
+              onClick={handleMenuStatus}
+              sx={{
+                gap: 1.5,
+                color: menuRecord?.activo ? 'error.main' : 'success.main',
+                fontWeight: 700,
+              }}
+            >
+              {menuRecord?.activo ? (
+                <ToggleOffIcon fontSize="small" />
+              ) : (
+                <RestoreIcon fontSize="small" />
+              )}
+              {menuRecord?.activo ? 'Inactivar' : 'Activar'}
+            </MenuItem>
+          </Menu>
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onClose={closeDialog} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ pb: 1.5 }}>
-          <Stack direction="row" spacing={1.4} sx={{ alignItems: 'center' }}>
-            <Box
-              sx={{
-                width: 42,
-                height: 42,
-                borderRadius: 3,
-                bgcolor: 'primary.main',
-                color: 'primary.contrastText',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <LocationCityIcon />
-            </Box>
-
+      <Dialog
+        open={dialogOpen}
+        onClose={handleFormDialogClose}
+        fullScreen
+      >
+        <DialogTitle
+          sx={{
+            px: { xs: 2, md: 4 },
+            py: 2,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
             <Box>
-              <Typography sx={{ fontWeight: 900, fontSize: 20 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
                 {form.id ? 'Editar barrio' : 'Nuevo barrio'}
               </Typography>
 
-              <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                Define el nombre, comuna asociada y estado del barrio.
+              <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                Completa la información territorial del barrio.
               </Typography>
             </Box>
-          </Stack>
-        </DialogTitle>
 
-        <DialogContent dividers>
-          <Stack spacing={2.5} sx={{ pt: 1 }}>
-            <Box>
-              <Typography sx={{ fontWeight: 900, mb: 1 }}>
-                Información del barrio
-              </Typography>
-
-              <Stack spacing={2}>
-                <TextField
-                  label="Nombre del barrio"
-                  size="small"
-                  required
-                  value={form.nombre}
-                  onChange={(event) => updateForm('nombre', event.target.value.toUpperCase())}
-                  autoFocus
-                  helperText="Nombre oficial del barrio tal como debe mostrarse en los formularios."
-                  slotProps={{
-                    htmlInput: {
-                      maxLength: 150,
-                    },
-                  }}
-                />
-
-                <Autocomplete
-                  options={comunas}
-                  loading={catalogLoading}
-                  value={selectedFormComuna}
-                  onChange={(_event, value) => updateForm('comunaId', value ? String(value.id) : '')}
-                  getOptionLabel={(option) => `${option.codigo} - ${option.nombre}`}
-                  isOptionEqualToValue={(option, value) => option.id === value.id}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Comuna a la que pertenece"
-                      size="small"
-                      required
-                      helperText="Selecciona la comuna donde se ubica el barrio."
-                    />
-                  )}
-                />
-              </Stack>
-            </Box>
-
-            <Box
+            <IconButton
+              onClick={closeFormDialog}
               sx={{
                 border: '1px solid',
                 borderColor: 'divider',
-                borderRadius: 3,
-                p: 2,
-                bgcolor: '#F8FBFF',
+                borderRadius: 2,
               }}
             >
-              <Typography sx={{ fontWeight: 900, mb: 0.5 }}>
-                Estado del registro
-              </Typography>
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
 
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.activo}
-                    onChange={(event) => updateForm('activo', event.target.checked)}
+        <DialogContent
+          sx={{
+            p: { xs: 2, md: 4 },
+            bgcolor: '#f8fafc',
+          }}
+        >
+          <Stack
+            spacing={3}
+            sx={{
+              maxWidth: 1100,
+              mx: 'auto',
+              pt: 1,
+            }}
+          >
+            <Card
+              sx={{
+                borderRadius: 4,
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      md: 'repeat(2, 1fr)',
+                    },
+                    gap: 2,
+                  }}
+                >
+                  <Autocomplete
+                    options={comunas}
+                    loading={catalogLoading}
+                    value={
+                      comunas.find((option) => String(option.id) === String(form.comunaId)) ?? null
+                    }
+                    inputValue={comunaInputText}
+                    onOpen={() => {
+                      refreshComunasCatalog();
+                    }}
+                    onInputChange={(_, newInputValue, reason) => {
+                      if (reason === 'input') {
+                        setComunaInputText(newInputValue);
+                        updateForm('comunaId', '');
+                        return;
+                      }
+
+                      if (reason === 'clear') {
+                        setComunaInputText('');
+                        updateForm('comunaId', '');
+                      }
+                    }}
+                    onChange={(_, selectedOption) => {
+                      updateForm('comunaId', selectedOption ? String(selectedOption.id) : '');
+                      setComunaInputText(selectedOption?.label ?? '');
+                    }}
+                    getOptionLabel={(option) => option.label ?? ''}
+                    isOptionEqualToValue={(option, value) =>
+                      String(option.id) === String(value.id)
+                    }
+                    filterOptions={(options, state) =>
+                      filterCatalogOptions(options, state.inputValue)
+                    }
+                    autoHighlight
+                    clearOnEscape
+                    noOptionsText="No se encontraron comunas"
+                    loadingText="Actualizando comunas..."
+                    clearText="Limpiar"
+                    openText="Abrir"
+                    closeText="Cerrar"
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Comuna"
+                        size="small"
+                        required
+                        helperText={
+                          catalogLoading
+                            ? 'Actualizando comunas...'
+                            : 'Escribe las primeras letras y selecciona la comuna.'
+                        }
+                      />
+                    )}
                   />
-                }
-                label={form.activo ? 'Barrio activo' : 'Barrio inactivo'}
-              />
 
-              <Alert severity="info" icon={<InfoOutlinedIcon />} sx={{ mt: 1 }}>
-                Los barrios inactivos se conservan para historial, pero no deberían usarse en nuevos registros.
-              </Alert>
-            </Box>
+                  <TextField
+                    label="Nombre del barrio"
+                    size="small"
+                    required
+                    value={form.nombre}
+                    onChange={(event) => updateForm('nombre', event.target.value)}
+                    slotProps={{
+                      htmlInput: {
+                        maxLength: 150,
+                      },
+                    }}
+                  />
+
+                  <TextField
+                    select
+                    label="Estado"
+                    size="small"
+                    value={form.activo ? 'ACTIVE' : 'INACTIVE'}
+                    onChange={(event) => updateForm('activo', event.target.value === 'ACTIVE')}
+                  >
+                    <MenuItem value="ACTIVE">Activo</MenuItem>
+                    <MenuItem value="INACTIVE">Inactivo</MenuItem>
+                  </TextField>
+                </Box>
+              </CardContent>
+            </Card>
           </Stack>
         </DialogContent>
 
-        <DialogActions sx={{ px: 3, py: 2 }}>
+        <DialogActions
+          sx={{
+            px: { xs: 2, md: 4 },
+            py: 2,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            justifyContent: 'flex-end',
+          }}
+        >
           <Button
+            variant="outlined"
             color="inherit"
-            startIcon={<CloseIcon />}
-            onClick={closeDialog}
-            disabled={saving}
+            onClick={closeFormDialog}
           >
-            Cancelar
-          </Button>
-
-          <Button variant="contained" onClick={save} disabled={saving}>
-            {saving ? 'Guardando...' : form.id ? 'Actualizar barrio' : 'Guardar barrio'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={confirmAction.open} onClose={closeConfirmAction} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 900 }}>
-          {confirmAction.action === 'ACTIVATE' ? 'Reactivar barrio' : 'Inactivar barrio'}
-        </DialogTitle>
-
-        <DialogContent dividers>
-          <Typography>
-            {confirmAction.action === 'ACTIVATE'
-              ? `¿Deseas reactivar el barrio ${confirmAction.row?.nombre ?? ''}?`
-              : `¿Deseas inactivar el barrio ${confirmAction.row?.nombre ?? ''}?`}
-          </Typography>
-
-          {confirmAction.action === 'DEACTIVATE' ? (
-            <Alert severity="info" sx={{ mt: 2 }}>
-              El barrio no será eliminado físicamente. Solo dejará de aparecer como activo para nuevos registros.
-            </Alert>
-          ) : null}
-        </DialogContent>
-
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button color="inherit" onClick={closeConfirmAction} disabled={processingAction}>
             Cancelar
           </Button>
 
           <Button
             variant="contained"
-            color={confirmAction.action === 'ACTIVATE' ? 'success' : 'warning'}
+            color={form.id ? 'info' : 'primary'}
+            onClick={save}
+            disabled={!allowWrite}
+          >
+            {form.id ? 'Actualizar barrio' : 'Guardar barrio'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={confirmDialogOpen}
+        onClose={closeConfirmDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 900,
+            color: confirmAction === 'ACTIVATE' ? 'success.main' : 'error.main',
+          }}
+        >
+          {confirmAction === 'ACTIVATE' ? 'Activar barrio' : 'Inactivar barrio'}
+        </DialogTitle>
+
+        <DialogContent>
+          <Stack spacing={2}>
+            <Alert severity={confirmAction === 'ACTIVATE' ? 'info' : 'warning'}>
+              {confirmAction === 'ACTIVATE'
+                ? 'El barrio volverá a estar disponible para formularios como Ventanilla y DMC.'
+                : 'El barrio quedará inactivo y dejará de estar disponible para nuevas selecciones.'}
+            </Alert>
+
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 3,
+                bgcolor: '#F8FAFC',
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              <Typography sx={{ fontWeight: 900 }}>
+                {confirmRecord?.nombre ?? 'Barrio seleccionado'}
+              </Typography>
+
+              <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                Comuna: {confirmRecord?.comunaNombre ?? '-'}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="inherit"
+            onClick={closeConfirmDialog}
+            disabled={processingAction}
+          >
+            Cancelar
+          </Button>
+
+          <Button
+            variant="contained"
+            color={confirmAction === 'ACTIVATE' ? 'success' : 'error'}
             onClick={confirmStatusAction}
             disabled={processingAction}
           >
             {processingAction
               ? 'Procesando...'
-              : confirmAction.action === 'ACTIVATE'
-                ? 'Reactivar'
-                : 'Inactivar'}
+              : confirmAction === 'ACTIVATE' ? 'Activar' : 'Inactivar'}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Snackbar
-        open={feedback.open}
-        autoHideDuration={5000}
-        onClose={closeFeedback}
+        open={snackbar.open}
+        autoHideDuration={3500}
+        onClose={() => closeSnackbar()}
         anchorOrigin={{
           vertical: 'bottom',
-          horizontal: 'right',
+          horizontal: 'center',
         }}
       >
         <Alert
-          onClose={closeFeedback}
-          severity={feedback.severity}
+          severity={snackbar.severity}
           variant="filled"
+          onClose={closeSnackbar}
           sx={{ width: '100%' }}
         >
-          {feedback.message}
+          {snackbar.message}
         </Alert>
       </Snackbar>
     </Stack>

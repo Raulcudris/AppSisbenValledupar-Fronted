@@ -4,6 +4,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import HeadsetMicIcon from '@mui/icons-material/HeadsetMic';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
 import ApartmentIcon from '@mui/icons-material/Apartment';
 import LockResetIcon from '@mui/icons-material/LockReset';
@@ -11,6 +12,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import MenuIcon from '@mui/icons-material/Menu';
 import PeopleIcon from '@mui/icons-material/People';
 import SecurityIcon from '@mui/icons-material/Security';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import {
   AppBar,
   Box,
@@ -48,6 +50,8 @@ const dashboardIcons: Record<DashboardIconKey, ReactNode> = {
   dashboard: <DashboardIcon />,
   ventanilla: <AssessmentIcon />,
   dmc: <BarChartIcon />,
+  callcenter: <HeadsetMicIcon />,
+  encuestador: <AssignmentTurnedInIcon />,
   auditoria: <SecurityIcon />,
   exportaciones: <CloudDownloadIcon />,
   usuarios: <PeopleIcon />,
@@ -64,6 +68,8 @@ type DashboardShellProps = {
 function getCurrentModuleLabel(pathname: string) {
   if (pathname.includes('/dashboard/ventanilla')) return 'Ventanilla';
   if (pathname.includes('/dashboard/dmc')) return 'DMC';
+  if (pathname.includes('/dashboard/callcenter/mis-asignaciones')) return 'Mis asignaciones';
+  if (pathname.includes('/dashboard/callcenter')) return 'Call Center';
   if (pathname.includes('/dashboard/reportes')) return 'Reportes';
   if (pathname.includes('/dashboard/exportaciones')) return 'Exportaciones';
   if (pathname.includes('/dashboard/auditoria')) return 'Auditoría';

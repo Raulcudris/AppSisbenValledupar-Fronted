@@ -6,12 +6,16 @@ export type AppRole =
   | 'SUPERVISOR'
   | 'FUNCIONARIO_VENTANILLA'
   | 'FUNCIONARIO_DMC'
+  | 'FUNCIONARIO_CALLCENTER'
+  | 'FUNCIONARIO_ENCUESTADOR'
   | 'CONSULTA';
 
 export type DashboardIconKey =
   | 'dashboard'
   | 'ventanilla'
   | 'dmc'
+  | 'callcenter'
+  | 'encuestador'
   | 'auditoria'
   | 'exportaciones'
   | 'usuarios'
@@ -42,6 +46,8 @@ const ALL_ROLES: AppRole[] = [
   'SUPERVISOR',
   'FUNCIONARIO_VENTANILLA',
   'FUNCIONARIO_DMC',
+  'FUNCIONARIO_CALLCENTER',
+  'FUNCIONARIO_ENCUESTADOR',
   'CONSULTA',
 ];
 
@@ -81,6 +87,24 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
     href: '/dashboard/dmc',
     iconKey: 'dmc',
     roles: ['CONSULTA'],
+  },
+  {
+    label: 'Call Center',
+    href: '/dashboard/callcenter/registros',
+    iconKey: 'callcenter',
+    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER'],
+  },
+  {
+    label: 'Call Center',
+    href: '/dashboard/callcenter',
+    iconKey: 'callcenter',
+    roles: ['CONSULTA'],
+  },
+  {
+    label: 'Mis asignaciones',
+    href: '/dashboard/callcenter/mis-asignaciones',
+    iconKey: 'encuestador',
+    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER', 'FUNCIONARIO_ENCUESTADOR'],
   },
   {
     label: 'Barrios',
@@ -171,6 +195,32 @@ export const dashboardActions: DashboardActionItem[] = [
     roles: ['CONSULTA'],
   },
   {
+    title: 'Trabajar Call Center',
+    description: 'Consulta, registra y actualiza llamadas de seguimiento a usuarios.',
+    href: '/dashboard/callcenter/registros',
+    buttonLabel: 'Abrir Call Center',
+    iconKey: 'callcenter',
+    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER'],
+    primary: true,
+  },
+  {
+    title: 'Mis asignaciones',
+    description: 'Consulta tus registros asignados y actualiza el resultado de visita.',
+    href: '/dashboard/callcenter/mis-asignaciones',
+    buttonLabel: 'Abrir asignaciones',
+    iconKey: 'encuestador',
+    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER', 'FUNCIONARIO_ENCUESTADOR'],
+    primary: true,
+  },
+  {
+    title: 'Consultar Call Center',
+    description: 'Revisa la información general de llamadas registradas.',
+    href: '/dashboard/callcenter',
+    buttonLabel: 'Ver Call Center',
+    iconKey: 'callcenter',
+    roles: ['CONSULTA'],
+  },
+  {
     title: 'Administrar barrios',
     description: 'Consulta, crea, actualiza, activa e inactiva barrios por comuna.',
     href: '/dashboard/territory/barrios',
@@ -228,6 +278,9 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard/ventanilla/historial-usuario',
     '/dashboard/dmc',
     '/dashboard/dmc/registros',
+    '/dashboard/callcenter',
+    '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/mis-asignaciones',
     '/dashboard/territory/barrios',
     '/dashboard/territory/comunas',
     '/dashboard/auditoria',
@@ -242,6 +295,9 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard/ventanilla/registros',
     '/dashboard/dmc',
     '/dashboard/dmc/registros',
+    '/dashboard/callcenter',
+    '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/mis-asignaciones',
     '/dashboard/auditoria',
     '/dashboard/reportes',
     '/dashboard/exportaciones',
@@ -259,10 +315,23 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard/dmc/registros',
     '/dashboard/cuenta/cambiar-password',
   ],
+  FUNCIONARIO_CALLCENTER: [
+    '/dashboard',
+    '/dashboard/callcenter',
+    '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/mis-asignaciones',
+    '/dashboard/cuenta/cambiar-password',
+  ],
+  FUNCIONARIO_ENCUESTADOR: [
+    '/dashboard',
+    '/dashboard/callcenter/mis-asignaciones',
+    '/dashboard/cuenta/cambiar-password',
+  ],
   CONSULTA: [
     '/dashboard',
     '/dashboard/ventanilla',
     '/dashboard/dmc',
+    '/dashboard/callcenter',
     '/dashboard/reportes',
     '/dashboard/cuenta/cambiar-password',
   ],
@@ -276,6 +345,8 @@ export function normalizeRole(role?: string | null): AppRole | '' {
     value === 'SUPERVISOR' ||
     value === 'FUNCIONARIO_VENTANILLA' ||
     value === 'FUNCIONARIO_DMC' ||
+    value === 'FUNCIONARIO_CALLCENTER' ||
+    value === 'FUNCIONARIO_ENCUESTADOR' ||
     value === 'CONSULTA'
   ) {
     return value;
@@ -311,13 +382,7 @@ export function getDashboardActionsByRole(role?: string | null) {
 export function getDefaultDashboardPathByRole(role?: string | null) {
   const normalizedRole = normalizeRole(role);
 
-  if (
-    normalizedRole === 'ADMIN' ||
-    normalizedRole === 'SUPERVISOR' ||
-    normalizedRole === 'FUNCIONARIO_VENTANILLA' ||
-    normalizedRole === 'FUNCIONARIO_DMC' ||
-    normalizedRole === 'CONSULTA'
-  ) {
+  if (normalizedRole) {
     return '/dashboard';
   }
 
@@ -354,6 +419,18 @@ export function canWriteDmc(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_DMC'].includes(normalizedRole);
+}
+
+export function canWriteCallCenter(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER'].includes(normalizedRole);
+}
+
+export function canUpdateEncuestadorVisit(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER', 'FUNCIONARIO_ENCUESTADOR'].includes(normalizedRole);
 }
 
 export function canExport(role: string | null | undefined = currentRole()) {

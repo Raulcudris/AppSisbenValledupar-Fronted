@@ -1,17 +1,17 @@
 'use client';
 
 import AddIcon from '@mui/icons-material/Add';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
-import RestoreIcon from '@mui/icons-material/Restore';
 import SearchIcon from '@mui/icons-material/Search';
-import ToggleOffIcon from '@mui/icons-material/ToggleOff';
+import SourceIcon from '@mui/icons-material/Source';
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
   Card,
@@ -25,25 +25,24 @@ import {
   Divider,
   IconButton,
   InputAdornment,
-  Menu,
   MenuItem,
+  Paper,
   Snackbar,
   Stack,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
+  TableFooter,
   TableHead,
   TablePagination,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { ChangeEvent, MouseEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
-import AccessMessage from '@/components/dashboard/AccessMessage';
-import LoadingState from '@/components/dashboard/LoadingState';
-import CrudPageHeader from '@/components/operational/CrudPageHeader';
-import { canWriteCallCenter, currentRole } from '@/lib/roleAccess';
 import {
   activateCallCenterRegistro,
   createCallCenterRegistro,
@@ -51,58 +50,119 @@ import {
   getMotivosNoContactoOptions,
   getMotivosNoDisposicionOptions,
   searchCallCenter,
+  searchVentanillaForCallCenter,
   updateCallCenterRegistro,
 } from '@/services/callcenter.service';
-import { getEncuestadoresOptions } from '@/services/catalog.service';
-import { getBarriosOptions } from '@/services/territory.service';
-import { PageResponse } from '@/types/api.types';
-import { SelectOption } from '@/types/catalog.types';
 import {
-  BooleanFilterValue,
+  getCallCenterBarriosOptions,
+  getCallCenterComunasOptions,
+  getCallCenterEncuestadoresOptions,
+} from '@/services/callcenter-support.service';
+
+
+import {
   CallCenterFilter,
+  CallCenterOrigenRegistro,
   CallCenterRequest,
   CallCenterResponse,
-  StatusFilterValue,
+  VentanillaCallCenterFilter,
+  VentanillaCallCenterResponse,
 } from '@/types/callcenter.types';
+import { SelectOption } from '@/types/catalog.types';
+
+
+type SnackbarState = {
+  open: boolean;
+  message: string;
+  severity: 'success' | 'error' | 'warning' | 'info';
+};
+
+type ConfirmAction = 'ACTIVATE' | 'DEACTIVATE' | null;
 
 type FormState = {
   id?: number;
   fechaLlamada: string;
   horaLlamada: string;
   tipoRegistro: string;
+  origenRegistro: CallCenterOrigenRegistro;
+  ventanillaRegistroId: string;
   cedulaSolicitante: string;
   nombreCompleto: string;
   telefono: string;
-  llamadaConectada: 'YES' | 'NO';
+  llamadaConectada: string;
   motivoNoContactoId: string;
   motivoNoContactoTexto: string;
   encuestadorProgramadoId: string;
   fechaEncuestaProgramada: string;
-  solicitoNuevaEncuesta: '' | 'YES' | 'NO';
+  solicitoNuevaEncuesta: string;
   direccionTexto: string;
   barrioId: string;
   fechaAplicacionInformada: string;
-  disposicionRecibirEncuesta: '' | 'YES' | 'NO';
+  disposicionRecibirEncuesta: string;
   motivoNoDisposicionId: string;
   motivoNoDisposicionTexto: string;
   encuestadorAsignadoId: string;
-  explicoInformanteCalificado: '' | 'YES' | 'NO';
-  verificado: '' | 'YES' | 'NO';
+  explicoInformanteCalificado: string;
+  verificado: string;
   observacion: string;
   activo: boolean;
 };
 
-type SnackbarSeverity = 'success' | 'error' | 'warning' | 'info';
-type ConfirmAction = 'ACTIVATE' | 'DEACTIVATE';
+type FilterState = {
+  q: string;
+  origenRegistro: 'ALL' | CallCenterOrigenRegistro;
+  llamadaConectada: 'ALL' | 'true' | 'false';
+  activo: 'ALL' | 'true' | 'false';
+  page: number;
+  size: number;
+};
+
+type VentanillaSearchState = {
+  q: string;
+  cedulaUsuario: string;
+  nombreUsuario: string;
+  comunaId: string;
+  barrioId: string;
+  encuestadorAsignadoId: string;
+  fechaEncuestaProgramada: string;
+  page: number;
+  size: number;
+};
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
+const SOLICITUD_NUEVA_ENCUESTA_ID = 6;
+const ESTADO_SOLICITUD_PENDIENTE_ID = 1;
+
+const initialFilter: FilterState = {
+  q: '',
+  origenRegistro: 'ALL',
+  llamadaConectada: 'ALL',
+  activo: 'true',
+  page: 0,
+  size: 20,
+};
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+const nowTime = () => {
+  const date = new Date();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return `${hours}:${minutes}`;
+};
 
 const initialForm: FormState = {
-  fechaLlamada: '',
-  horaLlamada: '',
+  fechaLlamada: today(),
+  horaLlamada: nowTime(),
   tipoRegistro: 'LLAMADA',
+  origenRegistro: 'MANUAL',
+  ventanillaRegistroId: '',
   cedulaSolicitante: '',
   nombreCompleto: '',
   telefono: '',
-  llamadaConectada: 'NO',
+  llamadaConectada: 'true',
   motivoNoContactoId: '',
   motivoNoContactoTexto: '',
   encuestadorProgramadoId: '',
@@ -121,173 +181,252 @@ const initialForm: FormState = {
   activo: true,
 };
 
-function normalizeSearchText(value?: string | number | boolean | null) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
+const initialVentanillaSearch: VentanillaSearchState = {
+  q: '',
+  cedulaUsuario: '',
+  nombreUsuario: '',
+  comunaId: '',
+  barrioId: '',
+  encuestadorAsignadoId: '',
+  fechaEncuestaProgramada: '',
+  page: 0,
+  size: 50,
+};
 
-function matchesByFirstLetters(
-  value: string | number | boolean | null | undefined,
-  searchValue: string
-) {
-  const searchText = normalizeSearchText(searchValue);
-
-  if (!searchText) {
+function toBoolean(value: string): boolean | null {
+  if (value === 'true') {
     return true;
   }
 
-  const normalizedValue = normalizeSearchText(value);
-
-  if (!normalizedValue) {
+  if (value === 'false') {
     return false;
   }
-
-  return normalizedValue
-    .split(/[\s\-_.]+/)
-    .filter(Boolean)
-    .some((word) => word.startsWith(searchText));
-}
-
-function matchesAnyByFirstLetters(
-  searchValue: string,
-  values: Array<string | number | boolean | null | undefined>
-) {
-  const searchText = normalizeSearchText(searchValue);
-
-  if (!searchText) {
-    return true;
-  }
-
-  return values.some((value) => matchesByFirstLetters(value, searchText));
-}
-
-function clean(value: string) {
-  const safeValue = value.trim();
-
-  return safeValue ? safeValue : null;
-}
-
-function upper(value: string) {
-  return value.trim().replace(/\s+/g, ' ').toUpperCase();
-}
-
-function parseNumber(value: string) {
-  return value ? Number(value) : null;
-}
-
-function fromBooleanOption(value: '' | 'YES' | 'NO') {
-  if (value === 'YES') return true;
-  if (value === 'NO') return false;
 
   return null;
 }
 
-function toBooleanOption(value?: boolean | null): '' | 'YES' | 'NO' {
-  if (value === true) return 'YES';
-  if (value === false) return 'NO';
-
-  return '';
+function toOptionalNumber(value: string) {
+  return value ? Number(value) : null;
 }
 
-function getBooleanFilter(value: BooleanFilterValue) {
-  if (value === 'YES') return true;
-  if (value === 'NO') return false;
-
-  return undefined;
+function normalizeText(value?: string | null) {
+  return value?.trim() ?? '';
 }
 
-function getActivoFilter(value: StatusFilterValue) {
-  if (value === 'ACTIVE') return true;
-  if (value === 'INACTIVE') return false;
+function getPageContent<T>(page: unknown): T[] {
+  const data = page as {
+    content?: T[];
+    items?: T[];
+    data?: T[];
+  };
 
-  return undefined;
+  return data?.content ?? data?.items ?? data?.data ?? [];
 }
 
-function booleanLabel(value?: boolean | null) {
-  if (value === true) return 'Sí';
-  if (value === false) return 'No';
+function getTotalElements(page: unknown, currentLength: number) {
+  const data = page as {
+    totalElements?: number;
+    total?: number;
+    totalRecords?: number;
+  };
 
-  return '-';
+  return data?.totalElements ?? data?.total ?? data?.totalRecords ?? currentLength;
 }
 
-function currentDateValue() {
-  return new Date().toISOString().slice(0, 10);
+function origenColor(origen?: string | null) {
+  if (origen === 'VENTANILLA') {
+    return 'primary' as const;
+  }
+
+  if (origen === 'IMPORTACION') {
+    return 'secondary' as const;
+  }
+
+  return 'default' as const;
 }
 
-function currentTimeValue() {
-  return new Date().toTimeString().slice(0, 5);
+function buildFilter(filter: FilterState): CallCenterFilter {
+  const llamadaConectada = toBoolean(filter.llamadaConectada);
+  const activo = toBoolean(filter.activo);
+
+  return {
+    page: filter.page,
+    size: filter.size,
+    q: normalizeText(filter.q) || undefined,
+    origenRegistro: filter.origenRegistro === 'ALL' ? undefined : filter.origenRegistro,
+    llamadaConectada: llamadaConectada ?? undefined,
+    activo: activo ?? undefined,
+  };
+}
+
+function buildVentanillaFilter(
+  search: VentanillaSearchState,
+  page = search.page,
+  size = search.size
+): VentanillaCallCenterFilter {
+  return {
+    page,
+    size,
+    q: normalizeText(search.q) || undefined,
+    cedulaUsuario: normalizeText(search.cedulaUsuario) || undefined,
+    nombreUsuario: normalizeText(search.nombreUsuario) || undefined,
+    comunaId: search.comunaId || undefined,
+    barrioId: search.barrioId || undefined,
+    solicitudId: SOLICITUD_NUEVA_ENCUESTA_ID,
+    estadoSolicitudId: ESTADO_SOLICITUD_PENDIENTE_ID,
+    activo: true,
+  };
+}
+
+function recordToForm(record: CallCenterResponse): FormState {
+  return {
+    id: record.id,
+    fechaLlamada: record.fechaLlamada ?? today(),
+    horaLlamada: record.horaLlamada?.slice(0, 5) ?? '',
+    tipoRegistro: record.tipoRegistro ?? 'LLAMADA',
+    origenRegistro: (record.origenRegistro as CallCenterOrigenRegistro) ?? 'MANUAL',
+    ventanillaRegistroId: record.ventanillaRegistroId ? String(record.ventanillaRegistroId) : '',
+    cedulaSolicitante: record.cedulaSolicitante ?? '',
+    nombreCompleto: record.nombreCompleto ?? '',
+    telefono: record.telefono ?? '',
+    llamadaConectada: String(record.llamadaConectada ?? true),
+    motivoNoContactoId: record.motivoNoContactoId ? String(record.motivoNoContactoId) : '',
+    motivoNoContactoTexto: record.motivoNoContactoTexto ?? '',
+    encuestadorProgramadoId: record.encuestadorProgramadoId ? String(record.encuestadorProgramadoId) : '',
+    fechaEncuestaProgramada: record.fechaEncuestaProgramada ?? '',
+    solicitoNuevaEncuesta:
+      record.solicitoNuevaEncuesta === null || record.solicitoNuevaEncuesta === undefined
+        ? ''
+        : String(record.solicitoNuevaEncuesta),
+    direccionTexto: record.direccionTexto ?? '',
+    barrioId: record.barrioId ? String(record.barrioId) : '',
+    fechaAplicacionInformada: record.fechaAplicacionInformada ?? '',
+    disposicionRecibirEncuesta:
+      record.disposicionRecibirEncuesta === null || record.disposicionRecibirEncuesta === undefined
+        ? ''
+        : String(record.disposicionRecibirEncuesta),
+    motivoNoDisposicionId: record.motivoNoDisposicionId ? String(record.motivoNoDisposicionId) : '',
+    motivoNoDisposicionTexto: record.motivoNoDisposicionTexto ?? '',
+    encuestadorAsignadoId: record.encuestadorAsignadoId ? String(record.encuestadorAsignadoId) : '',
+    explicoInformanteCalificado:
+      record.explicoInformanteCalificado === null || record.explicoInformanteCalificado === undefined
+        ? ''
+        : String(record.explicoInformanteCalificado),
+    verificado:
+      record.verificado === null || record.verificado === undefined
+        ? ''
+        : String(record.verificado),
+    observacion: record.observacion ?? '',
+    activo: record.activo !== false,
+  };
+}
+
+function ventanillaToForm(record: VentanillaCallCenterResponse): FormState {
+  return {
+    ...initialForm,
+    fechaLlamada: today(),
+    horaLlamada: nowTime(),
+    origenRegistro: 'VENTANILLA',
+    ventanillaRegistroId: String(record.id),
+    cedulaSolicitante: record.cedulaUsuario ?? '',
+    nombreCompleto: record.nombreUsuario ?? '',
+    telefono: record.telefono ?? '',
+    direccionTexto: record.direccion ?? '',
+    barrioId: record.barrioId ? String(record.barrioId) : '',
+    solicitoNuevaEncuesta: 'true',
+    observacion: [
+      record.numeroVentanilla ? `Ventanilla: ${record.numeroVentanilla}` : '',
+      record.fecha ? `Fecha ventanilla: ${record.fecha}` : '',
+      record.solicitudNombre ? `Solicitud: ${record.solicitudNombre}` : '',
+      record.estadoSolicitudNombre ? `Estado: ${record.estadoSolicitudNombre}` : '',
+      record.barrioNombre ? `Barrio: ${record.barrioNombre}` : '',
+      record.comunaNombre ? `Comuna: ${record.comunaNombre}` : '',
+      record.observacion ? `Observación ventanilla: ${record.observacion}` : '',
+    ]
+      .filter(Boolean)
+      .join(' | '),
+  };
+}
+
+function ventanillaToRequest(
+  record: VentanillaCallCenterResponse,
+  search: VentanillaSearchState
+): CallCenterRequest {
+  const encuestadorAsignadoId = toOptionalNumber(search.encuestadorAsignadoId);
+  const fechaEncuestaProgramada = search.fechaEncuestaProgramada || null;
+
+  return {
+    fechaLlamada: today(),
+    horaLlamada: nowTime(),
+    tipoRegistro: 'LLAMADA',
+    origenRegistro: 'VENTANILLA',
+    ventanillaRegistroId: record.id,
+    cedulaSolicitante: normalizeText(record.cedulaUsuario) || '',
+    nombreCompleto: normalizeText(record.nombreUsuario) || '',
+    telefono: normalizeText(record.telefono) || null,
+    llamadaConectada: true,
+    motivoNoContactoId: null,
+    motivoNoContactoTexto: null,
+    encuestadorProgramadoId: encuestadorAsignadoId,
+    fechaEncuestaProgramada,
+    solicitoNuevaEncuesta: true,
+    direccionTexto: normalizeText(record.direccion) || null,
+    barrioId: record.barrioId ?? null,
+    fechaAplicacionInformada: null,
+    disposicionRecibirEncuesta: null,
+    motivoNoDisposicionId: null,
+    motivoNoDisposicionTexto: null,
+    encuestadorAsignadoId,
+    explicoInformanteCalificado: null,
+    verificado: null,
+    observacion: [
+      record.numeroVentanilla ? `Ventanilla: ${record.numeroVentanilla}` : '',
+      record.fecha ? `Fecha ventanilla: ${record.fecha}` : '',
+      record.solicitudNombre ? `Solicitud: ${record.solicitudNombre}` : '',
+      record.estadoSolicitudNombre ? `Estado: ${record.estadoSolicitudNombre}` : '',
+      record.barrioNombre ? `Barrio: ${record.barrioNombre}` : '',
+      record.comunaNombre ? `Comuna: ${record.comunaNombre}` : '',
+      record.observacion ? `Observación ventanilla: ${record.observacion}` : '',
+    ]
+      .filter(Boolean)
+      .join(' | ') || null,
+    activo: true,
+  };
 }
 
 export default function CallCenterRegistrosPage() {
-  const [filter, setFilter] = useState<CallCenterFilter>({
-    page: 0,
-    size: 20,
-  });
-  const [connectionFilter, setConnectionFilter] = useState<BooleanFilterValue>('ALL');
-  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('ALL');
-  const [pageData, setPageData] = useState<PageResponse<CallCenterResponse> | null>(null);
-  const [barrios, setBarrios] = useState<SelectOption[]>([]);
-  const [encuestadores, setEncuestadores] = useState<SelectOption[]>([]);
+  const [records, setRecords] = useState<CallCenterResponse[]>([]);
+  const [total, setTotal] = useState(0);
+  const [filter, setFilter] = useState<FilterState>(initialFilter);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [ventanillaDialogOpen, setVentanillaDialogOpen] = useState(false);
+  const [form, setForm] = useState<FormState>(initialForm);
+
+  const [ventanillaSearch, setVentanillaSearch] = useState<VentanillaSearchState>(initialVentanillaSearch);
+  const [ventanillaRecords, setVentanillaRecords] = useState<VentanillaCallCenterResponse[]>([]);
+  const [ventanillaTotal, setVentanillaTotal] = useState(0);
+  const [ventanillaLoading, setVentanillaLoading] = useState(false);
+  const [selectedVentanillaIds, setSelectedVentanillaIds] = useState<number[]>([]);
+
   const [motivosNoContacto, setMotivosNoContacto] = useState<SelectOption[]>([]);
   const [motivosNoDisposicion, setMotivosNoDisposicion] = useState<SelectOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [catalogLoading, setCatalogLoading] = useState(true);
-  const [restricted, setRestricted] = useState(false);
-  const [error, setError] = useState('');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState<FormState>(initialForm);
-  const [tableSearch, setTableSearch] = useState('');
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
-  const [menuRecord, setMenuRecord] = useState<CallCenterResponse | null>(null);
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [confirmRecord, setConfirmRecord] = useState<CallCenterResponse | null>(null);
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction>('DEACTIVATE');
-  const [processingAction, setProcessingAction] = useState(false);
-  const [snackbar, setSnackbar] = useState<{
-    open: boolean;
-    message: string;
-    severity: SnackbarSeverity;
-  }>({
+  const [barrios, setBarrios] = useState<SelectOption[]>([]);
+  const [comunas, setComunas] = useState<SelectOption[]>([]);
+  const [encuestadores, setEncuestadores] = useState<SelectOption[]>([]);
+
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [selectedRecord, setSelectedRecord] = useState<CallCenterResponse | null>(null);
+
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
     message: '',
     severity: 'success',
   });
 
-  const allowWrite = useMemo(() => canWriteCallCenter(currentRole()), []);
-
-  const totalRecords = pageData?.totalElements ?? 0;
-  const currentPage = pageData?.page ?? 0;
-  const currentSize = pageData?.size ?? 20;
-  const menuOpen = Boolean(menuAnchorEl);
-
-  const visibleRows = (pageData?.content ?? []).filter((row) =>
-    matchesAnyByFirstLetters(tableSearch, [
-      row.fechaLlamada,
-      row.cedulaSolicitante,
-      row.nombreCompleto,
-      row.telefono,
-      row.barrioNombre,
-      row.comunaNombre,
-      row.encuestadorAsignadoNombre,
-      row.encuestadorProgramadoNombre,
-      row.estadoVisita,
-      row.llamadaConectada ? 'si conectada' : 'no conectada',
-      row.activo ? 'activo' : 'inactivo',
-    ])
-  );
-
-  const visibleSelectedCount = visibleRows.filter((row) =>
-    selectedIds.includes(row.id)
-  ).length;
-
-  const allVisibleSelected = visibleRows.length > 0
-    && visibleSelectedCount === visibleRows.length;
-
-  const showSnackbar = (message: string, severity: SnackbarSeverity = 'success') => {
+  const showMessage = (message: string, severity: SnackbarState['severity'] = 'success') => {
     setSnackbar({
       open: true,
       message,
@@ -296,1475 +435,1358 @@ export default function CallCenterRegistrosPage() {
   };
 
   const closeSnackbar = () => {
-    setSnackbar({
+    setSnackbar((current) => ({
+      ...current,
       open: false,
-      message: '',
-      severity: 'success',
-    });
+    }));
   };
 
-  const findOption = (options: SelectOption[], id: string | number | null | undefined) =>
-    options.find((option) => String(option.id) === String(id ?? '')) ?? null;
-
-  const filterOptionsByFirstLetters = (options: SelectOption[], inputValue: string) => {
-    const searchText = normalizeSearchText(inputValue);
-
-    if (!searchText) {
-      return options;
-    }
-
-    return options.filter((option) => matchesByFirstLetters(option.label, searchText));
-  };
-
-  const loadCatalogs = async () => {
-    setCatalogLoading(true);
-
-    try {
-      const [
-        barriosData,
-        encuestadoresData,
-        motivosContactoData,
-        motivosDisposicionData,
-      ] = await Promise.all([
-        getBarriosOptions(),
-        getEncuestadoresOptions(),
-        getMotivosNoContactoOptions(),
-        getMotivosNoDisposicionOptions(),
-      ]);
-
-      setBarrios(barriosData);
-      setEncuestadores(encuestadoresData);
-      setMotivosNoContacto(motivosContactoData);
-      setMotivosNoDisposicion(motivosDisposicionData);
-    } catch (err) {
-      const message = err instanceof Error
-        ? err.message
-        : 'No fue posible cargar los catálogos del formulario.';
-
-      setError(message);
-      showSnackbar(message, 'error');
-    } finally {
-      setCatalogLoading(false);
-    }
-  };
-
-  const load = async (
-    customFilter: CallCenterFilter = filter,
-    customConnection: BooleanFilterValue = connectionFilter,
-    customStatus: StatusFilterValue = statusFilter
-  ) => {
+  const load = useCallback(async () => {
     setLoading(true);
-    setRestricted(false);
-    setError('');
 
     try {
-      const response = await searchCallCenter({
-        ...customFilter,
-        llamadaConectada: getBooleanFilter(customConnection),
-        activo: getActivoFilter(customStatus),
-      });
+      const page = await searchCallCenter(buildFilter(filter));
+      const content = getPageContent<CallCenterResponse>(page);
 
-      setPageData(response);
-      setFilter(customFilter);
-      setConnectionFilter(customConnection);
-      setStatusFilter(customStatus);
-      setSelectedIds([]);
-    } catch (err) {
-      const message = err instanceof Error
-        ? err.message
-        : 'No fue posible consultar los registros Call Center.';
-
-      if (message.toLowerCase().includes('forbidden') || message.includes('403')) {
-        setRestricted(true);
-      } else {
-        setError(message);
-        showSnackbar(message, 'error');
-      }
+      setRecords(content);
+      setTotal(getTotalElements(page, content.length));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible cargar los registros de Call Center.';
+      showMessage(message, 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
 
-  useEffect(() => {
-    void loadCatalogs();
-    void load({
-      page: 0,
-      size: 20,
-    }, 'ALL', 'ALL');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const updateFilter = (key: keyof CallCenterFilter, value: string) => {
-    setFilter((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  };
-
-  const updateForm = (key: keyof FormState, value: string | boolean) => {
-    setForm((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  };
-
-  const search = () => {
-    void load({
-      ...filter,
-      page: 0,
-    }, connectionFilter, statusFilter);
-  };
-
-  const clearFilters = () => {
-    const cleared = {
-      page: 0,
-      size: filter.size ?? 20,
-    };
-
-    setFilter(cleared);
-    setConnectionFilter('ALL');
-    setStatusFilter('ALL');
-    setTableSearch('');
-    setSelectedIds([]);
-    void load(cleared, 'ALL', 'ALL');
-  };
-
-  const handleChangePage = (_: unknown, newPage: number) => {
-    void load({
-      ...filter,
-      page: newPage,
-    }, connectionFilter, statusFilter);
-  };
-
-  const handleChangeRowsPerPage = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    void load({
-      ...filter,
-      page: 0,
-      size: Number(event.target.value),
-    }, connectionFilter, statusFilter);
-  };
-
-  const openCreate = () => {
-    setError('');
-    setForm({
-      ...initialForm,
-      fechaLlamada: currentDateValue(),
-      horaLlamada: currentTimeValue(),
-    });
-    setDialogOpen(true);
-  };
-
-  const openEdit = (row: CallCenterResponse) => {
-    setError('');
-    setForm({
-      id: row.id,
-      fechaLlamada: row.fechaLlamada ?? '',
-      horaLlamada: row.horaLlamada ? row.horaLlamada.slice(0, 5) : '',
-      tipoRegistro: row.tipoRegistro ?? 'LLAMADA',
-      cedulaSolicitante: row.cedulaSolicitante ?? '',
-      nombreCompleto: row.nombreCompleto ?? '',
-      telefono: row.telefono ?? '',
-      llamadaConectada: row.llamadaConectada ? 'YES' : 'NO',
-      motivoNoContactoId: row.motivoNoContactoId ? String(row.motivoNoContactoId) : '',
-      motivoNoContactoTexto: row.motivoNoContactoTexto ?? '',
-      encuestadorProgramadoId: row.encuestadorProgramadoId ? String(row.encuestadorProgramadoId) : '',
-      fechaEncuestaProgramada: row.fechaEncuestaProgramada ?? '',
-      solicitoNuevaEncuesta: toBooleanOption(row.solicitoNuevaEncuesta),
-      direccionTexto: row.direccionTexto ?? '',
-      barrioId: row.barrioId ? String(row.barrioId) : '',
-      fechaAplicacionInformada: row.fechaAplicacionInformada ?? '',
-      disposicionRecibirEncuesta: toBooleanOption(row.disposicionRecibirEncuesta),
-      motivoNoDisposicionId: row.motivoNoDisposicionId ? String(row.motivoNoDisposicionId) : '',
-      motivoNoDisposicionTexto: row.motivoNoDisposicionTexto ?? '',
-      encuestadorAsignadoId: row.encuestadorAsignadoId ? String(row.encuestadorAsignadoId) : '',
-      explicoInformanteCalificado: toBooleanOption(row.explicoInformanteCalificado),
-      verificado: toBooleanOption(row.verificado),
-      observacion: row.observacion ?? '',
-      activo: row.activo,
-    });
-    setDialogOpen(true);
-  };
-
-  const closeFormDialog = () => {
-    setDialogOpen(false);
-    setForm(initialForm);
-    setError('');
-  };
-
-  const openRowMenu = (event: MouseEvent<HTMLButtonElement>, row: CallCenterResponse) => {
-    setMenuAnchorEl(event.currentTarget);
-    setMenuRecord(row);
-  };
-
-  const closeRowMenu = () => {
-    setMenuAnchorEl(null);
-    setMenuRecord(null);
-  };
-
-  const handleMenuEdit = () => {
-    if (!menuRecord) {
-      return;
-    }
-
-    const record = menuRecord;
-    closeRowMenu();
-    openEdit(record);
-  };
-
-  const openConfirmDialog = (row: CallCenterResponse, action: ConfirmAction) => {
-    setConfirmRecord(row);
-    setConfirmAction(action);
-    setConfirmDialogOpen(true);
-  };
-
-  const handleMenuStatus = () => {
-    if (!menuRecord) {
-      return;
-    }
-
-    const record = menuRecord;
-    closeRowMenu();
-    openConfirmDialog(record, record.activo ? 'DEACTIVATE' : 'ACTIVATE');
-  };
-
-  const closeConfirmDialog = () => {
-    if (processingAction) {
-      return;
-    }
-
-    setConfirmDialogOpen(false);
-    setConfirmRecord(null);
-  };
-
-  const confirmStatusAction = async () => {
-    if (!confirmRecord) {
-      return;
-    }
-
-    setProcessingAction(true);
-    setError('');
+  const loadVentanilla = useCallback(async () => {
+    setVentanillaLoading(true);
 
     try {
-      if (confirmAction === 'ACTIVATE') {
-        await activateCallCenterRegistro(confirmRecord.id);
-        showSnackbar('Registro Call Center activado correctamente.', 'success');
-      } else {
-        await deactivateCallCenterRegistro(confirmRecord.id);
-        showSnackbar('Registro Call Center inactivado correctamente.', 'success');
-      }
+      const page = await searchVentanillaForCallCenter(buildVentanillaFilter(ventanillaSearch));
+      const content = getPageContent<VentanillaCallCenterResponse>(page);
 
-      setConfirmDialogOpen(false);
-      setConfirmRecord(null);
-
-      await load({
-        ...filter,
-        page: 0,
-      }, connectionFilter, statusFilter);
-    } catch (err) {
-      const message = err instanceof Error
-        ? err.message
-        : 'No fue posible cambiar el estado del registro.';
-
-      setError(message);
-      showSnackbar(message, 'error');
+      setVentanillaRecords(content);
+      setVentanillaTotal(getTotalElements(page, content.length));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible cargar los registros de ventanilla.';
+      showMessage(message, 'error');
     } finally {
-      setProcessingAction(false);
+      setVentanillaLoading(false);
     }
-  };
+  }, [ventanillaSearch]);
 
-  const toggleSelected = (id: number) => {
-    setSelectedIds((current) => {
-      if (current.includes(id)) {
-        return current.filter((item) => item !== id);
-      }
+  useEffect(() => {
+    load();
+  }, [load]);
 
-      return [...current, id];
-    });
-  };
+  useEffect(() => {
+    Promise.all([
+      getMotivosNoContactoOptions(),
+      getMotivosNoDisposicionOptions(),
+      getCallCenterBarriosOptions(),
+      getCallCenterComunasOptions(),
+      getCallCenterEncuestadoresOptions(),
+    ])
+      .then(([noContacto, noDisposicion, barriosData, comunasData, encuestadoresData]) => {
+        setMotivosNoContacto(noContacto);
+        setMotivosNoDisposicion(noDisposicion);
+        setBarrios(barriosData);
+        setComunas(comunasData);
+        setEncuestadores(encuestadoresData);
+      })
+      .catch(() => {
+        showMessage('No fue posible cargar algunos catálogos de Call Center.', 'warning');
+      });
+  }, []);
 
-  const toggleAllVisible = () => {
-    if (allVisibleSelected) {
-      setSelectedIds((current) =>
-        current.filter((id) => !visibleRows.some((row) => row.id === id))
-      );
-
-      return;
+  useEffect(() => {
+    if (ventanillaDialogOpen) {
+      loadVentanilla();
     }
+  }, [ventanillaDialogOpen, loadVentanilla]);
 
-    setSelectedIds((current) => {
-      const ids = visibleRows.map((row) => row.id);
-      const merged = new Set([...current, ...ids]);
+  const isNoContact = form.llamadaConectada === 'false';
+  const isConnected = form.llamadaConectada === 'true';
+  const hasNoDisposition = form.disposicionRecibirEncuesta === 'false';
 
-      return Array.from(merged);
-    });
+  const selectedVentanillaRecords = useMemo(
+    () => ventanillaRecords.filter((record) => selectedVentanillaIds.includes(record.id)),
+    [selectedVentanillaIds, ventanillaRecords]
+  );
+
+  const allVisibleVentanillaSelected = ventanillaRecords.length > 0
+    && ventanillaRecords.every((record) => selectedVentanillaIds.includes(record.id));
+
+  const someVisibleVentanillaSelected = ventanillaRecords.some((record) =>
+    selectedVentanillaIds.includes(record.id)
+  );
+
+  const stats = useMemo(() => {
+    const ventanilla = records.filter((item) => item.origenRegistro === 'VENTANILLA').length;
+    const manual = records.filter((item) => item.origenRegistro === 'MANUAL').length;
+    const connected = records.filter((item) => item.llamadaConectada).length;
+
+    return {
+      ventanilla,
+      manual,
+      connected,
+    };
+  }, [records]);
+
+  const updateForm = (field: keyof FormState, value: string | boolean) => {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
   };
+
+  const updateFilter = (field: keyof FilterState, value: string | number) => {
+    setFilter((current) => ({
+      ...current,
+      [field]: value,
+      page: field === 'page' || field === 'size' ? current.page : 0,
+    }));
+  };
+
+  const updateVentanillaFilter = (field: keyof VentanillaSearchState, value: string | number) => {
+    setVentanillaSearch((current) => ({
+      ...current,
+      [field]: value,
+      page: field === 'page' || field === 'size' ? current.page : 0,
+    }));
+    setSelectedVentanillaIds([]);
+  };
+
+  const openManualDialog = () => {
+    setForm({
+      ...initialForm,
+      fechaLlamada: today(),
+      horaLlamada: nowTime(),
+      origenRegistro: 'MANUAL',
+      solicitoNuevaEncuesta: 'true',
+    });
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (record: CallCenterResponse) => {
+    setForm(recordToForm(record));
+    setDialogOpen(true);
+  };
+
+  const openVentanillaDialog = () => {
+    setVentanillaSearch(initialVentanillaSearch);
+    setSelectedVentanillaIds([]);
+    setVentanillaDialogOpen(true);
+  };
+
+  const selectVentanillaRecord = (record: VentanillaCallCenterResponse) => {
+    setForm({
+      ...ventanillaToForm(record),
+      encuestadorAsignadoId: ventanillaSearch.encuestadorAsignadoId,
+      encuestadorProgramadoId: ventanillaSearch.encuestadorAsignadoId,
+      fechaEncuestaProgramada: ventanillaSearch.fechaEncuestaProgramada,
+    });
+    setVentanillaDialogOpen(false);
+    setDialogOpen(true);
+  };
+
+  const buildRequest = (): CallCenterRequest => ({
+    fechaLlamada: form.fechaLlamada,
+    horaLlamada: form.horaLlamada || null,
+    tipoRegistro: form.tipoRegistro || 'LLAMADA',
+    origenRegistro: form.origenRegistro,
+    ventanillaRegistroId: toOptionalNumber(form.ventanillaRegistroId),
+    cedulaSolicitante: normalizeText(form.cedulaSolicitante),
+    nombreCompleto: normalizeText(form.nombreCompleto),
+    telefono: normalizeText(form.telefono) || null,
+    llamadaConectada: form.llamadaConectada === 'true',
+    motivoNoContactoId: toOptionalNumber(form.motivoNoContactoId),
+    motivoNoContactoTexto: normalizeText(form.motivoNoContactoTexto) || null,
+    encuestadorProgramadoId: toOptionalNumber(form.encuestadorProgramadoId),
+    fechaEncuestaProgramada: form.fechaEncuestaProgramada || null,
+    solicitoNuevaEncuesta: toBoolean(form.solicitoNuevaEncuesta),
+    direccionTexto: normalizeText(form.direccionTexto) || null,
+    barrioId: toOptionalNumber(form.barrioId),
+    fechaAplicacionInformada: form.fechaAplicacionInformada || null,
+    disposicionRecibirEncuesta: toBoolean(form.disposicionRecibirEncuesta),
+    motivoNoDisposicionId: toOptionalNumber(form.motivoNoDisposicionId),
+    motivoNoDisposicionTexto: normalizeText(form.motivoNoDisposicionTexto) || null,
+    encuestadorAsignadoId: toOptionalNumber(form.encuestadorAsignadoId),
+    explicoInformanteCalificado: toBoolean(form.explicoInformanteCalificado),
+    verificado: toBoolean(form.verificado),
+    observacion: normalizeText(form.observacion) || null,
+    activo: form.activo,
+  });
 
   const validateForm = () => {
     if (!form.fechaLlamada) {
       return 'La fecha de llamada es obligatoria.';
     }
 
-    if (!form.cedulaSolicitante.trim()) {
+    if (!normalizeText(form.cedulaSolicitante)) {
       return 'La cédula del solicitante es obligatoria.';
     }
 
-    if (!form.nombreCompleto.trim()) {
+    if (!normalizeText(form.nombreCompleto)) {
       return 'El nombre completo es obligatorio.';
     }
 
-    if (form.llamadaConectada === 'NO') {
-      const hasMotivo = Boolean(form.motivoNoContactoId)
-        || Boolean(form.motivoNoContactoTexto.trim());
-
-      if (!hasMotivo) {
-        return 'Debe registrar el motivo por el cual no se logró conectar la llamada.';
-      }
+    if (form.origenRegistro === 'VENTANILLA' && !form.ventanillaRegistroId) {
+      return 'El origen VENTANILLA requiere un registro de ventanilla relacionado.';
     }
 
-    if (
-      form.llamadaConectada === 'YES'
-      && form.disposicionRecibirEncuesta === 'NO'
-    ) {
-      const hasMotivo = Boolean(form.motivoNoDisposicionId)
-        || Boolean(form.motivoNoDisposicionTexto.trim());
+    if (form.solicitoNuevaEncuesta === 'true' && !form.encuestadorAsignadoId) {
+      return 'Selecciona el encuestador que realizará la nueva encuesta.';
+    }
 
-      if (!hasMotivo) {
-        return 'Debe registrar el motivo por el cual no se confirmó la disposición.';
-      }
+    if (isNoContact && !form.motivoNoContactoId && !normalizeText(form.motivoNoContactoTexto)) {
+      return 'Registra el motivo por el cual no se logró conectar la llamada.';
+    }
+
+    if (isConnected && hasNoDisposition && !form.motivoNoDisposicionId && !normalizeText(form.motivoNoDisposicionTexto)) {
+      return 'Registra el motivo por el cual no se confirmó la disposición.';
     }
 
     return '';
   };
 
-  const buildRequest = (): CallCenterRequest => {
-    const llamadaConectada = form.llamadaConectada === 'YES';
-
-    return {
-      fechaLlamada: form.fechaLlamada,
-      horaLlamada: clean(form.horaLlamada),
-      tipoRegistro: clean(form.tipoRegistro) ?? 'LLAMADA',
-      cedulaSolicitante: clean(form.cedulaSolicitante) ?? '',
-      nombreCompleto: upper(form.nombreCompleto),
-      telefono: clean(form.telefono),
-      llamadaConectada,
-      motivoNoContactoId: llamadaConectada ? null : parseNumber(form.motivoNoContactoId),
-      motivoNoContactoTexto: llamadaConectada ? null : clean(form.motivoNoContactoTexto),
-      encuestadorProgramadoId: llamadaConectada ? null : parseNumber(form.encuestadorProgramadoId),
-      fechaEncuestaProgramada: llamadaConectada ? null : clean(form.fechaEncuestaProgramada),
-      solicitoNuevaEncuesta: llamadaConectada ? fromBooleanOption(form.solicitoNuevaEncuesta) : null,
-      direccionTexto: llamadaConectada ? clean(form.direccionTexto) : null,
-      barrioId: llamadaConectada ? parseNumber(form.barrioId) : null,
-      fechaAplicacionInformada: llamadaConectada ? clean(form.fechaAplicacionInformada) : null,
-      disposicionRecibirEncuesta: llamadaConectada ? fromBooleanOption(form.disposicionRecibirEncuesta) : null,
-      motivoNoDisposicionId: llamadaConectada ? parseNumber(form.motivoNoDisposicionId) : null,
-      motivoNoDisposicionTexto: llamadaConectada ? clean(form.motivoNoDisposicionTexto) : null,
-      encuestadorAsignadoId: llamadaConectada ? parseNumber(form.encuestadorAsignadoId) : null,
-      explicoInformanteCalificado: llamadaConectada ? fromBooleanOption(form.explicoInformanteCalificado) : null,
-      verificado: fromBooleanOption(form.verificado),
-      observacion: clean(form.observacion),
-      activo: form.activo,
-    };
-  };
-
   const save = async () => {
-    setError('');
-
     const validationMessage = validateForm();
 
     if (validationMessage) {
-      setError(validationMessage);
-      showSnackbar(validationMessage, 'warning');
+      showMessage(validationMessage, 'warning');
       return;
     }
+
+    setSaving(true);
 
     try {
       if (form.id) {
         await updateCallCenterRegistro(form.id, buildRequest());
-        showSnackbar('Registro Call Center actualizado correctamente.', 'success');
+        showMessage('Registro Call Center actualizado correctamente.', 'success');
       } else {
         await createCallCenterRegistro(buildRequest());
-        showSnackbar('Registro Call Center creado correctamente.', 'success');
+        showMessage('Registro Call Center creado correctamente.', 'success');
       }
 
       setDialogOpen(false);
-      setForm(initialForm);
-
-      await load({
-        ...filter,
-        page: 0,
-      }, connectionFilter, statusFilter);
-    } catch (err) {
-      const message = err instanceof Error
-        ? err.message
-        : 'No fue posible guardar el registro Call Center.';
-
-      setError(message);
-      showSnackbar(message, 'error');
+      load();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible guardar el registro.';
+      showMessage(message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
-  if (loading && !pageData) {
-    return <LoadingState />;
-  }
+  const toggleVentanillaRecord = (id: number) => {
+    setSelectedVentanillaIds((current) =>
+      current.includes(id)
+        ? current.filter((currentId) => currentId !== id)
+        : [...current, id]
+    );
+  };
+
+  const toggleAllVisibleVentanilla = () => {
+    setSelectedVentanillaIds((current) => {
+      const visibleIds = ventanillaRecords.map((record) => record.id);
+
+      if (allVisibleVentanillaSelected) {
+        return current.filter((id) => !visibleIds.includes(id));
+      }
+
+      return Array.from(new Set([...current, ...visibleIds]));
+    });
+  };
+
+  const createFromVentanillaRows = async (rows: VentanillaCallCenterResponse[]) => {
+    if (rows.length === 0) {
+      showMessage('Selecciona al menos un usuario de ventanilla.', 'warning');
+      return;
+    }
+
+    if (!ventanillaSearch.encuestadorAsignadoId) {
+      showMessage('Selecciona el encuestador que realizará la nueva encuesta.', 'warning');
+      return;
+    }
+
+    setSaving(true);
+
+    let created = 0;
+    let failed = 0;
+
+    for (const row of rows) {
+      try {
+        await createCallCenterRegistro(ventanillaToRequest(row, ventanillaSearch));
+        created += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+
+    setSaving(false);
+
+    if (failed > 0) {
+      showMessage(`Se crearon ${created} registros. No fue posible crear ${failed}.`, 'warning');
+    } else {
+      showMessage(`Se crearon ${created} registros de Call Center.`, 'success');
+    }
+
+    setSelectedVentanillaIds([]);
+    setVentanillaDialogOpen(false);
+    load();
+  };
+
+  const createSelectedVentanillaRecords = () => {
+    createFromVentanillaRows(selectedVentanillaRecords);
+  };
+
+  const createAllFilteredVentanillaRecords = async () => {
+    if (!ventanillaSearch.encuestadorAsignadoId) {
+      showMessage('Selecciona el encuestador que realizará la nueva encuesta.', 'warning');
+      return;
+    }
+
+    setVentanillaLoading(true);
+
+    try {
+      const allRecords: VentanillaCallCenterResponse[] = [];
+      let page = 0;
+      const size = 200;
+      let total = 0;
+
+      do {
+        const response = await searchVentanillaForCallCenter(
+          buildVentanillaFilter(ventanillaSearch, page, size)
+        );
+
+        const content = getPageContent<VentanillaCallCenterResponse>(response);
+        total = getTotalElements(response, allRecords.length + content.length);
+
+        allRecords.push(...content);
+
+        if (content.length === 0) {
+          break;
+        }
+
+        page += 1;
+      } while (allRecords.length < total);
+
+      if (allRecords.length === 0) {
+        showMessage('No hay usuarios para crear con los filtros actuales.', 'warning');
+        return;
+      }
+
+      await createFromVentanillaRows(allRecords);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible crear los registros filtrados.';
+      showMessage(message, 'error');
+    } finally {
+      setVentanillaLoading(false);
+    }
+  };
+
+  const openConfirm = (record: CallCenterResponse, action: ConfirmAction) => {
+    setSelectedRecord(record);
+    setConfirmAction(action);
+  };
+
+  const closeConfirm = () => {
+    setSelectedRecord(null);
+    setConfirmAction(null);
+  };
+
+  const confirmStatusChange = async () => {
+    if (!selectedRecord || !confirmAction) {
+      return;
+    }
+
+    try {
+      if (confirmAction === 'ACTIVATE') {
+        await activateCallCenterRegistro(selectedRecord.id);
+        showMessage('Registro activado correctamente.', 'success');
+      }
+
+      if (confirmAction === 'DEACTIVATE') {
+        await deactivateCallCenterRegistro(selectedRecord.id);
+        showMessage('Registro inactivado correctamente.', 'success');
+      }
+
+      closeConfirm();
+      load();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible cambiar el estado del registro.';
+      showMessage(message, 'error');
+    }
+  };
+
+  const handlePageChange = (_: unknown, page: number) => {
+    setFilter((current) => ({
+      ...current,
+      page,
+    }));
+  };
+
+  const handleRowsPerPageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setFilter((current) => ({
+      ...current,
+      page: 0,
+      size: Number(event.target.value),
+    }));
+  };
+
+  const handleVentanillaPageChange = (_: unknown, page: number) => {
+    setVentanillaSearch((current) => ({
+      ...current,
+      page,
+    }));
+  };
+
+  const handleVentanillaRowsPerPageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setVentanillaSearch((current) => ({
+      ...current,
+      page: 0,
+      size: Number(event.target.value),
+    }));
+    setSelectedVentanillaIds([]);
+  };
 
   return (
-    <Stack spacing={3}>
-      <CrudPageHeader
-        title="Registros Call Center"
-        subtitle="Consulta, filtra, crea y actualiza llamadas de seguimiento a usuarios."
-        primaryAction={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={openCreate}
-            disabled={!allowWrite || catalogLoading}
-          >
-            Nuevo registro
-          </Button>
-        }
-      />
+    <Box>
+      <Stack spacing={3}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          sx={{ justifyContent: 'space-between' }}
+        >
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>
+              Registros Call Center
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Gestión de llamadas, registros manuales y cargue desde ventanilla para asignación de encuestas.
+            </Typography>
+          </Box>
 
-      {!allowWrite ? (
-        <Alert severity="info">
-          Tu rol permite consultar, pero no crear ni actualizar registros Call Center.
-        </Alert>
-      ) : null}
-
-      {restricted ? <AccessMessage /> : null}
-
-      {error ? (
-        <Alert severity="error">
-          {error}
-        </Alert>
-      ) : null}
-
-      <Card sx={{ borderRadius: 3 }}>
-        <CardContent sx={{ p: 3 }}>
-          <Stack spacing={2}>
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={1}
-              sx={{
-                alignItems: { xs: 'flex-start', md: 'center' },
-                justifyContent: 'space-between',
-              }}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={load}
+              disabled={loading}
             >
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  Buscar registros
-                </Typography>
-
-                <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                  Filtra por fecha, texto, conexión y estado.
-                </Typography>
-              </Box>
-
-              <Chip
-                label={`${totalRecords} registro${totalRecords === 1 ? '' : 's'}`}
-                color="primary"
-                variant="outlined"
-              />
-            </Stack>
-
-            <Divider />
-
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  md: 'repeat(6, 1fr)',
-                },
-                gap: 2,
-              }}
+              Actualizar
+            </Button>
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<SourceIcon />}
+              onClick={openVentanillaDialog}
             >
-              <TextField
-                label="Fecha inicio"
-                type="date"
-                size="small"
-                value={filter.fechaInicio ?? ''}
-                onChange={(event) => updateFilter('fechaInicio', event.target.value)}
-                slotProps={{
-                  inputLabel: {
-                    shrink: true,
-                  },
-                }}
-              />
-
-              <TextField
-                label="Fecha fin"
-                type="date"
-                size="small"
-                value={filter.fechaFin ?? ''}
-                onChange={(event) => updateFilter('fechaFin', event.target.value)}
-                slotProps={{
-                  inputLabel: {
-                    shrink: true,
-                  },
-                }}
-              />
-
-              <TextField
-                label="Buscar"
-                size="small"
-                value={filter.q ?? ''}
-                onChange={(event) => updateFilter('q', event.target.value)}
-                placeholder="Cédula, nombre o teléfono"
-              />
-
-              <TextField
-                select
-                label="Conectada"
-                size="small"
-                value={connectionFilter}
-                onChange={(event) => {
-                  const value = event.target.value as BooleanFilterValue;
-                  setConnectionFilter(value);
-                  void load({ ...filter, page: 0 }, value, statusFilter);
-                }}
-              >
-                <MenuItem value="ALL">Todas</MenuItem>
-                <MenuItem value="YES">Sí</MenuItem>
-                <MenuItem value="NO">No</MenuItem>
-              </TextField>
-
-              <TextField
-                select
-                label="Estado"
-                size="small"
-                value={statusFilter}
-                onChange={(event) => {
-                  const value = event.target.value as StatusFilterValue;
-                  setStatusFilter(value);
-                  void load({ ...filter, page: 0 }, connectionFilter, value);
-                }}
-              >
-                <MenuItem value="ALL">Todos</MenuItem>
-                <MenuItem value="ACTIVE">Activos</MenuItem>
-                <MenuItem value="INACTIVE">Inactivos</MenuItem>
-              </TextField>
-
-              <Stack direction="row" spacing={1}>
-                <Button
-                  variant="contained"
-                  startIcon={<SearchIcon />}
-                  onClick={search}
-                  disabled={loading}
-                >
-                  Buscar
-                </Button>
-
-                <Button
-                  variant="outlined"
-                  startIcon={<RestartAltIcon />}
-                  onClick={clearFilters}
-                  disabled={loading}
-                >
-                  Limpiar
-                </Button>
-              </Stack>
-            </Box>
+              Cargar desde Ventanilla
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={openManualDialog}
+            >
+              Nuevo registro manual
+            </Button>
           </Stack>
-        </CardContent>
-      </Card>
+        </Stack>
 
-      <Card
-        sx={{
-          borderRadius: 4,
-          overflow: 'hidden',
-          border: '1px solid',
-          borderColor: 'divider',
-          boxShadow: '0 16px 40px rgba(15, 23, 42, 0.08)',
-        }}
-      >
-        <CardContent sx={{ p: 0 }}>
-          <Box
-            sx={{
-              px: { xs: 2, md: 2.5 },
-              py: 2,
-              display: 'flex',
-              gap: 2,
-              alignItems: { xs: 'stretch', sm: 'center' },
-              justifyContent: 'space-between',
-              flexDirection: { xs: 'column', sm: 'row' },
-              bgcolor: 'background.paper',
-            }}
-          >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Total página
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {records.length}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Desde ventanilla
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {stats.ventanilla}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Manuales
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {stats.manual}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Conectadas
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {stats.connected}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Stack>
+
+        <Paper sx={{ p: 2 }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
             <TextField
-              placeholder="Buscar en la tabla por primeras letras..."
+              label="Buscar"
+              value={filter.q}
+              onChange={(event) => updateFilter('q', event.target.value)}
+              fullWidth
               size="small"
-              value={tableSearch}
-              onChange={(event) => setTableSearch(event.target.value)}
               slotProps={{
                 input: {
                   startAdornment: (
                     <InputAdornment position="start">
-                      <SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                      <SearchIcon fontSize="small" />
                     </InputAdornment>
                   ),
                 },
               }}
-              sx={{
-                width: { xs: '100%', sm: 520, md: 620 },
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: 2.5,
-                  bgcolor: '#ffffff',
-                },
-              }}
             />
 
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-              <Chip
-                label={`${visibleRows.length} visible${visibleRows.length === 1 ? '' : 's'}`}
-                size="small"
-                color="primary"
-                variant="outlined"
-              />
-
-              {visibleSelectedCount > 0 ? (
-                <Chip
-                  label={`${visibleSelectedCount} seleccionado${visibleSelectedCount === 1 ? '' : 's'}`}
-                  size="small"
-                  color="success"
-                  variant="outlined"
-                />
-              ) : null}
-
-              <IconButton
-                onClick={search}
-                disabled={loading}
-                sx={{
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 2,
-                }}
-              >
-                <FilterListIcon />
-              </IconButton>
-            </Stack>
-          </Box>
-
-          <Box sx={{ overflowX: 'auto' }}>
-            <Table
-              sx={{
-                minWidth: 1320,
-                '& .MuiTableCell-root': {
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                },
-                '& .MuiTableHead-root .MuiTableCell-root': {
-                  bgcolor: '#f8fafc',
-                  color: 'text.secondary',
-                  fontSize: 13,
-                  fontWeight: 800,
-                  py: 1.6,
-                },
-                '& .MuiTableBody-root .MuiTableCell-root': {
-                  py: 1.7,
-                  fontSize: 14,
-                },
-                '& .MuiTableRow-root:hover': {
-                  bgcolor: '#f8fafc',
-                },
-              }}
+            <TextField
+              label="Origen"
+              select
+              value={filter.origenRegistro}
+              onChange={(event) => updateFilter('origenRegistro', event.target.value)}
+              sx={{ minWidth: 180 }}
+              size="small"
             >
-              <TableHead>
-                <TableRow>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      size="small"
-                      checked={allVisibleSelected}
-                      indeterminate={visibleSelectedCount > 0 && !allVisibleSelected}
-                      onChange={toggleAllVisible}
-                    />
-                  </TableCell>
-                  <TableCell>Fecha</TableCell>
-                  <TableCell>Solicitante</TableCell>
-                  <TableCell>Teléfono</TableCell>
-                  <TableCell>Conectada</TableCell>
-                  <TableCell>Resultado llamada</TableCell>
-                  <TableCell>Barrio/Dirección</TableCell>
-                  <TableCell>Encuestador</TableCell>
-                  <TableCell>Visita</TableCell>
-                  <TableCell>Estado</TableCell>
-                  <TableCell align="center">Acciones</TableCell>
-                </TableRow>
-              </TableHead>
+              <MenuItem value="ALL">Todos</MenuItem>
+              <MenuItem value="VENTANILLA">Ventanilla</MenuItem>
+              <MenuItem value="MANUAL">Manual</MenuItem>
+              <MenuItem value="IMPORTACION">Importación</MenuItem>
+            </TextField>
 
-              <TableBody>
-                {visibleRows.map((row) => (
-                  <TableRow key={row.id} hover>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        size="small"
-                        checked={selectedIds.includes(row.id)}
-                        onChange={() => toggleSelected(row.id)}
-                      />
-                    </TableCell>
+            <TextField
+              label="Llamada"
+              select
+              value={filter.llamadaConectada}
+              onChange={(event) => updateFilter('llamadaConectada', event.target.value)}
+              sx={{ minWidth: 180 }}
+              size="small"
+            >
+              <MenuItem value="ALL">Todas</MenuItem>
+              <MenuItem value="true">Conectada</MenuItem>
+              <MenuItem value="false">No conectada</MenuItem>
+            </TextField>
 
-                    <TableCell>
-                      <Typography sx={{ fontWeight: 700 }}>
-                        {row.fechaLlamada}
-                      </Typography>
+            <TextField
+              label="Estado"
+              select
+              value={filter.activo}
+              onChange={(event) => updateFilter('activo', event.target.value)}
+              sx={{ minWidth: 160 }}
+              size="small"
+            >
+              <MenuItem value="true">Activos</MenuItem>
+              <MenuItem value="false">Inactivos</MenuItem>
+              <MenuItem value="ALL">Todos</MenuItem>
+            </TextField>
 
-                      <Typography color="text.secondary" sx={{ fontSize: 12 }}>
-                        {row.horaLlamada || '-'}
-                      </Typography>
-                    </TableCell>
+            <Button
+              variant="outlined"
+              startIcon={<RestartAltIcon />}
+              onClick={() => setFilter(initialFilter)}
+            >
+              Limpiar
+            </Button>
+          </Stack>
+        </Paper>
 
-                    <TableCell>
-                      <Typography sx={{ fontWeight: 700, minWidth: 220 }}>
-                        {row.nombreCompleto}
-                      </Typography>
-
-                      <Typography color="text.secondary" sx={{ fontSize: 12 }}>
-                        C.C. {row.cedulaSolicitante}
-                      </Typography>
-                    </TableCell>
-
-                    <TableCell>{row.telefono || '-'}</TableCell>
-
-                    <TableCell>
-                      <Chip
-                        label={booleanLabel(row.llamadaConectada)}
-                        size="small"
-                        color={row.llamadaConectada ? 'success' : 'warning'}
-                        variant="outlined"
-                        sx={{ fontWeight: 700 }}
-                      />
-                    </TableCell>
-
-                    <TableCell>
-                      {row.llamadaConectada ? (
-                        <Chip
-                          label={`Disposición: ${booleanLabel(row.disposicionRecibirEncuesta)}`}
-                          size="small"
-                          color={row.disposicionRecibirEncuesta ? 'success' : 'default'}
-                          variant="outlined"
-                        />
-                      ) : (
-                        <Typography color="text.secondary" sx={{ minWidth: 180 }}>
-                          {row.motivoNoContactoNombre || row.motivoNoContactoTexto || '-'}
-                        </Typography>
-                      )}
-                    </TableCell>
-
-                    <TableCell>
-                      <Typography sx={{ minWidth: 180 }}>
-                        {row.barrioNombre || row.direccionTexto || '-'}
-                      </Typography>
-                      <Typography color="text.secondary" sx={{ fontSize: 12 }}>
-                        {row.comunaNombre || ''}
-                      </Typography>
-                    </TableCell>
-
-                    <TableCell>
-                      {row.encuestadorAsignadoNombre || row.encuestadorProgramadoNombre || '-'}
-                    </TableCell>
-
-                    <TableCell>
-                      <Chip
-                        label={row.estadoVisita || 'PENDIENTE'}
-                        size="small"
-                        variant="outlined"
-                        sx={{ fontWeight: 700 }}
-                      />
-                    </TableCell>
-
-                    <TableCell>
-                      <Chip
-                        label={row.activo ? 'Activo' : 'Inactivo'}
-                        size="small"
-                        color={row.activo ? 'success' : 'warning'}
-                        variant="outlined"
-                        sx={{ fontWeight: 700 }}
-                      />
-                    </TableCell>
-
-                    <TableCell align="center">
-                      {allowWrite ? (
-                        <IconButton
-                          onClick={(event) => openRowMenu(event, row)}
-                          sx={{
-                            borderRadius: 2,
-                            color: 'text.secondary',
-                          }}
-                        >
-                          <MoreVertIcon />
-                        </IconButton>
-                      ) : (
-                        <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                          Solo lectura
-                        </Typography>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-
-                {!visibleRows.length ? (
+        {loading ? (
+          <Paper sx={{ p: 3 }}>
+            <Alert severity="info">
+              Cargando registros de Call Center...
+            </Alert>
+          </Paper>
+        ) : records.length === 0 ? (
+          <Paper sx={{ p: 3 }}>
+            <Alert severity="info">
+              Sin registros. No se encontraron registros de Call Center con los filtros actuales.
+            </Alert>
+          </Paper>
+        ) : (
+          <Paper>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={11}>
-                      <Box sx={{ py: 5, textAlign: 'center' }}>
-                        <Typography variant="h6">
-                          No hay registros para mostrar
-                        </Typography>
-
-                        <Typography color="text.secondary" sx={{ mt: 1 }}>
-                          Intenta limpiar los filtros o realizar una nueva búsqueda.
-                        </Typography>
-                      </Box>
-                    </TableCell>
+                    <TableCell>Fecha</TableCell>
+                    <TableCell>Origen</TableCell>
+                    <TableCell>Ciudadano</TableCell>
+                    <TableCell>Teléfono</TableCell>
+                    <TableCell>Dirección</TableCell>
+                    <TableCell>Llamada</TableCell>
+                    <TableCell>Encuestador</TableCell>
+                    <TableCell>Visita</TableCell>
+                    <TableCell>Estado</TableCell>
+                    <TableCell align="right">Acciones</TableCell>
                   </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </Box>
+                </TableHead>
+                <TableBody>
+                  {records.map((record) => (
+                    <TableRow key={record.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {record.fechaLlamada}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {record.horaLlamada?.slice(0, 5) || 'Sin hora'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Stack spacing={0.5}>
+                          <Chip
+                            size="small"
+                            label={record.origenRegistro || 'MANUAL'}
+                            color={origenColor(record.origenRegistro)}
+                          />
+                          {record.ventanillaNumeroVentanilla && (
+                            <Typography variant="caption" color="text.secondary">
+                              Vent. {record.ventanillaNumeroVentanilla}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {record.nombreCompleto}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          C.C. {record.cedulaSolicitante}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{record.telefono || 'Sin dato'}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {record.direccionTexto || 'Sin dirección'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {record.barrioNombre || 'Sin barrio'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={record.llamadaConectada ? 'success' : 'warning'}
+                          label={record.llamadaConectada ? 'Conectada' : 'No conectada'}
+                        />
+                      </TableCell>
+                      <TableCell>{record.encuestadorAsignadoNombre || record.encuestadorProgramadoNombre || 'Sin asignar'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={record.estadoVisita || 'PENDIENTE'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={record.activo ? 'success' : 'default'}
+                          label={record.activo ? 'Activo' : 'Inactivo'}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Editar">
+                          <IconButton size="small" onClick={() => openEditDialog(record)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        {record.activo ? (
+                          <Tooltip title="Inactivar">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => openConfirm(record, 'DEACTIVATE')}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip title="Activar">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={() => openConfirm(record, 'ACTIVATE')}
+                            >
+                              <CheckCircleIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TablePagination
+                      count={total}
+                      page={filter.page}
+                      rowsPerPage={filter.size}
+                      rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+                      onPageChange={handlePageChange}
+                      onRowsPerPageChange={handleRowsPerPageChange}
+                      labelRowsPerPage="Filas"
+                    />
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </TableContainer>
+          </Paper>
+        )}
+      </Stack>
 
-          <TablePagination
-            component="div"
-            count={totalRecords}
-            page={currentPage}
-            onPageChange={handleChangePage}
-            rowsPerPage={currentSize}
-            onRowsPerPageChange={handleChangeRowsPerPage}
-            rowsPerPageOptions={[10, 20, 50, 100]}
-            labelRowsPerPage="Filas por página"
-            labelDisplayedRows={({ from, to, count }) =>
-              `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
-            }
-            sx={{
-              borderTop: '1px solid',
-              borderColor: 'divider',
-              bgcolor: 'background.paper',
-            }}
-          />
-
-          <Menu
-            anchorEl={menuAnchorEl}
-            open={menuOpen}
-            onClose={closeRowMenu}
-            anchorOrigin={{
-              vertical: 'bottom',
-              horizontal: 'right',
-            }}
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-            slotProps={{
-              paper: {
-                sx: {
-                  mt: 1,
-                  minWidth: 190,
-                  borderRadius: 3,
-                  boxShadow: '0 16px 40px rgba(15, 23, 42, 0.16)',
-                },
-              },
-            }}
-          >
-            <MenuItem
-              onClick={handleMenuEdit}
-              sx={{
-                gap: 1.5,
-                color: 'info.main',
-                fontWeight: 700,
-              }}
-            >
-              <EditIcon fontSize="small" />
-              Modificar
-            </MenuItem>
-
-            <MenuItem
-              onClick={handleMenuStatus}
-              sx={{
-                gap: 1.5,
-                color: menuRecord?.activo ? 'error.main' : 'success.main',
-                fontWeight: 700,
-              }}
-            >
-              {menuRecord?.activo ? (
-                <ToggleOffIcon fontSize="small" />
-              ) : (
-                <RestoreIcon fontSize="small" />
-              )}
-              {menuRecord?.activo ? 'Inactivar' : 'Activar'}
-            </MenuItem>
-          </Menu>
-        </CardContent>
-      </Card>
-
-      <Dialog
-        open={dialogOpen}
-        onClose={(_, reason) => {
-          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
-            return;
-          }
-
-          closeFormDialog();
-        }}
-        fullScreen
-      >
-        <DialogTitle
-          sx={{
-            px: { xs: 2, md: 4 },
-            py: 2,
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
-          }}
-        >
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="lg">
+        <DialogTitle>
           <Stack
-            direction="row"
+            direction={{ xs: 'column', md: 'row' }}
             spacing={2}
-            sx={{
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
+            sx={{ justifyContent: 'space-between' }}
           >
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 800 }}>
                 {form.id ? 'Editar registro Call Center' : 'Nuevo registro Call Center'}
               </Typography>
-
-              <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                Completa la información de la llamada y el seguimiento realizado.
+              <Typography variant="body2" color="text.secondary">
+                {form.origenRegistro === 'VENTANILLA'
+                  ? 'Registro creado desde información de ventanilla.'
+                  : 'Registro digitado manualmente por funcionario.'}
               </Typography>
             </Box>
-
-            <IconButton
-              onClick={closeFormDialog}
-              sx={{
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 2,
-              }}
-            >
+            <IconButton onClick={() => setDialogOpen(false)}>
               <CloseIcon />
             </IconButton>
           </Stack>
         </DialogTitle>
 
-        <DialogContent
-          sx={{
-            p: { xs: 2, md: 4 },
-            bgcolor: '#f8fafc',
-          }}
-        >
-          <Stack
-            spacing={3}
-            sx={{
-              maxWidth: 1180,
-              mx: 'auto',
-              pt: 1,
-            }}
-          >
-            <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-              <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                <Typography sx={{ fontWeight: 900, mb: 2 }}>
-                  Información de la llamada
-                </Typography>
-
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: {
-                      xs: '1fr',
-                      md: 'repeat(4, 1fr)',
-                    },
-                    gap: 2,
-                  }}
-                >
-                  <TextField
-                    label="Fecha de llamada"
-                    type="date"
-                    size="small"
-                    required
-                    value={form.fechaLlamada}
-                    onChange={(event) => updateForm('fechaLlamada', event.target.value)}
-                    slotProps={{
-                      inputLabel: {
-                        shrink: true,
-                      },
-                    }}
-                  />
-
-                  <TextField
-                    label="Hora"
-                    type="time"
-                    size="small"
-                    value={form.horaLlamada}
-                    onChange={(event) => updateForm('horaLlamada', event.target.value)}
-                    slotProps={{
-                      inputLabel: {
-                        shrink: true,
-                      },
-                    }}
-                  />
-
-                  <TextField
-                    select
-                    label="Tipo registro"
-                    size="small"
-                    value={form.tipoRegistro}
-                    onChange={(event) => updateForm('tipoRegistro', event.target.value)}
-                  >
-                    <MenuItem value="LLAMADA">Llamada</MenuItem>
-                    <MenuItem value="BASE_ENCUESTADOR">Base encuestador</MenuItem>
-                  </TextField>
-
-                  <TextField
-                    select
-                    label="¿Se logró conectar?"
-                    size="small"
-                    required
-                    value={form.llamadaConectada}
-                    onChange={(event) => updateForm('llamadaConectada', event.target.value)}
-                  >
-                    <MenuItem value="YES">Sí</MenuItem>
-                    <MenuItem value="NO">No</MenuItem>
-                  </TextField>
-                </Box>
-              </CardContent>
-            </Card>
-
-            <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-              <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                <Typography sx={{ fontWeight: 900, mb: 2 }}>
-                  Datos del solicitante
-                </Typography>
-
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: {
-                      xs: '1fr',
-                      md: 'repeat(3, 1fr)',
-                    },
-                    gap: 2,
-                  }}
-                >
-                  <TextField
-                    label="Cédula solicitante"
-                    size="small"
-                    required
-                    value={form.cedulaSolicitante}
-                    onChange={(event) => updateForm('cedulaSolicitante', event.target.value)}
-                  />
-
-                  <TextField
-                    label="Nombre completo"
-                    size="small"
-                    required
-                    value={form.nombreCompleto}
-                    onChange={(event) => updateForm('nombreCompleto', event.target.value)}
-                  />
-
-                  <TextField
-                    label="Teléfono"
-                    size="small"
-                    value={form.telefono}
-                    onChange={(event) => updateForm('telefono', event.target.value)}
-                  />
-                </Box>
-              </CardContent>
-            </Card>
-
-            {form.llamadaConectada === 'NO' ? (
-              <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-                <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                  <Typography sx={{ fontWeight: 900, mb: 2 }}>
-                    Llamada no conectada
-                  </Typography>
-
-                  <Box
-                    sx={{
-                      display: 'grid',
-                      gridTemplateColumns: {
-                        xs: '1fr',
-                        md: 'repeat(2, 1fr)',
-                      },
-                      gap: 2,
-                    }}
-                  >
-                    <Autocomplete
-                      options={motivosNoContacto}
-                      loading={catalogLoading}
-                      value={findOption(motivosNoContacto, form.motivoNoContactoId)}
-                      onChange={(_, selectedOption) =>
-                        updateForm('motivoNoContactoId', selectedOption ? String(selectedOption.id) : '')
-                      }
-                      getOptionLabel={(option) => option.label ?? ''}
-                      isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
-                      filterOptions={(options, state) => filterOptionsByFirstLetters(options, state.inputValue)}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Motivo no contacto"
-                          size="small"
-                          helperText="Selecciona un motivo o escribe una observación en el campo siguiente."
-                        />
-                      )}
-                    />
-
-                    <Autocomplete
-                      options={encuestadores}
-                      loading={catalogLoading}
-                      value={findOption(encuestadores, form.encuestadorProgramadoId)}
-                      onChange={(_, selectedOption) =>
-                        updateForm('encuestadorProgramadoId', selectedOption ? String(selectedOption.id) : '')
-                      }
-                      getOptionLabel={(option) => option.label ?? ''}
-                      isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
-                      filterOptions={(options, state) => filterOptionsByFirstLetters(options, state.inputValue)}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Encuestador programado"
-                          size="small"
-                        />
-                      )}
-                    />
-
-                    <TextField
-                      label="Fecha encuesta programada"
-                      type="date"
-                      size="small"
-                      value={form.fechaEncuestaProgramada}
-                      onChange={(event) => updateForm('fechaEncuestaProgramada', event.target.value)}
-                      slotProps={{
-                        inputLabel: {
-                          shrink: true,
-                        },
-                      }}
-                    />
-
-                    <TextField
-                      label="Motivo no contacto texto"
-                      size="small"
-                      value={form.motivoNoContactoTexto}
-                      onChange={(event) => updateForm('motivoNoContactoTexto', event.target.value)}
-                      multiline
-                      minRows={2}
-                    />
-                  </Box>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-                <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                  <Typography sx={{ fontWeight: 900, mb: 2 }}>
-                    Llamada conectada
-                  </Typography>
-
-                  <Box
-                    sx={{
-                      display: 'grid',
-                      gridTemplateColumns: {
-                        xs: '1fr',
-                        md: 'repeat(2, 1fr)',
-                      },
-                      gap: 2,
-                    }}
-                  >
-                    <TextField
-                      select
-                      label="¿Solicitó nueva encuesta?"
-                      size="small"
-                      value={form.solicitoNuevaEncuesta}
-                      onChange={(event) => updateForm('solicitoNuevaEncuesta', event.target.value)}
-                    >
-                      <MenuItem value="">Sin definir</MenuItem>
-                      <MenuItem value="YES">Sí</MenuItem>
-                      <MenuItem value="NO">No</MenuItem>
-                    </TextField>
-
-                    <TextField
-                      label="Fecha informada para aplicación"
-                      type="date"
-                      size="small"
-                      value={form.fechaAplicacionInformada}
-                      onChange={(event) => updateForm('fechaAplicacionInformada', event.target.value)}
-                      slotProps={{
-                        inputLabel: {
-                          shrink: true,
-                        },
-                      }}
-                    />
-
-                    <TextField
-                      label="Dirección / validación de datos"
-                      size="small"
-                      value={form.direccionTexto}
-                      onChange={(event) => updateForm('direccionTexto', event.target.value)}
-                      multiline
-                      minRows={2}
-                    />
-
-                    <Autocomplete
-                      options={barrios}
-                      loading={catalogLoading}
-                      value={findOption(barrios, form.barrioId)}
-                      onChange={(_, selectedOption) =>
-                        updateForm('barrioId', selectedOption ? String(selectedOption.id) : '')
-                      }
-                      getOptionLabel={(option) => option.label ?? ''}
-                      isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
-                      filterOptions={(options, state) => filterOptionsByFirstLetters(options, state.inputValue)}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Barrio"
-                          size="small"
-                          helperText="Escribe las primeras letras para buscar."
-                        />
-                      )}
-                    />
-
-                    <TextField
-                      select
-                      label="¿Tiene disposición?"
-                      size="small"
-                      value={form.disposicionRecibirEncuesta}
-                      onChange={(event) => updateForm('disposicionRecibirEncuesta', event.target.value)}
-                    >
-                      <MenuItem value="">Sin definir</MenuItem>
-                      <MenuItem value="YES">Sí</MenuItem>
-                      <MenuItem value="NO">No</MenuItem>
-                    </TextField>
-
-                    <Autocomplete
-                      options={encuestadores}
-                      loading={catalogLoading}
-                      value={findOption(encuestadores, form.encuestadorAsignadoId)}
-                      onChange={(_, selectedOption) =>
-                        updateForm('encuestadorAsignadoId', selectedOption ? String(selectedOption.id) : '')
-                      }
-                      getOptionLabel={(option) => option.label ?? ''}
-                      isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
-                      filterOptions={(options, state) => filterOptionsByFirstLetters(options, state.inputValue)}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Encuestador asignado"
-                          size="small"
-                        />
-                      )}
-                    />
-
-                    {form.disposicionRecibirEncuesta === 'NO' ? (
-                      <>
-                        <Autocomplete
-                          options={motivosNoDisposicion}
-                          loading={catalogLoading}
-                          value={findOption(motivosNoDisposicion, form.motivoNoDisposicionId)}
-                          onChange={(_, selectedOption) =>
-                            updateForm('motivoNoDisposicionId', selectedOption ? String(selectedOption.id) : '')
-                          }
-                          getOptionLabel={(option) => option.label ?? ''}
-                          isOptionEqualToValue={(option, value) => String(option.id) === String(value.id)}
-                          filterOptions={(options, state) => filterOptionsByFirstLetters(options, state.inputValue)}
-                          renderInput={(params) => (
-                            <TextField
-                              {...params}
-                              label="Motivo no disposición"
-                              size="small"
-                            />
-                          )}
-                        />
-
-                        <TextField
-                          label="Motivo no disposición texto"
-                          size="small"
-                          value={form.motivoNoDisposicionTexto}
-                          onChange={(event) => updateForm('motivoNoDisposicionTexto', event.target.value)}
-                          multiline
-                          minRows={2}
-                        />
-                      </>
-                    ) : null}
-
-                    <TextField
-                      select
-                      label="¿Explicó informante calificado?"
-                      size="small"
-                      value={form.explicoInformanteCalificado}
-                      onChange={(event) => updateForm('explicoInformanteCalificado', event.target.value)}
-                    >
-                      <MenuItem value="">Sin definir</MenuItem>
-                      <MenuItem value="YES">Sí</MenuItem>
-                      <MenuItem value="NO">No</MenuItem>
-                    </TextField>
-
-                    <TextField
-                      select
-                      label="Verificada"
-                      size="small"
-                      value={form.verificado}
-                      onChange={(event) => updateForm('verificado', event.target.value)}
-                    >
-                      <MenuItem value="">Sin definir</MenuItem>
-                      <MenuItem value="YES">Sí</MenuItem>
-                      <MenuItem value="NO">No</MenuItem>
-                    </TextField>
-                  </Box>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-              <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-                <Typography sx={{ fontWeight: 900, mb: 2 }}>
-                  Observación y estado
-                </Typography>
-
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: {
-                      xs: '1fr',
-                      md: '2fr 1fr',
-                    },
-                    gap: 2,
-                  }}
-                >
-                  <TextField
-                    label="Observación"
-                    size="small"
-                    value={form.observacion}
-                    onChange={(event) => updateForm('observacion', event.target.value)}
-                    multiline
-                    minRows={3}
-                  />
-
-                  <TextField
-                    select
-                    label="Estado"
-                    size="small"
-                    value={form.activo ? 'ACTIVE' : 'INACTIVE'}
-                    onChange={(event) => updateForm('activo', event.target.value === 'ACTIVE')}
-                  >
-                    <MenuItem value="ACTIVE">Activo</MenuItem>
-                    <MenuItem value="INACTIVE">Inactivo</MenuItem>
-                  </TextField>
-                </Box>
-              </CardContent>
-            </Card>
-          </Stack>
-        </DialogContent>
-
-        <DialogActions
-          sx={{
-            px: { xs: 2, md: 4 },
-            py: 2,
-            borderTop: '1px solid',
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
-            justifyContent: 'flex-end',
-          }}
-        >
-          <Button
-            variant="outlined"
-            color="inherit"
-            onClick={closeFormDialog}
-          >
-            Cancelar
-          </Button>
-
-          <Button
-            variant="contained"
-            color={form.id ? 'info' : 'primary'}
-            onClick={save}
-            disabled={!allowWrite}
-          >
-            {form.id ? 'Actualizar registro' : 'Guardar registro'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={confirmDialogOpen}
-        onClose={closeConfirmDialog}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle
-          sx={{
-            fontWeight: 900,
-            color: confirmAction === 'ACTIVATE' ? 'success.main' : 'error.main',
-          }}
-        >
-          {confirmAction === 'ACTIVATE' ? 'Activar registro' : 'Inactivar registro'}
-        </DialogTitle>
-
-        <DialogContent>
-          <Stack spacing={2}>
-            <Alert severity={confirmAction === 'ACTIVATE' ? 'info' : 'warning'}>
-              {confirmAction === 'ACTIVATE'
-                ? 'El registro volverá a estar disponible para consulta y reportes activos.'
-                : 'El registro quedará inactivo, pero se conservará para trazabilidad.'}
+        <DialogContent dividers>
+          <Stack spacing={3}>
+            <Alert severity={form.origenRegistro === 'VENTANILLA' ? 'info' : 'success'}>
+              Origen actual: <strong>{form.origenRegistro}</strong>
+              {form.ventanillaRegistroId ? ` | Registro ventanilla ID: ${form.ventanillaRegistroId}` : ''}
             </Alert>
 
-            <Box
-              sx={{
-                p: 2,
-                borderRadius: 3,
-                bgcolor: '#F8FAFC',
-                border: '1px solid',
-                borderColor: 'divider',
-              }}
-            >
-              <Typography sx={{ fontWeight: 900 }}>
-                {confirmRecord?.nombreCompleto ?? 'Registro seleccionado'}
-              </Typography>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Fecha llamada"
+                type="date"
+                value={form.fechaLlamada}
+                onChange={(event) => updateForm('fechaLlamada', event.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <TextField
+                label="Hora llamada"
+                type="time"
+                value={form.horaLlamada}
+                onChange={(event) => updateForm('horaLlamada', event.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <TextField
+                label="Origen"
+                select
+                value={form.origenRegistro}
+                onChange={(event) => updateForm('origenRegistro', event.target.value)}
+                fullWidth
+                disabled={Boolean(form.ventanillaRegistroId)}
+              >
+                <MenuItem value="MANUAL">Manual</MenuItem>
+                <MenuItem value="VENTANILLA">Ventanilla</MenuItem>
+                <MenuItem value="IMPORTACION">Importación</MenuItem>
+              </TextField>
+              <TextField
+                label="ID ventanilla"
+                value={form.ventanillaRegistroId}
+                onChange={(event) => updateForm('ventanillaRegistroId', event.target.value)}
+                fullWidth
+                disabled={form.origenRegistro !== 'VENTANILLA'}
+              />
+            </Stack>
 
-              <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                Cédula: {confirmRecord?.cedulaSolicitante ?? '-'} · Fecha: {confirmRecord?.fechaLlamada ?? '-'}
-              </Typography>
-            </Box>
+            <Divider />
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Cédula solicitante"
+                value={form.cedulaSolicitante}
+                onChange={(event) => updateForm('cedulaSolicitante', event.target.value)}
+                fullWidth
+                required
+              />
+              <TextField
+                label="Nombre completo"
+                value={form.nombreCompleto}
+                onChange={(event) => updateForm('nombreCompleto', event.target.value)}
+                fullWidth
+                required
+              />
+              <TextField
+                label="Teléfono"
+                value={form.telefono}
+                onChange={(event) => updateForm('telefono', event.target.value)}
+                fullWidth
+              />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Dirección"
+                value={form.direccionTexto}
+                onChange={(event) => updateForm('direccionTexto', event.target.value)}
+                fullWidth
+              />
+              <TextField
+                label="Barrio"
+                select
+                value={form.barrioId}
+                onChange={(event) => updateForm('barrioId', event.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">Sin seleccionar</MenuItem>
+                {barrios.map((option) => (
+                  <MenuItem key={option.id} value={option.id}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+
+            <Divider />
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="¿Se logró conectar?"
+                select
+                value={form.llamadaConectada}
+                onChange={(event) => updateForm('llamadaConectada', event.target.value)}
+                fullWidth
+              >
+                <MenuItem value="true">Sí</MenuItem>
+                <MenuItem value="false">No</MenuItem>
+              </TextField>
+
+              <TextField
+                label="Motivo no contacto"
+                select
+                value={form.motivoNoContactoId}
+                onChange={(event) => updateForm('motivoNoContactoId', event.target.value)}
+                fullWidth
+                disabled={!isNoContact}
+              >
+                <MenuItem value="">Sin seleccionar</MenuItem>
+                {motivosNoContacto.map((option) => (
+                  <MenuItem key={option.id} value={option.id}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+
+              <TextField
+                label="Motivo no contacto texto"
+                value={form.motivoNoContactoTexto}
+                onChange={(event) => updateForm('motivoNoContactoTexto', event.target.value)}
+                fullWidth
+                disabled={!isNoContact}
+              />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Solicitó nueva encuesta"
+                select
+                value={form.solicitoNuevaEncuesta}
+                onChange={(event) => updateForm('solicitoNuevaEncuesta', event.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">Sin dato</MenuItem>
+                <MenuItem value="true">Sí</MenuItem>
+                <MenuItem value="false">No</MenuItem>
+              </TextField>
+
+              <TextField
+                label="Fecha aplicación informada"
+                type="date"
+                value={form.fechaAplicacionInformada}
+                onChange={(event) => updateForm('fechaAplicacionInformada', event.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+
+              <TextField
+                label="Disposición para recibir encuesta"
+                select
+                value={form.disposicionRecibirEncuesta}
+                onChange={(event) => updateForm('disposicionRecibirEncuesta', event.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">Sin dato</MenuItem>
+                <MenuItem value="true">Sí</MenuItem>
+                <MenuItem value="false">No</MenuItem>
+              </TextField>
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Motivo no disposición"
+                select
+                value={form.motivoNoDisposicionId}
+                onChange={(event) => updateForm('motivoNoDisposicionId', event.target.value)}
+                fullWidth
+                disabled={!hasNoDisposition}
+              >
+                <MenuItem value="">Sin seleccionar</MenuItem>
+                {motivosNoDisposicion.map((option) => (
+                  <MenuItem key={option.id} value={option.id}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+
+              <TextField
+                label="Motivo no disposición texto"
+                value={form.motivoNoDisposicionTexto}
+                onChange={(event) => updateForm('motivoNoDisposicionTexto', event.target.value)}
+                fullWidth
+                disabled={!hasNoDisposition}
+              />
+            </Stack>
+
+            <Divider />
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Encuestador programado"
+                select
+                value={form.encuestadorProgramadoId}
+                onChange={(event) => updateForm('encuestadorProgramadoId', event.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">Sin seleccionar</MenuItem>
+                {encuestadores.map((option) => (
+                  <MenuItem key={option.id} value={option.id}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Fecha encuesta programada"
+                type="date"
+                value={form.fechaEncuestaProgramada}
+                onChange={(event) => updateForm('fechaEncuestaProgramada', event.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <TextField
+                label="Encuestador asignado"
+                select
+                value={form.encuestadorAsignadoId}
+                onChange={(event) => {
+                  updateForm('encuestadorAsignadoId', event.target.value);
+                  if (!form.encuestadorProgramadoId) {
+                    updateForm('encuestadorProgramadoId', event.target.value);
+                  }
+                }}
+                fullWidth
+              >
+                <MenuItem value="">Sin seleccionar</MenuItem>
+                {encuestadores.map((option) => (
+                  <MenuItem key={option.id} value={option.id}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Explicó informante calificado"
+                select
+                value={form.explicoInformanteCalificado}
+                onChange={(event) => updateForm('explicoInformanteCalificado', event.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">Sin dato</MenuItem>
+                <MenuItem value="true">Sí</MenuItem>
+                <MenuItem value="false">No</MenuItem>
+              </TextField>
+
+              <TextField
+                label="Verificado"
+                select
+                value={form.verificado}
+                onChange={(event) => updateForm('verificado', event.target.value)}
+                fullWidth
+              >
+                <MenuItem value="">Sin dato</MenuItem>
+                <MenuItem value="true">Sí</MenuItem>
+                <MenuItem value="false">No</MenuItem>
+              </TextField>
+
+              <TextField
+                label="Activo"
+                select
+                value={String(form.activo)}
+                onChange={(event) => updateForm('activo', event.target.value === 'true')}
+                fullWidth
+              >
+                <MenuItem value="true">Activo</MenuItem>
+                <MenuItem value="false">Inactivo</MenuItem>
+              </TextField>
+            </Stack>
+
+            <TextField
+              label="Observación"
+              value={form.observacion}
+              onChange={(event) => updateForm('observacion', event.target.value)}
+              fullWidth
+              multiline
+              minRows={3}
+            />
           </Stack>
         </DialogContent>
 
         <DialogActions>
-          <Button
-            variant="outlined"
-            color="inherit"
-            onClick={closeConfirmDialog}
-            disabled={processingAction}
-          >
+          <Button onClick={() => setDialogOpen(false)} disabled={saving}>
             Cancelar
           </Button>
+          <Button variant="contained" onClick={save} disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
+      <Dialog open={ventanillaDialogOpen} onClose={() => setVentanillaDialogOpen(false)} fullWidth maxWidth="xl">
+        <DialogTitle>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={2}
+            sx={{ justifyContent: 'space-between' }}
+          >
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                Cargar usuarios con Nueva Encuesta pendiente
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Filtra por comuna o barrio, selecciona los usuarios y crea los registros de Call Center.
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setVentanillaDialogOpen(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Alert severity="info">
+              Esta búsqueda trae únicamente registros activos de Ventanilla con solicitud NUEVA ENCUESTA y estado PENDIENTE.
+            </Alert>
+
+            <Paper sx={{ p: 2 }} variant="outlined">
+              <Stack spacing={2}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                  Filtros de Ventanilla
+                </Typography>
+
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <TextField
+                    label="Comuna"
+                    select
+                    value={ventanillaSearch.comunaId}
+                    onChange={(event) => updateVentanillaFilter('comunaId', event.target.value)}
+                    fullWidth
+                    size="small"
+                  >
+                    <MenuItem value="">Todas las comunas</MenuItem>
+                    {comunas.map((option) => (
+                      <MenuItem key={option.id} value={option.id}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField
+                    label="Barrio"
+                    select
+                    value={ventanillaSearch.barrioId}
+                    onChange={(event) => updateVentanillaFilter('barrioId', event.target.value)}
+                    fullWidth
+                    size="small"
+                  >
+                    <MenuItem value="">Todos los barrios</MenuItem>
+                    {barrios.map((option) => (
+                      <MenuItem key={option.id} value={option.id}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField
+                    label="Cédula"
+                    value={ventanillaSearch.cedulaUsuario}
+                    onChange={(event) => updateVentanillaFilter('cedulaUsuario', event.target.value)}
+                    fullWidth
+                    size="small"
+                  />
+
+                  <TextField
+                    label="Nombre"
+                    value={ventanillaSearch.nombreUsuario}
+                    onChange={(event) => updateVentanillaFilter('nombreUsuario', event.target.value)}
+                    fullWidth
+                    size="small"
+                  />
+                </Stack>
+
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <TextField
+                    label="Búsqueda general"
+                    value={ventanillaSearch.q}
+                    onChange={(event) => updateVentanillaFilter('q', event.target.value)}
+                    fullWidth
+                    size="small"
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <SearchIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
+
+                  <Button variant="outlined" startIcon={<SearchIcon />} onClick={loadVentanilla}>
+                    Buscar
+                  </Button>
+
+                  <Button
+                    variant="outlined"
+                    startIcon={<RestartAltIcon />}
+                    onClick={() => {
+                      setVentanillaSearch(initialVentanillaSearch);
+                      setSelectedVentanillaIds([]);
+                    }}
+                  >
+                    Limpiar
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+
+            <Paper sx={{ p: 2 }} variant="outlined">
+              <Stack spacing={2}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                  Datos para crear los registros seleccionados
+                </Typography>
+
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <TextField
+                    label="Encuestador que realizará la encuesta"
+                    select
+                    value={ventanillaSearch.encuestadorAsignadoId}
+                    onChange={(event) => updateVentanillaFilter('encuestadorAsignadoId', event.target.value)}
+                    fullWidth
+                    size="small"
+                    required
+                  >
+                    <MenuItem value="">Selecciona un encuestador</MenuItem>
+                    {encuestadores.map((option) => (
+                      <MenuItem key={option.id} value={option.id}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField
+                    label="Fecha encuesta programada"
+                    type="date"
+                    value={ventanillaSearch.fechaEncuestaProgramada}
+                    onChange={(event) => updateVentanillaFilter('fechaEncuestaProgramada', event.target.value)}
+                    fullWidth
+                    size="small"
+                    slotProps={{ inputLabel: { shrink: true } }}
+                  />
+
+                  <Button
+                    variant="contained"
+                    startIcon={<AssignmentTurnedInIcon />}
+                    onClick={createSelectedVentanillaRecords}
+                    disabled={saving || selectedVentanillaRecords.length === 0}
+                  >
+                    Crear seleccionados ({selectedVentanillaRecords.length})
+                  </Button>
+
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={createAllFilteredVentanillaRecords}
+                    disabled={saving || ventanillaLoading}
+                  >
+                    Crear todos filtrados
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+
+            {ventanillaLoading ? (
+              <Paper sx={{ p: 3 }}>
+                <Alert severity="info">
+                  Buscando registros de ventanilla...
+                </Alert>
+              </Paper>
+            ) : ventanillaRecords.length === 0 ? (
+              <Paper sx={{ p: 3 }}>
+                <Alert severity="info">
+                  Sin resultados. No se encontraron usuarios con solicitud NUEVA ENCUESTA pendiente para los filtros actuales.
+                </Alert>
+              </Paper>
+            ) : (
+              <Paper variant="outlined">
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={allVisibleVentanillaSelected}
+                            indeterminate={!allVisibleVentanillaSelected && someVisibleVentanillaSelected}
+                            onChange={toggleAllVisibleVentanilla}
+                          />
+                        </TableCell>
+                        <TableCell>Fecha</TableCell>
+                        <TableCell>Ventanilla</TableCell>
+                        <TableCell>Ciudadano</TableCell>
+                        <TableCell>Teléfono</TableCell>
+                        <TableCell>Barrio / Comuna</TableCell>
+                        <TableCell>Solicitud</TableCell>
+                        <TableCell align="right">Acción</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {ventanillaRecords.map((record) => (
+                        <TableRow key={record.id} hover selected={selectedVentanillaIds.includes(record.id)}>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedVentanillaIds.includes(record.id)}
+                              onChange={() => toggleVentanillaRecord(record.id)}
+                            />
+                          </TableCell>
+                          <TableCell>{record.fecha || 'Sin fecha'}</TableCell>
+                          <TableCell>{record.numeroVentanilla || record.id}</TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                              {record.nombreUsuario || 'Sin nombre'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              C.C. {record.cedulaUsuario || 'Sin cédula'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>{record.telefono || 'Sin dato'}</TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {record.barrioNombre || 'Sin barrio'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {record.comunaNombre || 'Sin comuna'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {record.solicitudNombre || 'Nueva encuesta'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {record.estadoSolicitudNombre || 'Pendiente'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={<AssignmentTurnedInIcon />}
+                              onClick={() => selectVentanillaRecord(record)}
+                            >
+                              Revisar individual
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TablePagination
+                          count={ventanillaTotal}
+                          page={ventanillaSearch.page}
+                          rowsPerPage={ventanillaSearch.size}
+                          rowsPerPageOptions={[10, 20, 50, 100]}
+                          onPageChange={handleVentanillaPageChange}
+                          onRowsPerPageChange={handleVentanillaRowsPerPageChange}
+                          labelRowsPerPage="Filas"
+                        />
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </TableContainer>
+              </Paper>
+            )}
+          </Stack>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setVentanillaDialogOpen(false)}>
+            Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(confirmAction)} onClose={closeConfirm} fullWidth maxWidth="xs">
+        <DialogTitle>
+          {confirmAction === 'ACTIVATE' ? 'Activar registro' : 'Inactivar registro'}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2">
+            Confirma la acción para el registro de{' '}
+            <strong>{selectedRecord?.nombreCompleto}</strong>.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeConfirm}>Cancelar</Button>
           <Button
             variant="contained"
             color={confirmAction === 'ACTIVATE' ? 'success' : 'error'}
-            onClick={confirmStatusAction}
-            disabled={processingAction}
+            onClick={confirmStatusChange}
           >
-            {processingAction
-              ? 'Procesando...'
-              : confirmAction === 'ACTIVATE' ? 'Activar' : 'Inactivar'}
+            Confirmar
           </Button>
         </DialogActions>
       </Dialog>
 
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={3500}
-        onClose={() => closeSnackbar()}
-        anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'center',
-        }}
+        autoHideDuration={5000}
+        onClose={closeSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
-        <Alert
-          severity={snackbar.severity}
-          variant="filled"
-          onClose={closeSnackbar}
-          sx={{ width: '100%' }}
-        >
+        <Alert severity={snackbar.severity} onClose={closeSnackbar} sx={{ width: '100%' }}>
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Stack>
+    </Box>
   );
 }

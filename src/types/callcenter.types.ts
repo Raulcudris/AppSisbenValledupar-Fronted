@@ -146,3 +146,41 @@ export type CallCenterResponse = {
   observacion?: string | null;
   activo: boolean;
 };
+
+export type VentanillaCallCenterResponse = {
+  id: number;
+  fecha?: string | null;
+  numeroVentanilla?: string | null;
+  cedulaUsuario?: string | null;
+  nombreUsuario?: string | null;
+  telefono?: string | null;
+  direccion?: string | null;
+  barrioId?: number | null;
+  barrioNombre?: string | null;
+  comunaId?: number | null;
+  comunaNombre?: string | null;
+  solicitudId?: number | null;
+  solicitudNombre?: string | null;
+  estadoSolicitudId?: number | null;
+  estadoSolicitudNombre?: string | null;
+  observacion?: string | null;
+  activo?: boolean;
+};
+
+export type VentanillaCallCenterFilter = {
+  page?: number;
+  size?: number;
+  fechaInicio?: string;
+  fechaFin?: string;
+  numeroVentanilla?: string;
+  cedulaUsuario?: string;
+  nombreUsuario?: string;
+  telefono?: string;
+  barrioId?: number | string;
+  comunaId?: number | string;
+  solicitudId?: number | string;
+  estadoSolicitudId?: number | string;
+  activo?: boolean;
+  incluirInactivos?: boolean;
+  q?: string;
+};

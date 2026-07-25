@@ -1,6 +1,7 @@
 import { apiRequest } from '@/lib/apiClient';
 import { ApiResponse, PageResponse } from '@/types/api.types';
 import { SelectOption } from '@/types/catalog.types';
+
 import {
   CallCenterCatalogResponse,
   CallCenterFilter,
@@ -8,6 +9,8 @@ import {
   CallCenterResponse,
   CallCenterSummaryResponse,
   CallCenterVisitaRequest,
+  VentanillaCallCenterFilter,
+  VentanillaCallCenterResponse,
 } from '@/types/callcenter.types';
 
 type QueryValue = string | number | boolean | undefined | null;
@@ -149,4 +152,79 @@ export async function getMotivosNoDisposicionOptions(): Promise<SelectOption[]> 
   );
 
   return (response.data ?? []).filter((item) => item.activo !== false).map(toCatalogOption);
+}
+
+
+export async function searchVentanillaForCallCenter(filter: VentanillaCallCenterFilter = {}) {
+  const response = await apiRequest<ApiResponse<PageResponse<VentanillaCallCenterResponse>>>(
+    `/api/ventanilla/search${toQueryString({
+      page: filter.page ?? 0,
+      size: filter.size ?? 10,
+      fechaInicio: filter.fechaInicio,
+      fechaFin: filter.fechaFin,
+      numeroVentanilla: filter.numeroVentanilla,
+      cedulaUsuario: filter.cedulaUsuario,
+      nombreUsuario: filter.nombreUsuario,
+      telefono: filter.telefono,
+      barrioId: filter.barrioId,
+      comunaId: filter.comunaId,
+      solicitudId: filter.solicitudId,
+      estadoSolicitudId: filter.estadoSolicitudId,
+      activo: filter.activo ?? true,
+      incluirInactivos: filter.incluirInactivos,
+      q: filter.q,
+      _t: Date.now(),
+    })}`
+  );
+
+  return response.data;
+}
+
+
+function getPageContent<T>(page: unknown): T[] {
+  const data = page as {
+    content?: T[];
+    items?: T[];
+    data?: T[];
+  };
+
+  return data?.content ?? data?.items ?? data?.data ?? [];
+}
+
+export async function searchVentanillaForCallCenter(filter: VentanillaCallCenterFilter = {}) {
+  const response = await apiRequest<ApiResponse<PageResponse<VentanillaCallCenterResponse>>>(
+    `/api/ventanilla/search${toQueryString({
+      page: filter.page ?? 0,
+      size: filter.size ?? 10,
+      fechaInicio: filter.fechaInicio,
+      fechaFin: filter.fechaFin,
+      numeroVentanilla: filter.numeroVentanilla,
+      cedulaUsuario: filter.cedulaUsuario,
+      nombreUsuario: filter.nombreUsuario,
+      telefono: filter.telefono,
+      barrioId: filter.barrioId,
+      comunaId: filter.comunaId,
+      solicitudId: filter.solicitudId,
+      estadoSolicitudId: filter.estadoSolicitudId,
+      activo: filter.activo ?? true,
+      incluirInactivos: filter.incluirInactivos,
+      q: filter.q,
+      _t: Date.now(),
+    })}`
+  );
+
+  return response.data;
+}
+
+export async function findVentanillaByCedulaForCallCenter(cedulaUsuario: string) {
+  const response = await searchVentanillaForCallCenter({
+    cedulaUsuario,
+    page: 0,
+    size: 1,
+    activo: true,
+  });
+
+  const content = getPageContent<VentanillaCallCenterResponse>(response);
+
+  return content.length > 0 ? content[0] : null;
 }

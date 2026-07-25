@@ -33,6 +33,7 @@ export type CallCenterFilter = {
   fechaInicio?: string;
   fechaFin?: string;
   funcionarioId?: number | string;
+  funcionarioCallcenterAsignadoId?: number | string;
   cedulaSolicitante?: string;
   nombreCompleto?: string;
   telefono?: string;
@@ -109,6 +110,12 @@ export type CallCenterResponse = {
   ventanillaFecha?: string | null;
   funcionarioId?: number | null;
   funcionarioUsername?: string | null;
+  funcionarioCallcenterAsignadoId?: number | null;
+  funcionarioCallcenterAsignadoUsername?: string | null;
+  funcionarioCallcenterAsignadoNombre?: string | null;
+  fechaAsignacionCallcenter?: string | null;
+  usuarioAsignaCallcenterId?: number | null;
+  usuarioAsignaCallcenterUsername?: string | null;
   cedulaSolicitante: string;
   nombreCompleto: string;
   telefono?: string | null;

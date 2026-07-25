@@ -68,6 +68,8 @@ type DashboardShellProps = {
 function getCurrentModuleLabel(pathname: string) {
   if (pathname.includes('/dashboard/ventanilla')) return 'Ventanilla';
   if (pathname.includes('/dashboard/dmc')) return 'DMC';
+  if (pathname.includes('/dashboard/callcenter/asignar-funcionarios')) return 'Asignar funcionarios Call Center';
+  if (pathname.includes('/dashboard/callcenter/mis-registros')) return 'Mis registros Call Center';
   if (pathname.includes('/dashboard/callcenter/mis-asignaciones')) return 'Mis asignaciones';
   if (pathname.includes('/dashboard/callcenter')) return 'Call Center';
   if (pathname.includes('/dashboard/reportes')) return 'Reportes';

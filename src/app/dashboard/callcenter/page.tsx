@@ -1,9 +1,13 @@
 'use client';
 
 import AddIcon from '@mui/icons-material/Add';
-import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
-import PhoneIcon from '@mui/icons-material/Phone';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SearchIcon from '@mui/icons-material/Search';
+import SourceIcon from '@mui/icons-material/Source';
 import {
   Alert,
   Box,
@@ -11,303 +15,650 @@ import {
   Card,
   CardContent,
   Chip,
-  Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  InputAdornment,
+  MenuItem,
+  Paper,
+  Snackbar,
   Stack,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
+  TableFooter,
   TableHead,
+  TablePagination,
   TableRow,
+  TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
 
-import LoadingState from '@/components/dashboard/LoadingState';
-import CrudPageHeader from '@/components/operational/CrudPageHeader';
 import {
-  canUpdateEncuestadorVisit,
-  canWriteCallCenter,
-  currentRole,
-} from '@/lib/roleAccess';
-import {
-  getCallCenterSummary,
+  activateCallCenterRegistro,
+  deactivateCallCenterRegistro,
+  getCallCenterEncuestadoresOptions,
   searchCallCenter,
 } from '@/services/callcenter.service';
-import { PageResponse } from '@/types/api.types';
+
 import {
+  CallCenterFilter,
+  CallCenterOrigenRegistro,
   CallCenterResponse,
-  CallCenterSummaryResponse,
 } from '@/types/callcenter.types';
+import { SelectOption } from '@/types/catalog.types';
 
-function formatBoolean(value?: boolean | null) {
-  if (value === true) return 'Sí';
-  if (value === false) return 'No';
+type SnackbarState = {
+  open: boolean;
+  message: string;
+  severity: 'success' | 'error' | 'warning' | 'info';
+};
 
-  return '-';
+type ConfirmAction = 'ACTIVATE' | 'DEACTIVATE' | null;
+
+type FilterState = {
+  q: string;
+  fechaInicio: string;
+  fechaFin: string;
+  encuestadorAsignadoId: string;
+  origenRegistro: 'ALL' | CallCenterOrigenRegistro;
+  llamadaConectada: 'ALL' | 'true' | 'false';
+  activo: 'ALL' | 'true' | 'false';
+  page: number;
+  size: number;
+};
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
+const initialFilter: FilterState = {
+  q: '',
+  fechaInicio: '',
+  fechaFin: '',
+  encuestadorAsignadoId: '',
+  origenRegistro: 'ALL',
+  llamadaConectada: 'ALL',
+  activo: 'true',
+  page: 0,
+  size: 20,
+};
+
+function toBoolean(value: string): boolean | null {
+  if (value === 'true') {
+    return true;
+  }
+
+  if (value === 'false') {
+    return false;
+  }
+
+  return null;
 }
 
-function SummaryCard({
-  title,
-  value,
-  helper,
-}: {
-  title: string;
-  value: number;
-  helper: string;
-}) {
-  return (
-    <Card
-      sx={{
-        borderRadius: 4,
-        border: '1px solid',
-        borderColor: 'divider',
-        height: '100%',
-      }}
-    >
-      <CardContent>
-        <Typography
-          color="text.secondary"
-          sx={{
-            fontSize: 12,
-            fontWeight: 900,
-            textTransform: 'uppercase',
-          }}
-        >
-          {title}
-        </Typography>
-
-        <Typography variant="h4" sx={{ fontWeight: 900, mt: 0.5 }}>
-          {value}
-        </Typography>
-
-        <Typography color="text.secondary" sx={{ fontSize: 13, mt: 0.5 }}>
-          {helper}
-        </Typography>
-      </CardContent>
-    </Card>
-  );
+function normalizeText(value?: string | null) {
+  return value?.trim() ?? '';
 }
 
-export default function CallCenterPage() {
+function getPageContent<T>(page: unknown): T[] {
+  const data = page as {
+    content?: T[];
+    items?: T[];
+    data?: T[];
+  };
+
+  return data?.content ?? data?.items ?? data?.data ?? [];
+}
+
+function getTotalElements(page: unknown, currentLength: number) {
+  const data = page as {
+    totalElements?: number;
+    total?: number;
+    totalRecords?: number;
+  };
+
+  return data?.totalElements ?? data?.total ?? data?.totalRecords ?? currentLength;
+}
+
+function origenColor(origen?: string | null) {
+  if (origen === 'VENTANILLA') {
+    return 'primary' as const;
+  }
+
+  if (origen === 'IMPORTACION') {
+    return 'secondary' as const;
+  }
+
+  return 'default' as const;
+}
+
+function buildFilter(filter: FilterState): CallCenterFilter {
+  const llamadaConectada = toBoolean(filter.llamadaConectada);
+  const activo = toBoolean(filter.activo);
+
+  return {
+    page: filter.page,
+    size: filter.size,
+    q: normalizeText(filter.q) || undefined,
+    fechaInicio: filter.fechaInicio || undefined,
+    fechaFin: filter.fechaFin || undefined,
+    encuestadorAsignadoId: filter.encuestadorAsignadoId || undefined,
+    origenRegistro: filter.origenRegistro === 'ALL' ? undefined : filter.origenRegistro,
+    llamadaConectada: llamadaConectada ?? undefined,
+    activo: activo ?? undefined,
+  };
+}
+
+export default function CallCenterRegistrosPage() {
   const router = useRouter();
 
-  const [summary, setSummary] = useState<CallCenterSummaryResponse | null>(null);
-  const [pageData, setPageData] = useState<PageResponse<CallCenterResponse> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [records, setRecords] = useState<CallCenterResponse[]>([]);
+  const [total, setTotal] = useState(0);
+  const [filter, setFilter] = useState<FilterState>(initialFilter);
+  const [loading, setLoading] = useState(false);
+  const [encuestadores, setEncuestadores] = useState<SelectOption[]>([]);
 
-  const role = currentRole();
-  const allowWrite = useMemo(() => canWriteCallCenter(role), [role]);
-  const allowAsignaciones = useMemo(() => canUpdateEncuestadorVisit(role), [role]);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [selectedRecord, setSelectedRecord] = useState<CallCenterResponse | null>(null);
 
-  const load = async () => {
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
+
+  const showMessage = (message: string, severity: SnackbarState['severity'] = 'success') => {
+    setSnackbar({
+      open: true,
+      message,
+      severity,
+    });
+  };
+
+  const closeSnackbar = () => {
+    setSnackbar((current) => ({
+      ...current,
+      open: false,
+    }));
+  };
+
+  const load = useCallback(async () => {
     setLoading(true);
-    setError('');
 
     try {
-      const [summaryData, registrosData] = await Promise.all([
-        getCallCenterSummary(),
-        searchCallCenter({
-          page: 0,
-          size: 10,
-          activo: true,
-        }),
-      ]);
+      const page = await searchCallCenter(buildFilter(filter));
+      const content = getPageContent<CallCenterResponse>(page);
 
-      setSummary(summaryData);
-      setPageData(registrosData);
-    } catch (err) {
-      const message = err instanceof Error
-        ? err.message
-        : 'No fue posible consultar el módulo Call Center.';
-
-      setError(message);
+      setRecords(content);
+      setTotal(getTotalElements(page, content.length));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible cargar los registros de Call Center.';
+      showMessage(message, 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
 
   useEffect(() => {
-    void load();
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    getCallCenterEncuestadoresOptions()
+      .then(setEncuestadores)
+      .catch(() => {
+        showMessage('No fue posible cargar el catálogo de encuestadores.', 'warning');
+      });
   }, []);
 
-  if (loading && !summary) {
-    return <LoadingState />;
-  }
+  const stats = useMemo(() => {
+    const ventanilla = records.filter((item) => item.origenRegistro === 'VENTANILLA').length;
+    const manual = records.filter((item) => item.origenRegistro === 'MANUAL').length;
+    const connected = records.filter((item) => item.llamadaConectada).length;
 
-  const rows = pageData?.content ?? [];
+    return {
+      ventanilla,
+      manual,
+      connected,
+    };
+  }, [records]);
+
+  const updateFilter = (field: keyof FilterState, value: string | number) => {
+    setFilter((current) => ({
+      ...current,
+      [field]: value,
+      page: field === 'page' || field === 'size' ? current.page : 0,
+    }));
+  };
+
+  const openConfirm = (record: CallCenterResponse, action: ConfirmAction) => {
+    setSelectedRecord(record);
+    setConfirmAction(action);
+  };
+
+  const closeConfirm = () => {
+    setSelectedRecord(null);
+    setConfirmAction(null);
+  };
+
+  const confirmStatusChange = async () => {
+    if (!selectedRecord || !confirmAction) {
+      return;
+    }
+
+    try {
+      if (confirmAction === 'ACTIVATE') {
+        await activateCallCenterRegistro(selectedRecord.id);
+        showMessage('Registro activado correctamente.', 'success');
+      }
+
+      if (confirmAction === 'DEACTIVATE') {
+        await deactivateCallCenterRegistro(selectedRecord.id);
+        showMessage('Registro inactivado correctamente.', 'success');
+      }
+
+      closeConfirm();
+      load();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible cambiar el estado del registro.';
+      showMessage(message, 'error');
+    }
+  };
+
+  const handlePageChange = (_: unknown, page: number) => {
+    setFilter((current) => ({
+      ...current,
+      page,
+    }));
+  };
+
+  const handleRowsPerPageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setFilter((current) => ({
+      ...current,
+      page: 0,
+      size: Number(event.target.value),
+    }));
+  };
 
   return (
-    <Stack spacing={3}>
-      <CrudPageHeader
-        title="Call Center"
-        subtitle="Consulta general de llamadas y seguimiento a usuarios."
-        primaryAction={
-          <Stack direction="row" spacing={1}>
-            {allowAsignaciones ? (
-              <Button
-                variant="outlined"
-                startIcon={<AssignmentTurnedInIcon />}
-                onClick={() => router.push('/dashboard/callcenter/mis-asignaciones')}
-              >
-                Mis asignaciones
-              </Button>
-            ) : null}
+    <Box>
+      <Stack spacing={3}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          sx={{ justifyContent: 'space-between' }}
+        >
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>
+              Registros Call Center
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Gestión de llamadas, registros manuales y carga desde ventanilla para asignación de encuestas.
+            </Typography>
+          </Box>
 
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={load}
+              disabled={loading}
+            >
+              Actualizar
+            </Button>
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<SourceIcon />}
+              onClick={() => router.push('/dashboard/callcenter/registros/cargar-ventanilla')}
+            >
+              Cargar desde Ventanilla
+            </Button>
             <Button
               variant="contained"
-              startIcon={allowWrite ? <AddIcon /> : <SearchIcon />}
-              onClick={() =>
-                router.push(
-                  allowWrite
-                    ? '/dashboard/callcenter/registros'
-                    : '/dashboard/callcenter'
-                )
-              }
+              startIcon={<AddIcon />}
+              onClick={() => router.push('/dashboard/callcenter/registros/nuevo')}
             >
-              {allowWrite ? 'Abrir registros' : 'Consultar'}
+              Nuevo registro manual
             </Button>
           </Stack>
-        }
-      />
+        </Stack>
 
-      {error ? (
-        <Alert severity="error">
-          {error}
-        </Alert>
-      ) : null}
-
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: {
-            xs: '1fr',
-            md: 'repeat(5, 1fr)',
-          },
-          gap: 2,
-        }}
-      >
-        <SummaryCard
-          title="Total"
-          value={summary?.totalRegistros ?? 0}
-          helper="Registros históricos"
-        />
-
-        <SummaryCard
-          title="Conectadas"
-          value={summary?.llamadasConectadas ?? 0}
-          helper="Llamadas atendidas"
-        />
-
-        <SummaryCard
-          title="No conectadas"
-          value={summary?.llamadasNoConectadas ?? 0}
-          helper="Sin contacto efectivo"
-        />
-
-        <SummaryCard
-          title="Activas"
-          value={summary?.activos ?? 0}
-          helper="Registros disponibles"
-        />
-
-        <SummaryCard
-          title="Inactivas"
-          value={summary?.inactivos ?? 0}
-          helper="Registros retirados"
-        />
-      </Box>
-
-      <Card sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent>
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            spacing={1}
-            sx={{
-              alignItems: { xs: 'flex-start', md: 'center' },
-              justifyContent: 'space-between',
-              mb: 2,
-            }}
-          >
-            <Box>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                <PhoneIcon color="primary" />
-                <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                  Últimos registros activos
-                </Typography>
-              </Stack>
-
-              <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.4 }}>
-                Vista rápida de los registros más recientes del módulo.
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Total página
               </Typography>
-            </Box>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {records.length}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Desde ventanilla
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {stats.ventanilla}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Manuales
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {stats.manual}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Conectadas
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {stats.connected}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Stack>
 
-            <Chip
-              label={`${pageData?.totalElements ?? 0} registro${(pageData?.totalElements ?? 0) === 1 ? '' : 's'}`}
-              color="primary"
-              variant="outlined"
-            />
-          </Stack>
+        <Paper sx={{ p: 2 }}>
+          <Stack spacing={2}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Buscar"
+                value={filter.q}
+                onChange={(event) => updateFilter('q', event.target.value)}
+                fullWidth
+                size="small"
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
 
-          <Divider sx={{ mb: 2 }} />
-
-          <Box sx={{ overflowX: 'auto' }}>
-            <Table size="small" sx={{ minWidth: 980 }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 900 }}>Fecha</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Solicitante</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Teléfono</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Conectada</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Barrio</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Encuestador</TableCell>
-                  <TableCell sx={{ fontWeight: 900 }}>Visita</TableCell>
-                </TableRow>
-              </TableHead>
-
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id} hover>
-                    <TableCell>{row.fechaLlamada}</TableCell>
-                    <TableCell>
-                      <Typography sx={{ fontWeight: 800 }}>
-                        {row.nombreCompleto}
-                      </Typography>
-
-                      <Typography color="text.secondary" sx={{ fontSize: 12 }}>
-                        C.C. {row.cedulaSolicitante}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{row.telefono || '-'}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={formatBoolean(row.llamadaConectada)}
-                        color={row.llamadaConectada ? 'success' : 'warning'}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>{row.barrioNombre || row.direccionTexto || '-'}</TableCell>
-                    <TableCell>
-                      {row.encuestadorAsignadoNombre || row.encuestadorProgramadoNombre || '-'}
-                    </TableCell>
-                    <TableCell>{row.estadoVisita || 'PENDIENTE'}</TableCell>
-                  </TableRow>
+              <TextField
+                label="Encuestador"
+                select
+                value={filter.encuestadorAsignadoId}
+                onChange={(event) => updateFilter('encuestadorAsignadoId', event.target.value)}
+                sx={{ minWidth: 260 }}
+                size="small"
+              >
+                <MenuItem value="">Todos los encuestadores</MenuItem>
+                {encuestadores.map((option) => (
+                  <MenuItem key={option.id} value={option.id}>
+                    {option.label}
+                  </MenuItem>
                 ))}
+              </TextField>
 
-                {!rows.length ? (
+              <TextField
+                label="Fecha inicio"
+                type="date"
+                value={filter.fechaInicio}
+                onChange={(event) => updateFilter('fechaInicio', event.target.value)}
+                sx={{ minWidth: 180 }}
+                size="small"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+
+              <TextField
+                label="Fecha fin"
+                type="date"
+                value={filter.fechaFin}
+                onChange={(event) => updateFilter('fechaFin', event.target.value)}
+                sx={{ minWidth: 180 }}
+                size="small"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Origen"
+                select
+                value={filter.origenRegistro}
+                onChange={(event) => updateFilter('origenRegistro', event.target.value)}
+                sx={{ minWidth: 180 }}
+                size="small"
+              >
+                <MenuItem value="ALL">Todos</MenuItem>
+                <MenuItem value="VENTANILLA">Ventanilla</MenuItem>
+                <MenuItem value="MANUAL">Manual</MenuItem>
+                <MenuItem value="IMPORTACION">Importación</MenuItem>
+              </TextField>
+
+              <TextField
+                label="Llamada"
+                select
+                value={filter.llamadaConectada}
+                onChange={(event) => updateFilter('llamadaConectada', event.target.value)}
+                sx={{ minWidth: 180 }}
+                size="small"
+              >
+                <MenuItem value="ALL">Todas</MenuItem>
+                <MenuItem value="true">Conectada</MenuItem>
+                <MenuItem value="false">No conectada</MenuItem>
+              </TextField>
+
+              <TextField
+                label="Estado"
+                select
+                value={filter.activo}
+                onChange={(event) => updateFilter('activo', event.target.value)}
+                sx={{ minWidth: 160 }}
+                size="small"
+              >
+                <MenuItem value="true">Activos</MenuItem>
+                <MenuItem value="false">Inactivos</MenuItem>
+                <MenuItem value="ALL">Todos</MenuItem>
+              </TextField>
+
+              <Button
+                variant="outlined"
+                startIcon={<RestartAltIcon />}
+                onClick={() => setFilter(initialFilter)}
+              >
+                Limpiar
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
+
+        {loading ? (
+          <Paper sx={{ p: 3 }}>
+            <Alert severity="info">
+              Cargando registros de Call Center...
+            </Alert>
+          </Paper>
+        ) : records.length === 0 ? (
+          <Paper sx={{ p: 3 }}>
+            <Alert severity="info">
+              Sin registros. No se encontraron registros de Call Center con los filtros actuales.
+            </Alert>
+          </Paper>
+        ) : (
+          <Paper>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={7} align="center" sx={{ py: 5 }}>
-                      No hay registros activos para mostrar.
-                    </TableCell>
+                    <TableCell>Fecha</TableCell>
+                    <TableCell>Origen</TableCell>
+                    <TableCell>Ciudadano</TableCell>
+                    <TableCell>Teléfono</TableCell>
+                    <TableCell>Dirección</TableCell>
+                    <TableCell>Llamada</TableCell>
+                    <TableCell>Encuestador</TableCell>
+                    <TableCell>Visita</TableCell>
+                    <TableCell>Estado</TableCell>
+                    <TableCell align="right">Acciones</TableCell>
                   </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </Box>
-        </CardContent>
-      </Card>
-    </Stack>
+                </TableHead>
+                <TableBody>
+                  {records.map((record) => (
+                    <TableRow key={record.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {record.fechaLlamada}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {record.horaLlamada?.slice(0, 5) || 'Sin hora'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Stack spacing={0.5}>
+                          <Chip
+                            size="small"
+                            label={record.origenRegistro || 'MANUAL'}
+                            color={origenColor(record.origenRegistro)}
+                          />
+                          {record.ventanillaNumeroVentanilla && (
+                            <Typography variant="caption" color="text.secondary">
+                              Vent. {record.ventanillaNumeroVentanilla}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {record.nombreCompleto}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          C.C. {record.cedulaSolicitante}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{record.telefono || 'Sin dato'}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {record.direccionTexto || 'Sin dirección'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {record.barrioNombre || 'Sin barrio'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={record.llamadaConectada ? 'success' : 'warning'}
+                          label={record.llamadaConectada ? 'Conectada' : 'No conectada'}
+                        />
+                      </TableCell>
+                      <TableCell>{record.encuestadorAsignadoNombre || record.encuestadorProgramadoNombre || 'Sin asignar'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={record.estadoVisita || 'PENDIENTE'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={record.activo ? 'success' : 'default'}
+                          label={record.activo ? 'Activo' : 'Inactivo'}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Editar">
+                          <IconButton
+                            size="small"
+                            onClick={() => router.push(`/dashboard/callcenter/registros/nuevo?id=${record.id}`)}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        {record.activo ? (
+                          <Tooltip title="Inactivar">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => openConfirm(record, 'DEACTIVATE')}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip title="Activar">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={() => openConfirm(record, 'ACTIVATE')}
+                            >
+                              <CheckCircleIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TablePagination
+                      count={total}
+                      page={filter.page}
+                      rowsPerPage={filter.size}
+                      rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+                      onPageChange={handlePageChange}
+                      onRowsPerPageChange={handleRowsPerPageChange}
+                      labelRowsPerPage="Filas"
+                    />
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </TableContainer>
+          </Paper>
+        )}
+      </Stack>
+
+      <Dialog open={Boolean(confirmAction)} onClose={closeConfirm} fullWidth maxWidth="xs">
+        <DialogTitle>
+          {confirmAction === 'ACTIVATE' ? 'Activar registro' : 'Inactivar registro'}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2">
+            Confirma la acción para el registro de{' '}
+            <strong>{selectedRecord?.nombreCompleto}</strong>.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeConfirm}>Cancelar</Button>
+          <Button
+            variant="contained"
+            color={confirmAction === 'ACTIVATE' ? 'success' : 'error'}
+            onClick={confirmStatusChange}
+          >
+            Confirmar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={closeSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity={snackbar.severity} onClose={closeSnackbar} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
   );
 }

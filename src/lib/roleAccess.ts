@@ -4,6 +4,7 @@ import { AuthUserResponse } from '@/types/auth.types';
 export type AppRole =
   | 'ADMIN'
   | 'SUPERVISOR'
+  | 'COORDINADOR_CALLCENTER'
   | 'FUNCIONARIO_VENTANILLA'
   | 'FUNCIONARIO_DMC'
   | 'FUNCIONARIO_CALLCENTER'
@@ -44,11 +45,39 @@ export type DashboardActionItem = {
 const ALL_ROLES: AppRole[] = [
   'ADMIN',
   'SUPERVISOR',
+  'COORDINADOR_CALLCENTER',
   'FUNCIONARIO_VENTANILLA',
   'FUNCIONARIO_DMC',
   'FUNCIONARIO_CALLCENTER',
   'FUNCIONARIO_ENCUESTADOR',
   'CONSULTA',
+];
+
+const CALLCENTER_ADMIN_ROLES: AppRole[] = [
+  'ADMIN',
+  'SUPERVISOR',
+  'COORDINADOR_CALLCENTER',
+];
+
+const CALLCENTER_OPERATOR_ROLES: AppRole[] = [
+  'ADMIN',
+  'SUPERVISOR',
+  'COORDINADOR_CALLCENTER',
+  'FUNCIONARIO_CALLCENTER',
+];
+
+const CALLCENTER_ENCUESTADOR_ROLES: AppRole[] = [
+  'ADMIN',
+  'SUPERVISOR',
+  'FUNCIONARIO_CALLCENTER',
+  'FUNCIONARIO_ENCUESTADOR',
+];
+
+const EXACT_ONLY_PATHS = [
+  '/dashboard',
+  '/dashboard/ventanilla',
+  '/dashboard/dmc',
+  '/dashboard/callcenter',
 ];
 
 export const dashboardMenuItems: DashboardMenuItem[] = [
@@ -92,7 +121,19 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
     label: 'Call Center',
     href: '/dashboard/callcenter/registros',
     iconKey: 'callcenter',
-    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER'],
+    roles: CALLCENTER_ADMIN_ROLES,
+  },
+  {
+    label: 'Asignar funcionarios',
+    href: '/dashboard/callcenter/asignar-funcionarios',
+    iconKey: 'callcenter',
+    roles: CALLCENTER_ADMIN_ROLES,
+  },
+  {
+    label: 'Mis registros Call Center',
+    href: '/dashboard/callcenter/mis-registros',
+    iconKey: 'callcenter',
+    roles: CALLCENTER_OPERATOR_ROLES,
   },
   {
     label: 'Call Center',
@@ -104,7 +145,7 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
     label: 'Mis asignaciones',
     href: '/dashboard/callcenter/mis-asignaciones',
     iconKey: 'encuestador',
-    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER', 'FUNCIONARIO_ENCUESTADOR'],
+    roles: CALLCENTER_ENCUESTADOR_ROLES,
   },
   {
     label: 'Barrios',
@@ -200,7 +241,25 @@ export const dashboardActions: DashboardActionItem[] = [
     href: '/dashboard/callcenter/registros',
     buttonLabel: 'Abrir Call Center',
     iconKey: 'callcenter',
-    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER'],
+    roles: CALLCENTER_ADMIN_ROLES,
+    primary: true,
+  },
+  {
+    title: 'Asignar funcionarios Call Center',
+    description: 'Distribuye usuarios de nueva encuesta entre los funcionarios Call Center.',
+    href: '/dashboard/callcenter/asignar-funcionarios',
+    buttonLabel: 'Asignar funcionarios',
+    iconKey: 'callcenter',
+    roles: CALLCENTER_ADMIN_ROLES,
+    primary: true,
+  },
+  {
+    title: 'Mis registros Call Center',
+    description: 'Gestiona únicamente los usuarios asignados a tu cuenta.',
+    href: '/dashboard/callcenter/mis-registros',
+    buttonLabel: 'Abrir mis registros',
+    iconKey: 'callcenter',
+    roles: CALLCENTER_OPERATOR_ROLES,
     primary: true,
   },
   {
@@ -209,7 +268,7 @@ export const dashboardActions: DashboardActionItem[] = [
     href: '/dashboard/callcenter/mis-asignaciones',
     buttonLabel: 'Abrir asignaciones',
     iconKey: 'encuestador',
-    roles: ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER', 'FUNCIONARIO_ENCUESTADOR'],
+    roles: CALLCENTER_ENCUESTADOR_ROLES,
     primary: true,
   },
   {
@@ -280,6 +339,8 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard/dmc/registros',
     '/dashboard/callcenter',
     '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/asignar-funcionarios',
+    '/dashboard/callcenter/mis-registros',
     '/dashboard/callcenter/mis-asignaciones',
     '/dashboard/territory/barrios',
     '/dashboard/territory/comunas',
@@ -297,10 +358,20 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard/dmc/registros',
     '/dashboard/callcenter',
     '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/asignar-funcionarios',
+    '/dashboard/callcenter/mis-registros',
     '/dashboard/callcenter/mis-asignaciones',
     '/dashboard/auditoria',
     '/dashboard/reportes',
     '/dashboard/exportaciones',
+    '/dashboard/cuenta/cambiar-password',
+  ],
+  COORDINADOR_CALLCENTER: [
+    '/dashboard',
+    '/dashboard/callcenter',
+    '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/asignar-funcionarios',
+    '/dashboard/callcenter/mis-registros',
     '/dashboard/cuenta/cambiar-password',
   ],
   FUNCIONARIO_VENTANILLA: [
@@ -317,8 +388,7 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
   ],
   FUNCIONARIO_CALLCENTER: [
     '/dashboard',
-    '/dashboard/callcenter',
-    '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/mis-registros',
     '/dashboard/callcenter/mis-asignaciones',
     '/dashboard/cuenta/cambiar-password',
   ],
@@ -343,6 +413,7 @@ export function normalizeRole(role?: string | null): AppRole | '' {
   if (
     value === 'ADMIN' ||
     value === 'SUPERVISOR' ||
+    value === 'COORDINADOR_CALLCENTER' ||
     value === 'FUNCIONARIO_VENTANILLA' ||
     value === 'FUNCIONARIO_DMC' ||
     value === 'FUNCIONARIO_CALLCENTER' ||
@@ -382,11 +453,23 @@ export function getDashboardActionsByRole(role?: string | null) {
 export function getDefaultDashboardPathByRole(role?: string | null) {
   const normalizedRole = normalizeRole(role);
 
-  if (normalizedRole) {
-    return '/dashboard';
+  if (!normalizedRole) {
+    return '/login';
   }
 
-  return '/login';
+  if (normalizedRole === 'FUNCIONARIO_CALLCENTER') {
+    return '/dashboard/callcenter/mis-registros';
+  }
+
+  if (normalizedRole === 'FUNCIONARIO_ENCUESTADOR') {
+    return '/dashboard/callcenter/mis-asignaciones';
+  }
+
+  if (normalizedRole === 'COORDINADOR_CALLCENTER') {
+    return '/dashboard/callcenter/asignar-funcionarios';
+  }
+
+  return '/dashboard';
 }
 
 export function canAccessDashboardPath(role: string | null | undefined, path: string) {
@@ -398,9 +481,17 @@ export function canAccessDashboardPath(role: string | null | undefined, path: st
 
   const allowedPaths = allowedDashboardPathsByRole[normalizedRole];
 
-  return allowedPaths.some((allowedPath) =>
-    path === allowedPath || path.startsWith(`${allowedPath}/`)
-  );
+  return allowedPaths.some((allowedPath) => {
+    if (path === allowedPath) {
+      return true;
+    }
+
+    if (EXACT_ONLY_PATHS.includes(allowedPath)) {
+      return false;
+    }
+
+    return path.startsWith(`${allowedPath}/`);
+  });
 }
 
 export function canWriteVentanilla(role: string | null | undefined = currentRole()) {
@@ -424,7 +515,7 @@ export function canWriteDmc(role: string | null | undefined = currentRole()) {
 export function canWriteCallCenter(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER'].includes(normalizedRole);
+  return ['ADMIN', 'SUPERVISOR', 'COORDINADOR_CALLCENTER', 'FUNCIONARIO_CALLCENTER'].includes(normalizedRole);
 }
 
 export function canUpdateEncuestadorVisit(role: string | null | undefined = currentRole()) {
@@ -473,4 +564,22 @@ export function canManageTerritory(role: string | null | undefined = currentRole
   const normalizedRole = normalizeRole(role);
 
   return ['ADMIN'].includes(normalizedRole);
+}
+
+export function canAssignCallCenterFuncionario(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return ['ADMIN', 'SUPERVISOR', 'COORDINADOR_CALLCENTER'].includes(normalizedRole);
+}
+
+export function canViewMisRegistrosCallCenter(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return ['ADMIN', 'SUPERVISOR', 'COORDINADOR_CALLCENTER', 'FUNCIONARIO_CALLCENTER'].includes(normalizedRole);
+}
+
+export function canViewMisAsignacionesEncuestador(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER', 'FUNCIONARIO_ENCUESTADOR'].includes(normalizedRole);
 }

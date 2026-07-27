@@ -30,7 +30,7 @@ export type DashboardMenuItem = {
   href: string;
   iconKey: DashboardIconKey;
   roles: AppRole[];
-};
+};  
 
 export type DashboardActionItem = {
   title: string;
@@ -69,7 +69,6 @@ const CALLCENTER_OPERATOR_ROLES: AppRole[] = [
 const CALLCENTER_ENCUESTADOR_ROLES: AppRole[] = [
   'ADMIN',
   'SUPERVISOR',
-  'FUNCIONARIO_CALLCENTER',
   'FUNCIONARIO_ENCUESTADOR',
 ];
 
@@ -389,7 +388,6 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
   FUNCIONARIO_CALLCENTER: [
     '/dashboard',
     '/dashboard/callcenter/mis-registros',
-    '/dashboard/callcenter/mis-asignaciones',
     '/dashboard/cuenta/cambiar-password',
   ],
   FUNCIONARIO_ENCUESTADOR: [
@@ -521,7 +519,7 @@ export function canWriteCallCenter(role: string | null | undefined = currentRole
 export function canUpdateEncuestadorVisit(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER', 'FUNCIONARIO_ENCUESTADOR'].includes(normalizedRole);
+  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_ENCUESTADOR'].includes(normalizedRole);
 }
 
 export function canExport(role: string | null | undefined = currentRole()) {
@@ -581,5 +579,5 @@ export function canViewMisRegistrosCallCenter(role: string | null | undefined = 
 export function canViewMisAsignacionesEncuestador(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_CALLCENTER', 'FUNCIONARIO_ENCUESTADOR'].includes(normalizedRole);
+  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_ENCUESTADOR'].includes(normalizedRole);
 }

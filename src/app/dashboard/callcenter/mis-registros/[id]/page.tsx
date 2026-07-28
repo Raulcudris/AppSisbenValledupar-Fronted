@@ -83,17 +83,11 @@ const initialVisitaForm: CallCenterVisitaAsignacionRequest = {
   horaProgramada: null,
   observacion: '',
 };
-
 /**
  * Página de gestión operativa del caso Call Center.
  *
- * Esta vista es usada por el funcionario Call Center para:
- * - Consultar datos principales del ciudadano.
- * - Revisar el estado del caso.
- * - Registrar llamadas.
- * - Consultar historial de llamadas.
- * - Asignar visita a encuestador.
- * - Consultar historial de visitas.
+ * Esta vista permite consultar la trazabilidad del caso, registrar llamadas
+ * y asignar visitas únicamente cuando el caso permanece abierto.
  */
 export default function PageCallCenterGestionCaso() {
   const router = useRouter();
@@ -131,6 +125,8 @@ export default function PageCallCenterGestionCaso() {
   const tipoSolicitud = caso
     ? getStringField(caso, 'tipoSolicitudCallcenter') || getStringField(caso, 'solicitudNombre')
     : null;
+
+  const caseClosedOrCancelled = isCaseClosedOrCancelled(estadoCaso);
 
   /**
    * Carga la información completa del caso.
@@ -180,6 +176,11 @@ export default function PageCallCenterGestionCaso() {
    * Abre el formulario de llamada con valores iniciales.
    */
   function openRegistrarLlamada() {
+    if (caseClosedOrCancelled) {
+      setError('No se pueden registrar llamadas en un caso cerrado o cancelado.');
+      return;
+    }
+
     const now = new Date();
 
     setLlamadaForm({
@@ -195,6 +196,11 @@ export default function PageCallCenterGestionCaso() {
    * Abre el formulario de asignación de visita.
    */
   function openAsignarVisita() {
+    if (caseClosedOrCancelled) {
+      setError('No se pueden asignar visitas en un caso cerrado o cancelado.');
+      return;
+    }
+
     setVisitaForm(initialVisitaForm);
     setOpenVisita(true);
   }
@@ -204,6 +210,11 @@ export default function PageCallCenterGestionCaso() {
    */
   async function handleRegistrarLlamada() {
     if (!caseId) {
+      return;
+    }
+
+    if (caseClosedOrCancelled) {
+      setError('No se pueden registrar llamadas en un caso cerrado o cancelado.');
       return;
     }
 
@@ -234,6 +245,11 @@ export default function PageCallCenterGestionCaso() {
    */
   async function handleAsignarVisita() {
     if (!caseId) {
+      return;
+    }
+
+    if (caseClosedOrCancelled) {
+      setError('No se pueden asignar visitas en un caso cerrado o cancelado.');
       return;
     }
 
@@ -318,6 +334,7 @@ export default function PageCallCenterGestionCaso() {
             variant="contained"
             startIcon={<AddIcCallIcon />}
             onClick={openRegistrarLlamada}
+            disabled={caseClosedOrCancelled}
           >
             Registrar llamada
           </Button>
@@ -326,11 +343,19 @@ export default function PageCallCenterGestionCaso() {
             variant="contained"
             startIcon={<AssignmentIndIcon />}
             onClick={openAsignarVisita}
+            disabled={caseClosedOrCancelled}
           >
             Asignar visita
           </Button>
         </Box>
       </Box>
+
+      {caseClosedOrCancelled && (
+        <Alert severity={estadoCaso === 'CERRADO' ? 'success' : 'warning'}>
+          Este caso se encuentra <strong>{formatLabel(estadoCaso)}</strong>. No permite registrar nuevas llamadas
+          ni asignar nuevas visitas. La información se muestra solo para consulta y trazabilidad.
+        </Alert>
+      )}
 
       <Card>
         <CardContent>
@@ -396,6 +421,17 @@ export default function PageCallCenterGestionCaso() {
               <InfoItem label="Barrio" value={caso.barrioNombre || 'Sin barrio'} />
               <InfoItem label="Comuna" value={caso.comunaNombre || 'Sin comuna'} />
               <InfoItem label="Encuestador" value={caso.encuestadorAsignadoNombre || 'Sin asignar'} />
+
+              {caseClosedOrCancelled && (
+                <>
+                  <InfoItem label="Fecha cierre" value={caso.fechaCierre || 'Sin fecha de cierre'} />
+                  <InfoItem label="Motivo cierre" value={caso.motivoCierre || 'Sin motivo registrado'} />
+                  <InfoItem
+                    label="Usuario cierre"
+                    value={caso.usuarioCierreUsername || 'Sin usuario registrado'}
+                  />
+                </>
+              )}
             </Box>
           )}
         </CardContent>
@@ -655,7 +691,7 @@ export default function PageCallCenterGestionCaso() {
 
           <Button
             variant="contained"
-            disabled={savingLlamada}
+            disabled={savingLlamada || caseClosedOrCancelled}
             onClick={handleRegistrarLlamada}
           >
             Guardar llamada
@@ -732,7 +768,7 @@ export default function PageCallCenterGestionCaso() {
 
           <Button
             variant="contained"
-            disabled={savingVisita}
+            disabled={savingVisita || caseClosedOrCancelled}
             onClick={handleAsignarVisita}
           >
             Asignar visita
@@ -770,11 +806,19 @@ export default function PageCallCenterGestionCaso() {
  * @returns información del caso.
  */
 async function getCallCenterDetalle(id: string) {
-  const response = await apiRequest<ApiResponse<CallCenterResponse>>(
+  const response = await apiRequest<ApiResponse<CallCenterResponse> | CallCenterResponse>(
     `/api/callcenter/${id}?_t=${Date.now()}`
   );
 
-  return response.data;
+  if (
+    response &&
+    typeof response === 'object' &&
+    'data' in response
+  ) {
+    return response.data;
+  }
+
+  return response as CallCenterResponse;
 }
 
 /**
@@ -812,6 +856,18 @@ function getStringField(record: CallCenterResponse, field: string) {
   const trimmed = value.trim();
 
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Valida si el estado del caso corresponde a un cierre operativo.
+ *
+ * @param value estado formal del caso.
+ * @returns true si el caso no debe permitir nuevas acciones operativas.
+ */
+function isCaseClosedOrCancelled(value?: string | null) {
+  const normalized = String(value ?? '').trim().toUpperCase();
+
+  return normalized === 'CERRADO' || normalized === 'CANCELADO';
 }
 
 /**

@@ -67,7 +67,7 @@ type VentanillaSearchState = {
   size: number;
 };
 
-const SOLICITUD_NUEVA_ENCUESTA_ID = 6;
+const SOLICITUD_NUEVA_ENCUESTA_ID = 5;
 const ESTADO_SOLICITUD_PENDIENTE_ID = 1;
 
 const initialSearch: VentanillaSearchState = {
@@ -153,6 +153,9 @@ function getVentanillaLabel(record: VentanillaCallCenterResponse) {
 /**
  * Construye los filtros usados para consultar Ventanilla.
  *
+ * Filtra únicamente registros activos de Ventanilla con solicitud
+ * NUEVA ENCUESTA y estado PENDIENTE.
+ *
  * @param search estado actual de filtros.
  * @param page página solicitada.
  * @param size tamaño de página.
@@ -176,7 +179,6 @@ function buildVentanillaFilter(
     activo: true,
   };
 }
-
 /**
  * Convierte un registro de Ventanilla en un caso Call Center.
  *

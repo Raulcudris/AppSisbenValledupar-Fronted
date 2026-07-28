@@ -10,12 +10,10 @@ import {
   Button,
   Card,
   CardContent,
-  Divider,
   InputAdornment,
   MenuItem,
   Paper,
   Snackbar,
-  Stack,
   TextField,
   Typography,
 } from '@mui/material';
@@ -24,180 +22,180 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   createCallCenterRegistro,
-  findAsignacionPendienteNuevaEncuesta,
   findVentanillaByCedulaForCallCenter,
   getCallCenterBarriosOptions,
-  getCallCenterEncuestadoresOptions,
   getCallCenterRegistro,
-  getMotivosNoContactoOptions,
-  getMotivosNoDisposicionOptions,
+  searchCallCenter,
   updateCallCenterRegistro,
 } from '@/services/callcenter.service';
-
 import {
   CallCenterOrigenRegistro,
   CallCenterRequest,
   CallCenterResponse,
+  CallCenterTipoSolicitud,
   VentanillaCallCenterResponse,
 } from '@/types/callcenter.types';
 import { SelectOption } from '@/types/catalog.types';
 
-
+/**
+ * Estado local para mostrar mensajes temporales en pantalla.
+ */
 type SnackbarState = {
   open: boolean;
   message: string;
   severity: 'success' | 'error' | 'warning' | 'info';
 };
 
+/**
+ * Estado del formulario administrativo de creación de caso Call Center.
+ *
+ * Esta pantalla no registra llamadas ni asigna encuestadores. Solo crea
+ * o actualiza datos básicos del caso maestro.
+ */
 type FormState = {
   id?: number;
   fechaLlamada: string;
-  horaLlamada: string;
-  tipoRegistro: string;
   origenRegistro: CallCenterOrigenRegistro;
   ventanillaRegistroId: string;
+  tipoSolicitudCallcenter: CallCenterTipoSolicitud | string;
+  estadoCaso: string;
   cedulaSolicitante: string;
   nombreCompleto: string;
   telefono: string;
-  llamadaConectada: string;
-  motivoNoContactoId: string;
-  motivoNoContactoTexto: string;
-  encuestadorProgramadoId: string;
-  fechaEncuestaProgramada: string;
-  solicitoNuevaEncuesta: string;
   direccionTexto: string;
   barrioId: string;
-  fechaAplicacionInformada: string;
-  disposicionRecibirEncuesta: string;
-  motivoNoDisposicionId: string;
-  motivoNoDisposicionTexto: string;
-  encuestadorAsignadoId: string;
-  explicoInformanteCalificado: string;
-  verificado: string;
   observacion: string;
   activo: boolean;
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const ESTADO_PENDIENTE_ENRUTAMIENTO = 'PENDIENTE_ENRUTAMIENTO';
+const TIPO_SOLICITUD_NUEVA_ENCUESTA = 'NUEVA_ENCUESTA';
 
-const nowTime = () => {
-  const date = new Date();
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-
-  return `${hours}:${minutes}`;
-};
+/**
+ * Obtiene la fecha actual en formato yyyy-MM-dd.
+ *
+ * @returns fecha actual.
+ */
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 const initialForm: FormState = {
   fechaLlamada: today(),
-  horaLlamada: nowTime(),
-  tipoRegistro: 'LLAMADA',
   origenRegistro: 'MANUAL',
   ventanillaRegistroId: '',
+  tipoSolicitudCallcenter: TIPO_SOLICITUD_NUEVA_ENCUESTA,
+  estadoCaso: ESTADO_PENDIENTE_ENRUTAMIENTO,
   cedulaSolicitante: '',
   nombreCompleto: '',
   telefono: '',
-  llamadaConectada: 'true',
-  motivoNoContactoId: '',
-  motivoNoContactoTexto: '',
-  encuestadorProgramadoId: '',
-  fechaEncuestaProgramada: '',
-  solicitoNuevaEncuesta: 'true',
   direccionTexto: '',
   barrioId: '',
-  fechaAplicacionInformada: '',
-  disposicionRecibirEncuesta: '',
-  motivoNoDisposicionId: '',
-  motivoNoDisposicionTexto: '',
-  encuestadorAsignadoId: '',
-  explicoInformanteCalificado: '',
-  verificado: '',
   observacion: '',
   activo: true,
 };
 
-function toBoolean(value: string): boolean | null {
-  if (value === 'true') {
-    return true;
-  }
-
-  if (value === 'false') {
-    return false;
-  }
-
-  return null;
-}
-
-function toOptionalNumber(value: string) {
-  return value ? Number(value) : null;
-}
-
+/**
+ * Normaliza un texto eliminando espacios iniciales y finales.
+ *
+ * @param value texto recibido.
+ * @returns texto normalizado.
+ */
 function normalizeText(value?: string | null) {
   return value?.trim() ?? '';
 }
 
-function getEncuestadorName(record?: CallCenterResponse | null) {
-  return record?.encuestadorAsignadoNombre
-    || record?.encuestadorProgramadoNombre
-    || 'sin encuestador registrado';
+/**
+ * Convierte un valor string a number o null.
+ *
+ * @param value valor del formulario.
+ * @returns número o null.
+ */
+function toOptionalNumber(value: string) {
+  return value ? Number(value) : null;
 }
 
+/**
+ * Extrae el contenido de una respuesta paginada.
+ *
+ * @param page respuesta paginada.
+ * @returns contenido encontrado.
+ */
+function getPageContent<T>(page: unknown): T[] {
+  const data = page as {
+    content?: T[];
+    items?: T[];
+    data?: T[];
+  };
+
+  return data?.content ?? data?.items ?? data?.data ?? [];
+}
+
+/**
+ * Determina si un caso Call Center está abierto.
+ *
+ * @param record caso Call Center.
+ * @returns true si el caso no está cerrado ni cancelado.
+ */
+function isOpenCallCenterCase(record: CallCenterResponse) {
+  const estadoCaso = String(record.estadoCaso ?? '').trim().toUpperCase();
+
+  if (record.activo === false) {
+    return false;
+  }
+
+  return estadoCaso !== 'CERRADO' && estadoCaso !== 'CANCELADO';
+}
+
+/**
+ * Convierte una respuesta Call Center en estado de formulario.
+ *
+ * @param record caso recibido desde backend.
+ * @returns estado de formulario.
+ */
 function recordToForm(record: CallCenterResponse): FormState {
   return {
     id: record.id,
     fechaLlamada: record.fechaLlamada ?? today(),
-    horaLlamada: record.horaLlamada?.slice(0, 5) ?? '',
-    tipoRegistro: record.tipoRegistro ?? 'LLAMADA',
     origenRegistro: (record.origenRegistro as CallCenterOrigenRegistro) ?? 'MANUAL',
     ventanillaRegistroId: record.ventanillaRegistroId ? String(record.ventanillaRegistroId) : '',
+    tipoSolicitudCallcenter: record.tipoSolicitudCallcenter ?? TIPO_SOLICITUD_NUEVA_ENCUESTA,
+    estadoCaso: record.estadoCaso ?? ESTADO_PENDIENTE_ENRUTAMIENTO,
     cedulaSolicitante: record.cedulaSolicitante ?? '',
     nombreCompleto: record.nombreCompleto ?? '',
     telefono: record.telefono ?? '',
-    llamadaConectada: String(record.llamadaConectada ?? true),
-    motivoNoContactoId: record.motivoNoContactoId ? String(record.motivoNoContactoId) : '',
-    motivoNoContactoTexto: record.motivoNoContactoTexto ?? '',
-    encuestadorProgramadoId: record.encuestadorProgramadoId ? String(record.encuestadorProgramadoId) : '',
-    fechaEncuestaProgramada: record.fechaEncuestaProgramada ?? '',
-    solicitoNuevaEncuesta:
-      record.solicitoNuevaEncuesta === null || record.solicitoNuevaEncuesta === undefined
-        ? ''
-        : String(record.solicitoNuevaEncuesta),
     direccionTexto: record.direccionTexto ?? '',
     barrioId: record.barrioId ? String(record.barrioId) : '',
-    fechaAplicacionInformada: record.fechaAplicacionInformada ?? '',
-    disposicionRecibirEncuesta:
-      record.disposicionRecibirEncuesta === null || record.disposicionRecibirEncuesta === undefined
-        ? ''
-        : String(record.disposicionRecibirEncuesta),
-    motivoNoDisposicionId: record.motivoNoDisposicionId ? String(record.motivoNoDisposicionId) : '',
-    motivoNoDisposicionTexto: record.motivoNoDisposicionTexto ?? '',
-    encuestadorAsignadoId: record.encuestadorAsignadoId ? String(record.encuestadorAsignadoId) : '',
-    explicoInformanteCalificado:
-      record.explicoInformanteCalificado === null || record.explicoInformanteCalificado === undefined
-        ? ''
-        : String(record.explicoInformanteCalificado),
-    verificado:
-      record.verificado === null || record.verificado === undefined
-        ? ''
-        : String(record.verificado),
     observacion: record.observacion ?? '',
     activo: record.activo !== false,
   };
 }
 
-function ventanillaToForm(record: VentanillaCallCenterResponse, current: FormState): FormState {
+/**
+ * Aplica datos de Ventanilla al formulario manual.
+ *
+ * @param record registro de Ventanilla.
+ * @param current estado actual del formulario.
+ * @returns formulario actualizado.
+ */
+function ventanillaToForm(
+  record: VentanillaCallCenterResponse,
+  current: FormState,
+): FormState {
   return {
     ...current,
     origenRegistro: 'VENTANILLA',
     ventanillaRegistroId: String(record.id),
+    tipoSolicitudCallcenter: TIPO_SOLICITUD_NUEVA_ENCUESTA,
+    estadoCaso: ESTADO_PENDIENTE_ENRUTAMIENTO,
     cedulaSolicitante: record.cedulaUsuario ?? current.cedulaSolicitante,
     nombreCompleto: record.nombreUsuario ?? current.nombreCompleto,
     telefono: record.telefono ?? current.telefono,
     direccionTexto: record.direccion ?? current.direccionTexto,
     barrioId: record.barrioId ? String(record.barrioId) : current.barrioId,
-    solicitoNuevaEncuesta: 'true',
     observacion: [
       current.observacion,
+      'Datos cargados desde Ventanilla para crear caso Call Center',
       record.numeroVentanilla ? `Ventanilla: ${record.numeroVentanilla}` : '',
       record.fecha ? `Fecha ventanilla: ${record.fecha}` : '',
       record.solicitudNombre ? `Solicitud: ${record.solicitudNombre}` : '',
@@ -211,21 +209,25 @@ function ventanillaToForm(record: VentanillaCallCenterResponse, current: FormSta
   };
 }
 
+/**
+ * Página administrativa para crear o editar casos Call Center manuales.
+ *
+ * Esta pantalla deja el caso pendiente de enrutamiento. No asigna encuestador,
+ * no registra llamada y no programa visita.
+ */
 export default function NuevoRegistroCallCenterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id');
 
   const [form, setForm] = useState<FormState>(initialForm);
+  const [originalRecord, setOriginalRecord] = useState<CallCenterResponse | null>(null);
   const [saving, setSaving] = useState(false);
   const [searchingCedula, setSearchingCedula] = useState(false);
-  const [checkingAsignacion, setCheckingAsignacion] = useState(false);
-  const [pendingAssignment, setPendingAssignment] = useState<CallCenterResponse | null>(null);
+  const [checkingCase, setCheckingCase] = useState(false);
+  const [existingOpenCase, setExistingOpenCase] = useState<CallCenterResponse | null>(null);
 
-  const [motivosNoContacto, setMotivosNoContacto] = useState<SelectOption[]>([]);
-  const [motivosNoDisposicion, setMotivosNoDisposicion] = useState<SelectOption[]>([]);
   const [barrios, setBarrios] = useState<SelectOption[]>([]);
-  const [encuestadores, setEncuestadores] = useState<SelectOption[]>([]);
 
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
@@ -233,98 +235,141 @@ export default function NuevoRegistroCallCenterPage() {
     severity: 'success',
   });
 
-  const showMessage = (message: string, severity: SnackbarState['severity'] = 'success') => {
+  /**
+   * Muestra un mensaje temporal.
+   *
+   * @param message mensaje visible.
+   * @param severity severidad del mensaje.
+   */
+  function showMessage(
+    message: string,
+    severity: SnackbarState['severity'] = 'success',
+  ) {
     setSnackbar({
       open: true,
       message,
       severity,
     });
-  };
+  }
 
-  const closeSnackbar = () => {
+  /**
+   * Cierra el mensaje temporal.
+   */
+  function closeSnackbar() {
     setSnackbar((current) => ({
       ...current,
       open: false,
     }));
-  };
+  }
 
-  const updateForm = (field: keyof FormState, value: string | boolean) => {
+  /**
+   * Actualiza un campo del formulario.
+   *
+   * @param field campo a modificar.
+   * @param value valor nuevo.
+   */
+  function updateForm(field: keyof FormState, value: string | boolean) {
     if (
       field === 'cedulaSolicitante'
       || field === 'ventanillaRegistroId'
-      || field === 'encuestadorAsignadoId'
-      || field === 'encuestadorProgramadoId'
+      || field === 'tipoSolicitudCallcenter'
     ) {
-      setPendingAssignment(null);
+      setExistingOpenCase(null);
     }
 
     setForm((current) => ({
       ...current,
       [field]: value,
     }));
-  };
+  }
 
+  /**
+   * Carga catálogos necesarios para el formulario.
+   */
   const loadCatalogs = useCallback(async () => {
     try {
-      const [
-        noContacto,
-        noDisposicion,
-        barriosData,
-        encuestadoresData,
-      ] = await Promise.all([
-        getMotivosNoContactoOptions(),
-        getMotivosNoDisposicionOptions(),
-        getCallCenterBarriosOptions(),
-        getCallCenterEncuestadoresOptions(),
-      ]);
-
-      setMotivosNoContacto(noContacto);
-      setMotivosNoDisposicion(noDisposicion);
+      const barriosData = await getCallCenterBarriosOptions();
       setBarrios(barriosData);
-      setEncuestadores(encuestadoresData);
     } catch {
-      showMessage('No fue posible cargar algunos catálogos.', 'warning');
+      showMessage('No fue posible cargar el catálogo de barrios.', 'warning');
     }
   }, []);
 
-  const checkPendingAssignment = useCallback(async (candidate: FormState, showWarning = true) => {
-    if (candidate.solicitoNuevaEncuesta !== 'true') {
-      setPendingAssignment(null);
-      return null;
-    }
-
+  /**
+   * Busca un caso abierto existente por Ventanilla o cédula.
+   *
+   * @param candidate formulario a validar.
+   * @param showWarning indica si debe mostrar alerta.
+   * @returns caso abierto encontrado o null.
+   */
+  const checkExistingOpenCase = useCallback(async (
+    candidate: FormState,
+    showWarning = true,
+  ) => {
     const cedula = normalizeText(candidate.cedulaSolicitante);
     const ventanillaRegistroId = toOptionalNumber(candidate.ventanillaRegistroId);
 
     if (!cedula && !ventanillaRegistroId) {
-      setPendingAssignment(null);
+      setExistingOpenCase(null);
       return null;
     }
 
-    setCheckingAsignacion(true);
+    setCheckingCase(true);
 
     try {
-      const pending = await findAsignacionPendienteNuevaEncuesta({
-        cedulaSolicitante: cedula,
-        ventanillaRegistroId,
-        excludeId: candidate.id,
-      });
+      if (ventanillaRegistroId) {
+        const byVentanilla = await searchCallCenter({
+          page: 0,
+          size: 5,
+          ventanillaRegistroId,
+          activo: true,
+        });
 
-      setPendingAssignment(pending);
+        const foundByVentanilla = getPageContent<CallCenterResponse>(byVentanilla)
+          .find((record) => record.id !== candidate.id && isOpenCallCenterCase(record));
 
-      if (pending && showWarning) {
-        showMessage(
-          `Este usuario ya tiene una nueva encuesta pendiente asignada al encuestador ${getEncuestadorName(pending)}.`,
-          'warning'
-        );
+        if (foundByVentanilla) {
+          setExistingOpenCase(foundByVentanilla);
+
+          if (showWarning) {
+            showMessage('Ya existe un caso Call Center abierto para este registro de Ventanilla.', 'warning');
+          }
+
+          return foundByVentanilla;
+        }
       }
 
-      return pending;
+      if (cedula) {
+        const byCedula = await searchCallCenter({
+          page: 0,
+          size: 5,
+          cedulaSolicitante: cedula,
+          tipoSolicitudCallcenter: candidate.tipoSolicitudCallcenter,
+          activo: true,
+        });
+
+        const foundByCedula = getPageContent<CallCenterResponse>(byCedula)
+          .find((record) => record.id !== candidate.id && isOpenCallCenterCase(record));
+
+        setExistingOpenCase(foundByCedula ?? null);
+
+        if (foundByCedula && showWarning) {
+          showMessage('Ya existe un caso Call Center abierto para esta cédula.', 'warning');
+        }
+
+        return foundByCedula ?? null;
+      }
+
+      setExistingOpenCase(null);
+      return null;
     } finally {
-      setCheckingAsignacion(false);
+      setCheckingCase(false);
     }
   }, []);
 
+  /**
+   * Carga el caso cuando la pantalla está en modo edición.
+   */
   const loadEditRecord = useCallback(async () => {
     if (!editId) {
       return;
@@ -333,23 +378,24 @@ export default function NuevoRegistroCallCenterPage() {
     try {
       const record = await getCallCenterRegistro(Number(editId));
       const nextForm = recordToForm(record);
+
+      setOriginalRecord(record);
       setForm(nextForm);
-      checkPendingAssignment(nextForm, false);
+      await checkExistingOpenCase(nextForm, false);
     } catch {
       showMessage('No fue posible cargar el registro para editar.', 'error');
     }
-  }, [editId, checkPendingAssignment]);
+  }, [editId, checkExistingOpenCase]);
 
   useEffect(() => {
     loadCatalogs();
     loadEditRecord();
   }, [loadCatalogs, loadEditRecord]);
 
-  const isNoContact = form.llamadaConectada === 'false';
-  const isConnected = form.llamadaConectada === 'true';
-  const hasNoDisposition = form.disposicionRecibirEncuesta === 'false';
-
-  const searchPersonByCedula = async () => {
+  /**
+   * Busca la cédula en Ventanilla para precargar datos.
+   */
+  async function searchPersonByCedula() {
     const cedula = normalizeText(form.cedulaSolicitante);
 
     if (!cedula) {
@@ -364,13 +410,14 @@ export default function NuevoRegistroCallCenterPage() {
 
       if (!record) {
         showMessage('No se encontró esta cédula en Ventanilla. Puedes continuar el registro manual.', 'info');
-        await checkPendingAssignment(form, true);
+        await checkExistingOpenCase(form, true);
         return;
       }
 
       const nextForm = ventanillaToForm(record, form);
+
       setForm(nextForm);
-      await checkPendingAssignment(nextForm, true);
+      await checkExistingOpenCase(nextForm, true);
 
       showMessage('Datos cargados desde Ventanilla.', 'success');
     } catch {
@@ -378,39 +425,68 @@ export default function NuevoRegistroCallCenterPage() {
     } finally {
       setSearchingCedula(false);
     }
-  };
+  }
 
-  const buildRequest = (): CallCenterRequest => ({
-    fechaLlamada: form.fechaLlamada,
-    horaLlamada: form.horaLlamada || null,
-    tipoRegistro: form.tipoRegistro || 'LLAMADA',
-    origenRegistro: form.origenRegistro,
-    ventanillaRegistroId: toOptionalNumber(form.ventanillaRegistroId),
-    cedulaSolicitante: normalizeText(form.cedulaSolicitante),
-    nombreCompleto: normalizeText(form.nombreCompleto),
-    telefono: normalizeText(form.telefono) || null,
-    llamadaConectada: form.llamadaConectada === 'true',
-    motivoNoContactoId: toOptionalNumber(form.motivoNoContactoId),
-    motivoNoContactoTexto: normalizeText(form.motivoNoContactoTexto) || null,
-    encuestadorProgramadoId: toOptionalNumber(form.encuestadorProgramadoId),
-    fechaEncuestaProgramada: form.fechaEncuestaProgramada || null,
-    solicitoNuevaEncuesta: toBoolean(form.solicitoNuevaEncuesta),
-    direccionTexto: normalizeText(form.direccionTexto) || null,
-    barrioId: toOptionalNumber(form.barrioId),
-    fechaAplicacionInformada: form.fechaAplicacionInformada || null,
-    disposicionRecibirEncuesta: toBoolean(form.disposicionRecibirEncuesta),
-    motivoNoDisposicionId: toOptionalNumber(form.motivoNoDisposicionId),
-    motivoNoDisposicionTexto: normalizeText(form.motivoNoDisposicionTexto) || null,
-    encuestadorAsignadoId: toOptionalNumber(form.encuestadorAsignadoId),
-    explicoInformanteCalificado: toBoolean(form.explicoInformanteCalificado),
-    verificado: toBoolean(form.verificado),
-    observacion: normalizeText(form.observacion) || null,
-    activo: form.activo,
-  });
+  /**
+   * Construye el request enviado al backend.
+   *
+   * En registros nuevos se crea un caso pendiente de enrutamiento sin llamada
+   * y sin encuestador. En edición se preservan datos legacy que ya existan
+   * para evitar borrarlos desde esta pantalla administrativa.
+   *
+   * @returns request para crear o actualizar.
+   */
+  function buildRequest(): CallCenterRequest {
+    const isNewRecord = !form.id;
 
-  const validateForm = () => {
+    return {
+      marcaTemporal: originalRecord?.marcaTemporal ?? null,
+      fechaLlamada: form.fechaLlamada,
+      horaLlamada: isNewRecord ? null : originalRecord?.horaLlamada ?? null,
+      tipoRegistro: originalRecord?.tipoRegistro ?? 'LLAMADA',
+      origenRegistro: form.origenRegistro,
+      ventanillaRegistroId: toOptionalNumber(form.ventanillaRegistroId),
+      cedulaSolicitante: normalizeText(form.cedulaSolicitante),
+      nombreCompleto: normalizeText(form.nombreCompleto),
+      telefono: normalizeText(form.telefono) || null,
+
+      /**
+       * Esta vista no registra llamada. La llamada real se gestiona desde:
+       * /dashboard/callcenter/mis-registros/[id]
+       */
+      llamadaConectada: isNewRecord
+        ? null as unknown as boolean
+        : originalRecord?.llamadaConectada ?? null as unknown as boolean,
+
+      motivoNoContactoId: isNewRecord ? null : originalRecord?.motivoNoContactoId ?? null,
+      motivoNoContactoTexto: isNewRecord ? null : originalRecord?.motivoNoContactoTexto ?? null,
+      encuestadorProgramadoId: isNewRecord ? null : originalRecord?.encuestadorProgramadoId ?? null,
+      fechaEncuestaProgramada: isNewRecord ? null : originalRecord?.fechaEncuestaProgramada ?? null,
+      solicitoNuevaEncuesta: form.tipoSolicitudCallcenter === TIPO_SOLICITUD_NUEVA_ENCUESTA,
+      direccionTexto: normalizeText(form.direccionTexto) || null,
+      barrioId: toOptionalNumber(form.barrioId),
+      fechaAplicacionInformada: isNewRecord ? null : originalRecord?.fechaAplicacionInformada ?? null,
+      disposicionRecibirEncuesta: isNewRecord ? null : originalRecord?.disposicionRecibirEncuesta ?? null,
+      motivoNoDisposicionId: isNewRecord ? null : originalRecord?.motivoNoDisposicionId ?? null,
+      motivoNoDisposicionTexto: isNewRecord ? null : originalRecord?.motivoNoDisposicionTexto ?? null,
+      encuestadorAsignadoId: isNewRecord ? null : originalRecord?.encuestadorAsignadoId ?? null,
+      explicoInformanteCalificado: isNewRecord ? null : originalRecord?.explicoInformanteCalificado ?? null,
+      verificado: isNewRecord ? null : originalRecord?.verificado ?? null,
+      estadoCaso: form.estadoCaso || ESTADO_PENDIENTE_ENRUTAMIENTO,
+      tipoSolicitudCallcenter: form.tipoSolicitudCallcenter || TIPO_SOLICITUD_NUEVA_ENCUESTA,
+      observacion: normalizeText(form.observacion) || null,
+      activo: form.activo,
+    };
+  }
+
+  /**
+   * Valida los datos mínimos para guardar el caso.
+   *
+   * @returns mensaje de validación o vacío.
+   */
+  function validateForm() {
     if (!form.fechaLlamada) {
-      return 'La fecha de llamada es obligatoria.';
+      return 'La fecha del caso es obligatoria.';
     }
 
     if (!normalizeText(form.cedulaSolicitante)) {
@@ -421,26 +497,25 @@ export default function NuevoRegistroCallCenterPage() {
       return 'El nombre completo es obligatorio.';
     }
 
-    if (pendingAssignment) {
-      return `Este usuario ya tiene una nueva encuesta pendiente asignada al encuestador ${getEncuestadorName(pendingAssignment)}.`;
+    if (!normalizeText(form.tipoSolicitudCallcenter)) {
+      return 'Selecciona el tipo de solicitud.';
     }
 
-    if (form.solicitoNuevaEncuesta === 'true' && !form.encuestadorAsignadoId) {
-      return 'Selecciona el encuestador que realizará la nueva encuesta.';
+    if (!normalizeText(form.estadoCaso)) {
+      return 'Selecciona el estado del caso.';
     }
 
-    if (isNoContact && !form.motivoNoContactoId && !normalizeText(form.motivoNoContactoTexto)) {
-      return 'Registra el motivo por el cual no se logró conectar la llamada.';
-    }
-
-    if (isConnected && hasNoDisposition && !form.motivoNoDisposicionId && !normalizeText(form.motivoNoDisposicionTexto)) {
-      return 'Registra el motivo por el cual no se confirmó la disposición.';
+    if (existingOpenCase) {
+      return 'Ya existe un caso Call Center abierto para este ciudadano o registro de Ventanilla.';
     }
 
     return '';
-  };
+  }
 
-  const save = async () => {
+  /**
+   * Guarda el caso.
+   */
+  async function save() {
     const validationMessage = validateForm();
 
     if (validationMessage) {
@@ -448,9 +523,9 @@ export default function NuevoRegistroCallCenterPage() {
       return;
     }
 
-    const pending = await checkPendingAssignment(form, true);
+    const existing = await checkExistingOpenCase(form, true);
 
-    if (pending) {
+    if (existing) {
       return;
     }
 
@@ -459,48 +534,64 @@ export default function NuevoRegistroCallCenterPage() {
     try {
       if (form.id) {
         await updateCallCenterRegistro(form.id, buildRequest());
-        showMessage('Registro Call Center actualizado correctamente.', 'success');
+        showMessage('Caso Call Center actualizado correctamente.', 'success');
       } else {
         await createCallCenterRegistro(buildRequest());
-        showMessage('Registro Call Center creado correctamente.', 'success');
+        showMessage('Caso Call Center creado para enrutamiento correctamente.', 'success');
       }
 
-      router.push('/dashboard/callcenter/registros');
+      router.push('/dashboard/callcenter/asignar-funcionarios');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No fue posible guardar el registro.';
+      const message = error instanceof Error
+        ? error.message
+        : 'No fue posible guardar el caso Call Center.';
+
       showMessage(message, 'error');
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  const resetForm = () => {
-    setPendingAssignment(null);
+  /**
+   * Reinicia el formulario.
+   */
+  function resetForm() {
+    setExistingOpenCase(null);
+    setOriginalRecord(null);
     setForm({
       ...initialForm,
       fechaLlamada: today(),
-      horaLlamada: nowTime(),
     });
-  };
+  }
 
   return (
     <Box>
-      <Stack spacing={3}>
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          spacing={2}
-          sx={{ justifyContent: 'space-between' }}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', md: 'row' },
+            gap: 2,
+            justifyContent: 'space-between',
+          }}
         >
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 800 }}>
-              {form.id ? 'Editar registro Call Center' : 'Nuevo registro manual'}
+            <Typography component="h1" variant="h5" sx={{ fontWeight: 800 }}>
+              {form.id ? 'Editar caso Call Center' : 'Nuevo caso manual'}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Digita la cédula para consultar datos en Ventanilla y verificar si ya tiene una encuesta pendiente.
+
+            <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+              Crea un caso pendiente de enrutamiento. La llamada y la visita se gestionan después por el funcionario Call Center.
             </Typography>
           </Box>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 1,
+            }}
+          >
             <Button
               variant="outlined"
               startIcon={<ArrowBackIcon />}
@@ -508,6 +599,7 @@ export default function NuevoRegistroCallCenterPage() {
             >
               Volver
             </Button>
+
             <Button
               variant="outlined"
               startIcon={<RestartAltIcon />}
@@ -516,38 +608,50 @@ export default function NuevoRegistroCallCenterPage() {
             >
               Limpiar
             </Button>
+
             <Button
               variant="contained"
               startIcon={<SaveIcon />}
               onClick={save}
-              disabled={saving || checkingAsignacion || Boolean(pendingAssignment)}
+              disabled={saving || checkingCase || Boolean(existingOpenCase)}
             >
-              {saving ? 'Guardando...' : 'Guardar'}
+              {saving ? 'Guardando...' : 'Guardar caso'}
             </Button>
-          </Stack>
-        </Stack>
+          </Box>
+        </Box>
 
-        {pendingAssignment && (
+        <Alert severity="info">
+          Esta pantalla solo crea o edita el caso maestro. No asigna encuestador, no registra llamada
+          y no programa visita. El caso queda disponible para el Coordinador / Enrutador.
+        </Alert>
+
+        {existingOpenCase && (
           <Alert severity="warning">
-            Este usuario ya tiene una nueva encuesta pendiente asignada al encuestador{' '}
-            <strong>{getEncuestadorName(pendingAssignment)}</strong>. Mientras no se marque como realizada,
-            no se puede asignar a otro encuestador.
+            Ya existe un caso Call Center abierto para este ciudadano o registro de Ventanilla.
+            Debes cerrar o cancelar el caso existente antes de crear otro.
           </Alert>
         )}
 
         <Card>
           <CardContent>
-            <Stack spacing={3}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <Box>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
                   1. Identificación del ciudadano
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Al buscar la cédula, si existe en Ventanilla se cargan nombre, teléfono, dirección y barrio.
+
+                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+                  Puedes digitar la información manualmente o buscar la cédula en Ventanilla para precargar datos.
                 </Typography>
               </Box>
 
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: { xs: 'column', md: 'row' },
+                  gap: 2,
+                }}
+              >
                 <TextField
                   label="Cédula solicitante"
                   value={form.cedulaSolicitante}
@@ -565,16 +669,17 @@ export default function NuevoRegistroCallCenterPage() {
                     },
                   }}
                 />
+
                 <Button
                   variant="outlined"
                   startIcon={<SearchIcon />}
                   onClick={searchPersonByCedula}
-                  disabled={searchingCedula || checkingAsignacion}
+                  disabled={searchingCedula || checkingCase}
                   sx={{ minWidth: 220 }}
                 >
-                  {searchingCedula || checkingAsignacion ? 'Buscando...' : 'Buscar en Ventanilla'}
+                  {searchingCedula || checkingCase ? 'Buscando...' : 'Buscar en Ventanilla'}
                 </Button>
-              </Stack>
+              </Box>
 
               {form.ventanillaRegistroId && (
                 <Alert severity="success">
@@ -582,7 +687,16 @@ export default function NuevoRegistroCallCenterPage() {
                 </Alert>
               )}
 
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    md: '1fr 1fr',
+                  },
+                  gap: 2,
+                }}
+              >
                 <TextField
                   label="Nombre completo"
                   value={form.nombreCompleto}
@@ -590,21 +704,21 @@ export default function NuevoRegistroCallCenterPage() {
                   fullWidth
                   required
                 />
+
                 <TextField
                   label="Teléfono"
                   value={form.telefono}
                   onChange={(event) => updateForm('telefono', event.target.value)}
                   fullWidth
                 />
-              </Stack>
 
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                 <TextField
                   label="Dirección"
                   value={form.direccionTexto}
                   onChange={(event) => updateForm('direccionTexto', event.target.value)}
                   fullWidth
                 />
+
                 <TextField
                   label="Barrio"
                   select
@@ -612,120 +726,46 @@ export default function NuevoRegistroCallCenterPage() {
                   onChange={(event) => updateForm('barrioId', event.target.value)}
                   fullWidth
                 >
-                  <MenuItem value="">Sin seleccionar</MenuItem>
+                  <MenuItem value="">
+                    Sin seleccionar
+                  </MenuItem>
+
                   {barrios.map((option) => (
                     <MenuItem key={option.id} value={option.id}>
                       {option.label}
                     </MenuItem>
                   ))}
                 </TextField>
-              </Stack>
-            </Stack>
+              </Box>
+            </Box>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent>
-            <Stack spacing={3}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <Box>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                  2. Programación de la nueva encuesta
+                <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+                  2. Datos del caso
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Selecciona el encuestador y la fecha programada. Si el ciudadano ya está asignado, el sistema no permite guardar.
+
+                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+                  Define el origen, tipo de solicitud y estado inicial del caso.
                 </Typography>
               </Box>
 
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    md: '1fr 1fr 1fr',
+                  },
+                  gap: 2,
+                }}
+              >
                 <TextField
-                  label="Solicitó nueva encuesta"
-                  select
-                  value={form.solicitoNuevaEncuesta}
-                  onChange={(event) => updateForm('solicitoNuevaEncuesta', event.target.value)}
-                  fullWidth
-                >
-                  <MenuItem value="">Sin dato</MenuItem>
-                  <MenuItem value="true">Sí</MenuItem>
-                  <MenuItem value="false">No</MenuItem>
-                </TextField>
-
-                <TextField
-                  label="Encuestador que realizará la encuesta"
-                  select
-                  value={form.encuestadorAsignadoId}
-                  onChange={(event) => {
-                    updateForm('encuestadorAsignadoId', event.target.value);
-                    if (!form.encuestadorProgramadoId) {
-                      updateForm('encuestadorProgramadoId', event.target.value);
-                    }
-                  }}
-                  fullWidth
-                  required={form.solicitoNuevaEncuesta === 'true'}
-                  disabled={Boolean(pendingAssignment)}
-                >
-                  <MenuItem value="">Selecciona un encuestador</MenuItem>
-                  {encuestadores.map((option) => (
-                    <MenuItem key={option.id} value={option.id}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-
-                <TextField
-                  label="Fecha encuesta programada"
-                  type="date"
-                  value={form.fechaEncuestaProgramada}
-                  onChange={(event) => updateForm('fechaEncuestaProgramada', event.target.value)}
-                  fullWidth
-                  slotProps={{ inputLabel: { shrink: true } }}
-                />
-              </Stack>
-
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                <TextField
-                  label="Encuestador programado"
-                  select
-                  value={form.encuestadorProgramadoId}
-                  onChange={(event) => updateForm('encuestadorProgramadoId', event.target.value)}
-                  fullWidth
-                  disabled={Boolean(pendingAssignment)}
-                >
-                  <MenuItem value="">Sin seleccionar</MenuItem>
-                  {encuestadores.map((option) => (
-                    <MenuItem key={option.id} value={option.id}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-
-                <TextField
-                  label="Fecha aplicación informada"
-                  type="date"
-                  value={form.fechaAplicacionInformada}
-                  onChange={(event) => updateForm('fechaAplicacionInformada', event.target.value)}
-                  fullWidth
-                  slotProps={{ inputLabel: { shrink: true } }}
-                />
-              </Stack>
-            </Stack>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent>
-            <Stack spacing={3}>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                  3. Gestión de llamada
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Registra solo lo necesario de la llamada. Los motivos se habilitan según la respuesta.
-                </Typography>
-              </Box>
-
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                <TextField
-                  label="Fecha llamada"
+                  label="Fecha del caso"
                   type="date"
                   value={form.fechaLlamada}
                   onChange={(event) => updateForm('fechaLlamada', event.target.value)}
@@ -733,107 +773,113 @@ export default function NuevoRegistroCallCenterPage() {
                   required
                   slotProps={{ inputLabel: { shrink: true } }}
                 />
+
                 <TextField
-                  label="Hora llamada"
-                  type="time"
-                  value={form.horaLlamada}
-                  onChange={(event) => updateForm('horaLlamada', event.target.value)}
-                  fullWidth
-                  slotProps={{ inputLabel: { shrink: true } }}
-                />
-                <TextField
-                  label="¿Se logró conectar?"
+                  label="Origen"
                   select
-                  value={form.llamadaConectada}
-                  onChange={(event) => updateForm('llamadaConectada', event.target.value)}
+                  value={form.origenRegistro}
+                  onChange={(event) => updateForm('origenRegistro', event.target.value)}
                   fullWidth
                 >
-                  <MenuItem value="true">Sí</MenuItem>
-                  <MenuItem value="false">No</MenuItem>
+                  <MenuItem value="MANUAL">
+                    Manual
+                  </MenuItem>
+
+                  <MenuItem value="VENTANILLA">
+                    Ventanilla
+                  </MenuItem>
+
+                  <MenuItem value="IMPORTACION">
+                    Importación
+                  </MenuItem>
                 </TextField>
-              </Stack>
 
-              {isNoContact && (
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                  <TextField
-                    label="Motivo no contacto"
-                    select
-                    value={form.motivoNoContactoId}
-                    onChange={(event) => updateForm('motivoNoContactoId', event.target.value)}
-                    fullWidth
-                  >
-                    <MenuItem value="">Sin seleccionar</MenuItem>
-                    {motivosNoContacto.map((option) => (
-                      <MenuItem key={option.id} value={option.id}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                <TextField
+                  label="Tipo de solicitud"
+                  select
+                  value={form.tipoSolicitudCallcenter}
+                  onChange={(event) => updateForm('tipoSolicitudCallcenter', event.target.value)}
+                  fullWidth
+                  required
+                >
+                  <MenuItem value="NUEVA_ENCUESTA">
+                    Nueva encuesta
+                  </MenuItem>
 
-                  <TextField
-                    label="Motivo no contacto texto"
-                    value={form.motivoNoContactoTexto}
-                    onChange={(event) => updateForm('motivoNoContactoTexto', event.target.value)}
-                    fullWidth
-                  />
-                </Stack>
-              )}
+                  <MenuItem value="INCLUSION">
+                    Inclusión
+                  </MenuItem>
 
-              {isConnected && (
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                  <TextField
-                    label="Disposición para recibir encuesta"
-                    select
-                    value={form.disposicionRecibirEncuesta}
-                    onChange={(event) => updateForm('disposicionRecibirEncuesta', event.target.value)}
-                    fullWidth
-                  >
-                    <MenuItem value="">Sin dato</MenuItem>
-                    <MenuItem value="true">Sí</MenuItem>
-                    <MenuItem value="false">No</MenuItem>
-                  </TextField>
+                  <MenuItem value="VERIFICACION">
+                    Verificación
+                  </MenuItem>
 
-                  <TextField
-                    label="Explicó informante calificado"
-                    select
-                    value={form.explicoInformanteCalificado}
-                    onChange={(event) => updateForm('explicoInformanteCalificado', event.target.value)}
-                    fullWidth
-                  >
-                    <MenuItem value="">Sin dato</MenuItem>
-                    <MenuItem value="true">Sí</MenuItem>
-                    <MenuItem value="false">No</MenuItem>
-                  </TextField>
-                </Stack>
-              )}
+                  <MenuItem value="OTRO">
+                    Otro
+                  </MenuItem>
+                </TextField>
 
-              {hasNoDisposition && (
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-                  <TextField
-                    label="Motivo no disposición"
-                    select
-                    value={form.motivoNoDisposicionId}
-                    onChange={(event) => updateForm('motivoNoDisposicionId', event.target.value)}
-                    fullWidth
-                  >
-                    <MenuItem value="">Sin seleccionar</MenuItem>
-                    {motivosNoDisposicion.map((option) => (
-                      <MenuItem key={option.id} value={option.id}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                <TextField
+                  label="Estado del caso"
+                  select
+                  value={form.estadoCaso}
+                  onChange={(event) => updateForm('estadoCaso', event.target.value)}
+                  fullWidth
+                  required
+                >
+                  <MenuItem value="PENDIENTE_ENRUTAMIENTO">
+                    Pendiente de enrutamiento
+                  </MenuItem>
 
-                  <TextField
-                    label="Motivo no disposición texto"
-                    value={form.motivoNoDisposicionTexto}
-                    onChange={(event) => updateForm('motivoNoDisposicionTexto', event.target.value)}
-                    fullWidth
-                  />
-                </Stack>
-              )}
+                  {form.id && (
+                    <MenuItem value="ASIGNADO_CALLCENTER">
+                      Asignado a funcionario Call Center
+                    </MenuItem>
+                  )}
 
-              <Divider />
+                  {form.id && (
+                    <MenuItem value="EN_GESTION_LLAMADA">
+                      En gestión de llamada
+                    </MenuItem>
+                  )}
+
+                  {form.id && (
+                    <MenuItem value="CERRADO">
+                      Cerrado
+                    </MenuItem>
+                  )}
+
+                  {form.id && (
+                    <MenuItem value="CANCELADO">
+                      Cancelado
+                    </MenuItem>
+                  )}
+                </TextField>
+
+                <TextField
+                  label="Ventanilla ID"
+                  value={form.ventanillaRegistroId}
+                  onChange={(event) => updateForm('ventanillaRegistroId', event.target.value)}
+                  fullWidth
+                  disabled={form.origenRegistro !== 'VENTANILLA'}
+                />
+
+                <TextField
+                  label="Estado lógico"
+                  select
+                  value={String(form.activo)}
+                  onChange={(event) => updateForm('activo', event.target.value === 'true')}
+                  fullWidth
+                >
+                  <MenuItem value="true">
+                    Activo
+                  </MenuItem>
+
+                  <MenuItem value="false">
+                    Inactivo
+                  </MenuItem>
+                </TextField>
+              </Box>
 
               <TextField
                 label="Observación"
@@ -843,12 +889,19 @@ export default function NuevoRegistroCallCenterPage() {
                 multiline
                 minRows={3}
               />
-            </Stack>
+            </Box>
           </CardContent>
         </Card>
 
         <Paper sx={{ p: 2 }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ justifyContent: 'flex-end' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 1,
+              justifyContent: 'flex-end',
+            }}
+          >
             <Button
               variant="outlined"
               startIcon={<ArrowBackIcon />}
@@ -856,17 +909,18 @@ export default function NuevoRegistroCallCenterPage() {
             >
               Cancelar
             </Button>
+
             <Button
               variant="contained"
               startIcon={<SaveIcon />}
               onClick={save}
-              disabled={saving || checkingAsignacion || Boolean(pendingAssignment)}
+              disabled={saving || checkingCase || Boolean(existingOpenCase)}
             >
-              {saving ? 'Guardando...' : 'Guardar registro'}
+              {saving ? 'Guardando...' : 'Guardar caso'}
             </Button>
-          </Stack>
+          </Box>
         </Paper>
-      </Stack>
+      </Box>
 
       <Snackbar
         open={snackbar.open}

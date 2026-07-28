@@ -72,10 +72,12 @@ const CALLCENTER_ADMIN_ROLES: AppRole[] = [
 ];
 
 const CALLCENTER_FUNCIONARIO_ROLES: AppRole[] = [
+  'ADMIN',
   'FUNCIONARIO_CALLCENTER',
 ];
 
 const CALLCENTER_ENCUESTADOR_ROLES: AppRole[] = [
+  'ADMIN',
   'FUNCIONARIO_ENCUESTADOR',
 ];
 
@@ -355,26 +357,28 @@ export const dashboardActions: DashboardActionItem[] = [
  * también podrá entrar a /dashboard/callcenter/mis-registros/15.
  */
 const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
-  ADMIN: [
-    '/dashboard',
-    '/dashboard/ventanilla',
-    '/dashboard/ventanilla/registros',
-    '/dashboard/ventanilla/historial-usuario',
-    '/dashboard/dmc',
-    '/dashboard/dmc/registros',
-    '/dashboard/callcenter',
-    '/dashboard/callcenter/registros',
-    '/dashboard/callcenter/registros/nuevo',
-    '/dashboard/callcenter/registros/cargar-ventanilla',
-    '/dashboard/callcenter/asignar-funcionarios',
-    '/dashboard/territory/barrios',
-    '/dashboard/territory/comunas',
-    '/dashboard/auditoria',
-    '/dashboard/reportes',
-    '/dashboard/exportaciones',
-    '/dashboard/usuarios',
-    '/dashboard/cuenta/cambiar-password',
-  ],
+ADMIN: [
+  '/dashboard',
+  '/dashboard/ventanilla',
+  '/dashboard/ventanilla/registros',
+  '/dashboard/ventanilla/historial-usuario',
+  '/dashboard/dmc',
+  '/dashboard/dmc/registros',
+  '/dashboard/callcenter',
+  '/dashboard/callcenter/registros',
+  '/dashboard/callcenter/registros/nuevo',
+  '/dashboard/callcenter/registros/cargar-ventanilla',
+  '/dashboard/callcenter/asignar-funcionarios',
+  '/dashboard/callcenter/mis-registros',
+  '/dashboard/callcenter/mis-asignaciones',
+  '/dashboard/territory/barrios',
+  '/dashboard/territory/comunas',
+  '/dashboard/auditoria',
+  '/dashboard/reportes',
+  '/dashboard/exportaciones',
+  '/dashboard/usuarios',
+  '/dashboard/cuenta/cambiar-password',
+],
   SUPERVISOR: [
     '/dashboard',
     '/dashboard/ventanilla',
@@ -686,27 +690,33 @@ export function canAssignCallCenterFuncionario(role: string | null | undefined =
 
 /**
  * Valida acceso a "Mis registros Call Center".
+ *
+ * ADMIN puede ver esta opción para supervisar todo el flujo.
  */
 export function canViewMisRegistrosCallCenter(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return normalizedRole === 'FUNCIONARIO_CALLCENTER';
+  return normalizedRole === 'ADMIN' || normalizedRole === 'FUNCIONARIO_CALLCENTER';
 }
-
 /**
- * Valida acceso a "Mis asignaciones" del encuestador.
+ * Valida acceso a "Mis asignaciones".
+ *
+ * ADMIN puede ver esta opción para consultar y supervisar asignaciones
+ * del componente de encuestadores.
  */
 export function canViewMisAsignacionesEncuestador(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return normalizedRole === 'FUNCIONARIO_ENCUESTADOR';
+  return normalizedRole === 'ADMIN' || normalizedRole === 'FUNCIONARIO_ENCUESTADOR';
 }
 
 /**
  * Valida actualización de resultado de visita por encuestador.
+ *
+ * ADMIN puede actualizar en caso de revisión, soporte o corrección administrativa.
  */
 export function canUpdateEncuestadorVisit(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return normalizedRole === 'FUNCIONARIO_ENCUESTADOR';
+  return normalizedRole === 'ADMIN' || normalizedRole === 'FUNCIONARIO_ENCUESTADOR';
 }

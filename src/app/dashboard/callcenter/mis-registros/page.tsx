@@ -1,14 +1,11 @@
 'use client';
 
-import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import VisibilityIcon from '@mui/icons-material/Visibility';
 import {
   Alert,
   Box,
   Button,
-  Checkbox,
-  MenuItem,
+  Chip,
   Paper,
   Snackbar,
   Table,
@@ -19,20 +16,15 @@ import {
   TableHead,
   TablePagination,
   TableRow,
-  TextField,
   Typography,
 } from '@mui/material';
 import { useRouter } from 'next/navigation';
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useCallback, useEffect, useState } from 'react';
 
-import {
-  asignarEncuestadorCallCenter,
-  getMisRegistrosCallCenter,
-} from '@/services/callcenter.service';
-import { getCallCenterEncuestadoresOptions } from '@/services/callcenter-support.service';
+import { getMisRegistrosCallCenter } from '@/services/callcenter.service';
 import { PageResponse } from '@/types/api.types';
 import { CallCenterResponse } from '@/types/callcenter.types';
-import { SelectOption } from '@/types/catalog.types';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 /**
  * Estado local para mostrar mensajes informativos, exitosos o de error.
@@ -44,22 +36,29 @@ type SnackbarState = {
 };
 
 /**
- * Página de registros asignados al funcionario Call Center autenticado.
+ * Color permitido para chips de estado.
+ */
+type ChipColor =
+  | 'default'
+  | 'primary'
+  | 'secondary'
+  | 'error'
+  | 'info'
+  | 'success'
+  | 'warning';
+
+/**
+ * Página de casos asignados al funcionario Call Center autenticado.
  *
- * Permite consultar los casos asignados, seleccionar registros,
- * asignar encuestador y abrir el detalle formal del caso para registrar
- * llamadas y visitas.
+ * Esta pantalla solo lista los casos asignados y permite abrir la gestión
+ * operativa del caso. La asignación de visita y el registro de llamadas
+ * se realizan en la pantalla de detalle.
  */
 export default function MisRegistrosCallCenterPage() {
   const router = useRouter();
 
   const [pageData, setPageData] = useState<PageResponse<CallCenterResponse> | null>(null);
-  const [encuestadores, setEncuestadores] = useState<SelectOption[]>([]);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [encuestadorId, setEncuestadorId] = useState('');
-  const [fechaEncuestaProgramada, setFechaEncuestaProgramada] = useState('');
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
@@ -71,13 +70,6 @@ export default function MisRegistrosCallCenterPage() {
   const page = pageData?.page ?? 0;
   const size = pageData?.size ?? 20;
   const total = pageData?.totalElements ?? 0;
-
-  const allVisibleSelected = records.length > 0
-    && records.every((record) => selectedIds.includes(record.id));
-
-  const someVisibleSelected = records.some((record) => selectedIds.includes(record.id));
-
-  const selectedCount = useMemo(() => selectedIds.length, [selectedIds]);
 
   /**
    * Muestra un mensaje de estado al usuario.
@@ -122,7 +114,6 @@ export default function MisRegistrosCallCenterPage() {
       });
 
       setPageData(response);
-      setSelectedIds([]);
     } catch (error) {
       const message = error instanceof Error
         ? error.message
@@ -134,86 +125,9 @@ export default function MisRegistrosCallCenterPage() {
     }
   }, []);
 
-  /**
-   * Carga el catálogo de encuestadores activos.
-   */
-  const loadCatalogs = useCallback(async () => {
-    try {
-      const data = await getCallCenterEncuestadoresOptions();
-
-      setEncuestadores(data);
-    } catch {
-      showMessage('No fue posible cargar el catálogo de encuestadores.', 'warning');
-    }
-  }, []);
-
   useEffect(() => {
-    loadCatalogs();
     load(0, 20);
-  }, [loadCatalogs, load]);
-
-  /**
-   * Selecciona o deselecciona un registro.
-   *
-   * @param id identificador del registro.
-   */
-  function toggleRecord(id: number) {
-    setSelectedIds((current) => (
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id]
-    ));
-  }
-
-  /**
-   * Selecciona o deselecciona todos los registros visibles.
-   */
-  function toggleAllVisible() {
-    const visibleIds = records.map((record) => record.id);
-
-    if (allVisibleSelected) {
-      setSelectedIds((current) => current.filter((id) => !visibleIds.includes(id)));
-      return;
-    }
-
-    setSelectedIds((current) => Array.from(new Set([...current, ...visibleIds])));
-  }
-
-  /**
-   * Asigna el encuestador seleccionado a los registros marcados.
-   */
-  async function assignEncuestador() {
-    if (!encuestadorId) {
-      showMessage('Selecciona el encuestador que realizará la encuesta.', 'warning');
-      return;
-    }
-
-    if (selectedIds.length === 0) {
-      showMessage('Selecciona al menos un registro.', 'warning');
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      await asignarEncuestadorCallCenter({
-        encuestadorId: Number(encuestadorId),
-        fechaEncuestaProgramada: fechaEncuestaProgramada || null,
-        registroIds: selectedIds,
-      });
-
-      showMessage('Encuestador asignado correctamente.', 'success');
-      load(page, size);
-    } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : 'No fue posible asignar el encuestador.';
-
-      showMessage(message, 'error');
-    } finally {
-      setSaving(false);
-    }
-  }
+  }, [load]);
 
   /**
    * Cambia la página de la tabla.
@@ -262,7 +176,7 @@ export default function MisRegistrosCallCenterPage() {
             </Typography>
 
             <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-              Usuarios asignados a tu cuenta para gestionar llamada y asignar encuestador.
+              Casos asignados a tu cuenta para gestionar llamadas y coordinar visitas.
             </Typography>
           </Box>
 
@@ -276,59 +190,22 @@ export default function MisRegistrosCallCenterPage() {
           </Button>
         </Box>
 
-        <Paper sx={{ p: 2 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: { xs: 'column', md: 'row' },
-              gap: 2,
-            }}
-          >
-            <TextField
-              label="Encuestador que realizará la encuesta"
-              select
-              value={encuestadorId}
-              onChange={(event) => setEncuestadorId(event.target.value)}
-              fullWidth
-              size="small"
-            >
-              <MenuItem value="">Selecciona un encuestador</MenuItem>
-
-              {encuestadores.map((item) => (
-                <MenuItem key={item.id} value={item.id}>
-                  {item.label}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <TextField
-              label="Fecha encuesta programada"
-              type="date"
-              value={fechaEncuestaProgramada}
-              onChange={(event) => setFechaEncuestaProgramada(event.target.value)}
-              fullWidth
-              size="small"
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-
-            <Button
-              variant="contained"
-              startIcon={<AssignmentTurnedInIcon />}
-              onClick={assignEncuestador}
-              disabled={saving || selectedCount === 0}
-            >
-              {`Asignar encuestador (${selectedCount})`}
-            </Button>
-          </Box>
-        </Paper>
+        <Alert severity="info">
+          Desde esta vista solo se consultan tus casos asignados. Para registrar llamadas o asignar una visita,
+          usa el botón <strong>Gestionar</strong>.
+        </Alert>
 
         {loading ? (
           <Paper sx={{ p: 3 }}>
-            <Alert severity="info">Cargando tus registros...</Alert>
+            <Alert severity="info">
+              Cargando tus registros...
+            </Alert>
           </Paper>
         ) : records.length === 0 ? (
           <Paper sx={{ p: 3 }}>
-            <Alert severity="info">No tienes registros asignados.</Alert>
+            <Alert severity="info">
+              No tienes registros asignados.
+            </Alert>
           </Paper>
         ) : (
           <Paper>
@@ -336,40 +213,28 @@ export default function MisRegistrosCallCenterPage() {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        checked={allVisibleSelected}
-                        indeterminate={!allVisibleSelected && someVisibleSelected}
-                        onChange={toggleAllVisible}
-                      />
-                    </TableCell>
-
                     <TableCell>Fecha</TableCell>
                     <TableCell>Ciudadano</TableCell>
                     <TableCell>Teléfono</TableCell>
                     <TableCell>Dirección</TableCell>
+                    <TableCell>Tipo solicitud</TableCell>
+                    <TableCell>Estado caso</TableCell>
                     <TableCell>Encuestador</TableCell>
-                    <TableCell>Visita</TableCell>
                     <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
 
                 <TableBody>
                   {records.map((record) => (
-                    <TableRow
-                      key={record.id}
-                      hover
-                      selected={selectedIds.includes(record.id)}
-                    >
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={selectedIds.includes(record.id)}
-                          onChange={() => toggleRecord(record.id)}
-                        />
-                      </TableCell>
-
+                    <TableRow key={record.id} hover>
                       <TableCell>
-                        {record.fechaLlamada || 'Sin fecha'}
+                        <Typography component="p" variant="body2" sx={{ fontWeight: 700 }}>
+                          {record.fechaLlamada || 'Sin fecha'}
+                        </Typography>
+
+                        <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+                          {record.horaLlamada?.slice(0, 5) || 'Sin hora'}
+                        </Typography>
                       </TableCell>
 
                       <TableCell>
@@ -397,11 +262,25 @@ export default function MisRegistrosCallCenterPage() {
                       </TableCell>
 
                       <TableCell>
-                        {record.encuestadorAsignadoNombre || 'Sin asignar'}
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={formatLabel(record.tipoSolicitudCallcenter || 'NUEVA_ENCUESTA')}
+                        />
                       </TableCell>
 
                       <TableCell>
-                        {record.estadoVisita || 'PENDIENTE'}
+                        <Chip
+                          size="small"
+                          color={getStatusColor(record.estadoCaso)}
+                          label={formatLabel(record.estadoCaso || 'ASIGNADO_CALLCENTER')}
+                        />
+                      </TableCell>
+
+                      <TableCell>
+                        {record.encuestadorAsignadoNombre
+                          || record.encuestadorProgramadoNombre
+                          || 'Sin asignar'}
                       </TableCell>
 
                       <TableCell align="right">
@@ -455,4 +334,62 @@ export default function MisRegistrosCallCenterPage() {
       </Snackbar>
     </Box>
   );
+}
+
+/**
+ * Convierte códigos técnicos en etiquetas legibles.
+ *
+ * @param value código técnico.
+ * @returns etiqueta visible.
+ */
+function formatLabel(value?: string | null) {
+  return String(value ?? 'Sin dato')
+    .split('_')
+    .join(' ')
+    .toLowerCase()
+    .replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+/**
+ * Define el color visual de los estados del caso.
+ *
+ * @param value estado técnico.
+ * @returns color del chip.
+ */
+function getStatusColor(value?: string | null): ChipColor {
+  const normalized = String(value ?? '').toUpperCase();
+
+  if (
+    normalized.includes('CERRADO') ||
+    normalized.includes('REALIZADA') ||
+    normalized.includes('CONTACTADO')
+  ) {
+    return 'success';
+  }
+
+  if (
+    normalized.includes('PENDIENTE') ||
+    normalized.includes('ASIGNADO') ||
+    normalized.includes('GESTION')
+  ) {
+    return 'info';
+  }
+
+  if (
+    normalized.includes('REPROGRAMADO') ||
+    normalized.includes('NO_CONTACTADO') ||
+    normalized.includes('NO_ATENDIDA')
+  ) {
+    return 'warning';
+  }
+
+  if (
+    normalized.includes('CANCELADO') ||
+    normalized.includes('SIN_DISPOSICION') ||
+    normalized.includes('NO_ACEPTA')
+  ) {
+    return 'error';
+  }
+
+  return 'default';
 }

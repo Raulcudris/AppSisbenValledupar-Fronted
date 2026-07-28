@@ -1,6 +1,9 @@
 import { getStoredUser } from './authToken';
 import { AuthUserResponse } from '@/types/auth.types';
 
+/**
+ * Roles oficiales usados por el dashboard.
+ */
 export type AppRole =
   | 'ADMIN'
   | 'SUPERVISOR'
@@ -11,6 +14,9 @@ export type AppRole =
   | 'FUNCIONARIO_ENCUESTADOR'
   | 'CONSULTA';
 
+/**
+ * Llaves de iconos usadas por el menú del dashboard.
+ */
 export type DashboardIconKey =
   | 'dashboard'
   | 'ventanilla'
@@ -25,13 +31,19 @@ export type DashboardIconKey =
   | 'comunas'
   | 'reportes';
 
+/**
+ * Elemento visible en el menú lateral.
+ */
 export type DashboardMenuItem = {
   label: string;
   href: string;
   iconKey: DashboardIconKey;
   roles: AppRole[];
-};  
+};
 
+/**
+ * Acción visible en la pantalla principal del dashboard.
+ */
 export type DashboardActionItem = {
   title: string;
   description: string;
@@ -59,16 +71,11 @@ const CALLCENTER_ADMIN_ROLES: AppRole[] = [
   'COORDINADOR_CALLCENTER',
 ];
 
-const CALLCENTER_OPERATOR_ROLES: AppRole[] = [
-  'ADMIN',
-  'SUPERVISOR',
-  'COORDINADOR_CALLCENTER',
+const CALLCENTER_FUNCIONARIO_ROLES: AppRole[] = [
   'FUNCIONARIO_CALLCENTER',
 ];
 
 const CALLCENTER_ENCUESTADOR_ROLES: AppRole[] = [
-  'ADMIN',
-  'SUPERVISOR',
   'FUNCIONARIO_ENCUESTADOR',
 ];
 
@@ -79,6 +86,14 @@ const EXACT_ONLY_PATHS = [
   '/dashboard/callcenter',
 ];
 
+/**
+ * Menú principal del dashboard.
+ *
+ * Flujo Call Center organizado:
+ * - Coordinador / Enrutador: registros generales y asignación de funcionarios.
+ * - Funcionario Call Center: solo sus registros asignados.
+ * - Encuestador: solo sus visitas asignadas.
+ */
 export const dashboardMenuItems: DashboardMenuItem[] = [
   {
     label: 'Inicio',
@@ -117,7 +132,7 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
     roles: ['CONSULTA'],
   },
   {
-    label: 'Call Center',
+    label: 'Registros Call Center',
     href: '/dashboard/callcenter/registros',
     iconKey: 'callcenter',
     roles: CALLCENTER_ADMIN_ROLES,
@@ -132,19 +147,19 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
     label: 'Mis registros Call Center',
     href: '/dashboard/callcenter/mis-registros',
     iconKey: 'callcenter',
-    roles: CALLCENTER_OPERATOR_ROLES,
-  },
-  {
-    label: 'Call Center',
-    href: '/dashboard/callcenter',
-    iconKey: 'callcenter',
-    roles: ['CONSULTA'],
+    roles: CALLCENTER_FUNCIONARIO_ROLES,
   },
   {
     label: 'Mis asignaciones',
     href: '/dashboard/callcenter/mis-asignaciones',
     iconKey: 'encuestador',
     roles: CALLCENTER_ENCUESTADOR_ROLES,
+  },
+  {
+    label: 'Call Center',
+    href: '/dashboard/callcenter',
+    iconKey: 'callcenter',
+    roles: ['CONSULTA'],
   },
   {
     label: 'Barrios',
@@ -190,6 +205,9 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
   },
 ];
 
+/**
+ * Acciones rápidas de la pantalla de inicio del dashboard.
+ */
 export const dashboardActions: DashboardActionItem[] = [
   {
     title: 'Trabajar Ventanilla',
@@ -235,17 +253,17 @@ export const dashboardActions: DashboardActionItem[] = [
     roles: ['CONSULTA'],
   },
   {
-    title: 'Trabajar Call Center',
-    description: 'Consulta, registra y actualiza llamadas de seguimiento a usuarios.',
+    title: 'Registros Call Center',
+    description: 'Consulta, filtra y administra los casos generales del módulo Call Center.',
     href: '/dashboard/callcenter/registros',
-    buttonLabel: 'Abrir Call Center',
+    buttonLabel: 'Abrir registros',
     iconKey: 'callcenter',
     roles: CALLCENTER_ADMIN_ROLES,
     primary: true,
   },
   {
     title: 'Asignar funcionarios Call Center',
-    description: 'Distribuye usuarios de nueva encuesta entre los funcionarios Call Center.',
+    description: 'Distribuye casos pendientes entre los funcionarios Call Center.',
     href: '/dashboard/callcenter/asignar-funcionarios',
     buttonLabel: 'Asignar funcionarios',
     iconKey: 'callcenter',
@@ -254,16 +272,16 @@ export const dashboardActions: DashboardActionItem[] = [
   },
   {
     title: 'Mis registros Call Center',
-    description: 'Gestiona únicamente los usuarios asignados a tu cuenta.',
+    description: 'Gestiona llamadas y seguimiento de los casos asignados a tu usuario.',
     href: '/dashboard/callcenter/mis-registros',
     buttonLabel: 'Abrir mis registros',
     iconKey: 'callcenter',
-    roles: CALLCENTER_OPERATOR_ROLES,
+    roles: CALLCENTER_FUNCIONARIO_ROLES,
     primary: true,
   },
   {
     title: 'Mis asignaciones',
-    description: 'Consulta tus registros asignados y actualiza el resultado de visita.',
+    description: 'Consulta tus visitas asignadas y registra el resultado de campo.',
     href: '/dashboard/callcenter/mis-asignaciones',
     buttonLabel: 'Abrir asignaciones',
     iconKey: 'encuestador',
@@ -328,6 +346,14 @@ export const dashboardActions: DashboardActionItem[] = [
   },
 ];
 
+/**
+ * Rutas permitidas por rol.
+ *
+ * Nota:
+ * Cuando una ruta base está permitida, también se permite navegar a sus subrutas.
+ * Ejemplo: si el rol puede entrar a /dashboard/callcenter/mis-registros,
+ * también podrá entrar a /dashboard/callcenter/mis-registros/15.
+ */
 const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
   ADMIN: [
     '/dashboard',
@@ -338,9 +364,9 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard/dmc/registros',
     '/dashboard/callcenter',
     '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/registros/nuevo',
+    '/dashboard/callcenter/registros/cargar-ventanilla',
     '/dashboard/callcenter/asignar-funcionarios',
-    '/dashboard/callcenter/mis-registros',
-    '/dashboard/callcenter/mis-asignaciones',
     '/dashboard/territory/barrios',
     '/dashboard/territory/comunas',
     '/dashboard/auditoria',
@@ -357,9 +383,9 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard/dmc/registros',
     '/dashboard/callcenter',
     '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/registros/nuevo',
+    '/dashboard/callcenter/registros/cargar-ventanilla',
     '/dashboard/callcenter/asignar-funcionarios',
-    '/dashboard/callcenter/mis-registros',
-    '/dashboard/callcenter/mis-asignaciones',
     '/dashboard/auditoria',
     '/dashboard/reportes',
     '/dashboard/exportaciones',
@@ -369,8 +395,9 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
     '/dashboard',
     '/dashboard/callcenter',
     '/dashboard/callcenter/registros',
+    '/dashboard/callcenter/registros/nuevo',
+    '/dashboard/callcenter/registros/cargar-ventanilla',
     '/dashboard/callcenter/asignar-funcionarios',
-    '/dashboard/callcenter/mis-registros',
     '/dashboard/cuenta/cambiar-password',
   ],
   FUNCIONARIO_VENTANILLA: [
@@ -405,6 +432,12 @@ const allowedDashboardPathsByRole: Record<AppRole, string[]> = {
   ],
 };
 
+/**
+ * Normaliza el rol recibido desde sesión o backend.
+ *
+ * @param role rol recibido.
+ * @returns rol válido o cadena vacía.
+ */
 export function normalizeRole(role?: string | null): AppRole | '' {
   const value = String(role ?? '').trim().toUpperCase();
 
@@ -424,10 +457,21 @@ export function normalizeRole(role?: string | null): AppRole | '' {
   return '';
 }
 
+/**
+ * Obtiene el rol del usuario autenticado almacenado localmente.
+ *
+ * @returns rol actual.
+ */
 export function currentRole() {
   return normalizeRole(getStoredUser<AuthUserResponse>()?.rolCodigo);
 }
 
+/**
+ * Obtiene los ítems del menú disponibles para un rol.
+ *
+ * @param role rol del usuario.
+ * @returns menú filtrado.
+ */
 export function getDashboardMenuByRole(role?: string | null) {
   const normalizedRole = normalizeRole(role);
 
@@ -438,6 +482,12 @@ export function getDashboardMenuByRole(role?: string | null) {
   return dashboardMenuItems.filter((item) => item.roles.includes(normalizedRole));
 }
 
+/**
+ * Obtiene las acciones rápidas disponibles para un rol.
+ *
+ * @param role rol del usuario.
+ * @returns acciones filtradas.
+ */
 export function getDashboardActionsByRole(role?: string | null) {
   const normalizedRole = normalizeRole(role);
 
@@ -448,11 +498,25 @@ export function getDashboardActionsByRole(role?: string | null) {
   return dashboardActions.filter((item) => item.roles.includes(normalizedRole));
 }
 
+/**
+ * Obtiene la ruta inicial recomendada para cada rol.
+ *
+ * @param role rol del usuario.
+ * @returns ruta inicial.
+ */
 export function getDefaultDashboardPathByRole(role?: string | null) {
   const normalizedRole = normalizeRole(role);
 
-  if (!normalizedRole) {
-    return '/login';
+  if (normalizedRole === 'FUNCIONARIO_VENTANILLA') {
+    return '/dashboard/ventanilla/registros';
+  }
+
+  if (normalizedRole === 'FUNCIONARIO_DMC') {
+    return '/dashboard/dmc/registros';
+  }
+
+  if (normalizedRole === 'COORDINADOR_CALLCENTER') {
+    return '/dashboard/callcenter/asignar-funcionarios';
   }
 
   if (normalizedRole === 'FUNCIONARIO_CALLCENTER') {
@@ -463,13 +527,24 @@ export function getDefaultDashboardPathByRole(role?: string | null) {
     return '/dashboard/callcenter/mis-asignaciones';
   }
 
-  if (normalizedRole === 'COORDINADOR_CALLCENTER') {
-    return '/dashboard/callcenter/asignar-funcionarios';
+  if (
+    normalizedRole === 'ADMIN' ||
+    normalizedRole === 'SUPERVISOR' ||
+    normalizedRole === 'CONSULTA'
+  ) {
+    return '/dashboard';
   }
 
-  return '/dashboard';
+  return '/login';
 }
 
+/**
+ * Valida si un rol puede acceder a una ruta del dashboard.
+ *
+ * @param role rol del usuario.
+ * @param path ruta actual.
+ * @returns true si tiene acceso.
+ */
 export function canAccessDashboardPath(role: string | null | undefined, path: string) {
   const normalizedRole = normalizeRole(role);
 
@@ -492,92 +567,146 @@ export function canAccessDashboardPath(role: string | null | undefined, path: st
   });
 }
 
+/**
+ * Valida escritura en Ventanilla.
+ */
 export function canWriteVentanilla(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_VENTANILLA'].includes(normalizedRole);
 }
 
+/**
+ * Valida eliminación lógica en Ventanilla.
+ */
 export function canDeleteVentanilla(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_VENTANILLA'].includes(normalizedRole);
 }
 
+/**
+ * Valida escritura en DMC.
+ */
 export function canWriteDmc(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_DMC'].includes(normalizedRole);
 }
 
-export function canWriteCallCenter(role: string | null | undefined = currentRole()) {
-  const normalizedRole = normalizeRole(role);
-
-  return ['ADMIN', 'SUPERVISOR', 'COORDINADOR_CALLCENTER', 'FUNCIONARIO_CALLCENTER'].includes(normalizedRole);
-}
-
-export function canUpdateEncuestadorVisit(role: string | null | undefined = currentRole()) {
-  const normalizedRole = normalizeRole(role);
-
-  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_ENCUESTADOR'].includes(normalizedRole);
-}
-
+/**
+ * Valida permisos de exportación.
+ */
 export function canExport(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return ['ADMIN', 'SUPERVISOR'].includes(normalizedRole);
 }
 
+/**
+ * Valida acceso a auditoría.
+ */
 export function canViewAudit(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return ['ADMIN', 'SUPERVISOR'].includes(normalizedRole);
 }
 
+/**
+ * Valida administración de estados en Ventanilla.
+ */
 export function canManageVentanillaStatus(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return normalizedRole === 'ADMIN';
 }
 
+/**
+ * Valida eliminación definitiva en Ventanilla.
+ */
 export function canHardDeleteVentanilla(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return normalizedRole === 'ADMIN';
 }
 
+/**
+ * Valida gestión de usuarios.
+ */
 export function canManageUsers(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return normalizedRole === 'ADMIN';
 }
 
+/**
+ * Valida acceso al historial individual de usuario.
+ */
 export function canViewUserHistory(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
   return normalizedRole === 'ADMIN';
 }
 
+/**
+ * Valida gestión territorial.
+ */
 export function canManageTerritory(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return ['ADMIN'].includes(normalizedRole);
+  return normalizedRole === 'ADMIN';
 }
 
+/**
+ * Valida administración general de Call Center.
+ */
+export function canWriteCallCenter(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return CALLCENTER_ADMIN_ROLES.includes(normalizedRole as AppRole);
+}
+
+/**
+ * Valida activación/inactivación de registros Call Center.
+ */
+export function canManageCallCenterStatus(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return CALLCENTER_ADMIN_ROLES.includes(normalizedRole as AppRole);
+}
+
+/**
+ * Valida asignación de casos a funcionarios Call Center.
+ */
 export function canAssignCallCenterFuncionario(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return ['ADMIN', 'SUPERVISOR', 'COORDINADOR_CALLCENTER'].includes(normalizedRole);
+  return CALLCENTER_ADMIN_ROLES.includes(normalizedRole as AppRole);
 }
 
+/**
+ * Valida acceso a "Mis registros Call Center".
+ */
 export function canViewMisRegistrosCallCenter(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return ['ADMIN', 'SUPERVISOR', 'COORDINADOR_CALLCENTER', 'FUNCIONARIO_CALLCENTER'].includes(normalizedRole);
+  return normalizedRole === 'FUNCIONARIO_CALLCENTER';
 }
 
+/**
+ * Valida acceso a "Mis asignaciones" del encuestador.
+ */
 export function canViewMisAsignacionesEncuestador(role: string | null | undefined = currentRole()) {
   const normalizedRole = normalizeRole(role);
 
-  return ['ADMIN', 'SUPERVISOR', 'FUNCIONARIO_ENCUESTADOR'].includes(normalizedRole);
+  return normalizedRole === 'FUNCIONARIO_ENCUESTADOR';
+}
+
+/**
+ * Valida actualización de resultado de visita por encuestador.
+ */
+export function canUpdateEncuestadorVisit(role: string | null | undefined = currentRole()) {
+  const normalizedRole = normalizeRole(role);
+
+  return normalizedRole === 'FUNCIONARIO_ENCUESTADOR';
 }

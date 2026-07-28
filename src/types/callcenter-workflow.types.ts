@@ -1,35 +1,31 @@
+import type {
+  CallCenterEstadoCaso as BaseCallCenterEstadoCaso,
+  CallCenterTipoSolicitud,
+  EstadoVisita,
+} from './callcenter.types';
+
 /**
- * Tipos frontend para el flujo formal del módulo Call Center.
+ * Estado formal del caso Call Center.
  *
- * Este archivo modela las respuestas y solicitudes usadas por los endpoints:
- * - resultados de llamada
- * - gestiones de llamada
- * - visitas de encuestadores
+ * Se reutiliza desde callcenter.types.ts para evitar duplicidad
+ * y mantener una sola definición técnica del flujo.
  */
+export type CallCenterEstadoCaso = BaseCallCenterEstadoCaso;
 
-export type CallCenterEstadoCaso =
-  | 'PENDIENTE_ENRUTAMIENTO'
-  | 'ASIGNADO_CALLCENTER'
-  | 'EN_GESTION_LLAMADA'
-  | 'NO_CONTACTADO'
-  | 'CONTACTADO_SIN_DISPOSICION'
-  | 'PENDIENTE_ASIGNAR_ENCUESTADOR'
-  | 'ASIGNADO_ENCUESTADOR'
-  | 'VISITA_PROGRAMADA'
-  | 'VISITA_REALIZADA'
-  | 'VISITA_NO_ATENDIDA'
-  | 'REPROGRAMADO'
-  | 'CERRADO'
-  | 'CANCELADO';
+/**
+ * Estado operativo de una visita Call Center.
+ *
+ * Se reutiliza desde callcenter.types.ts para mantener consistencia
+ * entre el caso maestro y las visitas asignadas.
+ */
+export type CallCenterEstadoVisita = EstadoVisita;
 
-export type CallCenterEstadoVisita =
-  | 'PENDIENTE'
-  | 'PROGRAMADA'
-  | 'REALIZADA'
-  | 'NO_ATENDIDA'
-  | 'REPROGRAMADA'
-  | 'CANCELADA';
-
+/**
+ * Códigos permitidos para resultados de llamada.
+ *
+ * Estos códigos representan los posibles resultados operativos que puede
+ * registrar el funcionario Call Center durante la gestión telefónica.
+ */
 export type CallCenterResultadoLlamadaCodigo =
   | 'NO_CONTESTA'
   | 'BUZON'
@@ -45,6 +41,9 @@ export type CallCenterResultadoLlamadaCodigo =
 
 /**
  * Respuesta del catálogo de resultados de llamada.
+ *
+ * Este catálogo alimenta el selector de resultados cuando el funcionario
+ * Call Center registra una nueva gestión telefónica.
  */
 export type CallCenterResultadoLlamadaResponse = {
   id: number;
@@ -57,6 +56,9 @@ export type CallCenterResultadoLlamadaResponse = {
 
 /**
  * Solicitud para registrar una gestión de llamada.
+ *
+ * Este payload se envía desde la pantalla de gestión del caso:
+ * `/dashboard/callcenter/mis-registros/[id]`.
  */
 export type CallCenterGestionLlamadaRequest = {
   fechaLlamada?: string | null;
@@ -72,6 +74,8 @@ export type CallCenterGestionLlamadaRequest = {
 
 /**
  * Respuesta de una gestión de llamada registrada.
+ *
+ * Representa cada intento de contacto realizado sobre un caso Call Center.
  */
 export type CallCenterGestionLlamadaResponse = {
   id: number;
@@ -97,6 +101,9 @@ export type CallCenterGestionLlamadaResponse = {
 
 /**
  * Solicitud para asignar visita a encuestador.
+ *
+ * Esta acción se ejecuta desde la gestión del caso después de la llamada,
+ * cuando el ciudadano requiere o acepta visita.
  */
 export type CallCenterVisitaAsignacionRequest = {
   encuestadorId: number;
@@ -106,7 +113,10 @@ export type CallCenterVisitaAsignacionRequest = {
 };
 
 /**
- * Solicitud para actualizar resultado de visita.
+ * Solicitud para actualizar el resultado de una visita.
+ *
+ * Este payload es utilizado por el FUNCIONARIO_ENCUESTADOR desde la vista:
+ * `/dashboard/callcenter/mis-asignaciones`.
  */
 export type CallCenterVisitaResultadoRequest = {
   estadoVisita: CallCenterEstadoVisita;
@@ -120,6 +130,9 @@ export type CallCenterVisitaResultadoRequest = {
 
 /**
  * Respuesta de visita de Call Center.
+ *
+ * Representa una visita asignada a un encuestador, con su programación
+ * y resultado operativo de campo.
  */
 export type CallCenterVisitaResponse = {
   id: number;
@@ -140,10 +153,27 @@ export type CallCenterVisitaResponse = {
   observacionEncuestador?: string | null;
   activo: boolean;
   creadoEn?: string | null;
+
+  /**
+   * Datos opcionales del ciudadano asociados al caso.
+   *
+   * Estos campos son opcionales porque dependen de si el backend los incluye
+   * en el DTO de visita.
+   */
+  cedulaSolicitante?: string | null;
+  nombreCompleto?: string | null;
+  telefono?: string | null;
+  direccionTexto?: string | null;
+  barrioNombre?: string | null;
+  comunaNombre?: string | null;
+  tipoSolicitudCallcenter?: CallCenterTipoSolicitud | string | null;
+  estadoCaso?: CallCenterEstadoCaso | string | null;
 };
 
 /**
  * Opción simple para selects de catálogos.
+ *
+ * Se conserva para compatibilidad con componentes que aún usen este tipo.
  */
 export type CallCenterSelectOption = {
   id: number;
@@ -152,6 +182,9 @@ export type CallCenterSelectOption = {
 
 /**
  * Respuesta paginada genérica compatible con PageResponse del backend.
+ *
+ * Se aceptan varias formas porque algunos servicios pueden responder como
+ * `content`, `items` o `data`, según el endpoint.
  */
 export type CallCenterPageResponse<T> = {
   content?: T[];
@@ -160,6 +193,7 @@ export type CallCenterPageResponse<T> = {
   totalElements?: number;
   totalItems?: number;
   total?: number;
+  totalRecords?: number;
   totalPages?: number;
   page?: number;
   size?: number;

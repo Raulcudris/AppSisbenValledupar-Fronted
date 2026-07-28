@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import {
   Alert,
   Box,
@@ -22,7 +23,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import FactCheckIcon from '@mui/icons-material/FactCheck';
+import { useEffect, useState } from 'react';
 
 import {
   actualizarCallCenterResultadoVisita,
@@ -33,6 +34,18 @@ import {
   CallCenterVisitaResponse,
   CallCenterVisitaResultadoRequest,
 } from '@/types/callcenter-workflow.types';
+
+/**
+ * Color permitido para chips de estado.
+ */
+type ChipColor =
+  | 'default'
+  | 'primary'
+  | 'secondary'
+  | 'error'
+  | 'info'
+  | 'success'
+  | 'warning';
 
 /**
  * Estados permitidos para actualizar visitas desde frontend.
@@ -60,7 +73,9 @@ const initialResultadoForm: CallCenterVisitaResultadoRequest = {
 /**
  * Página de mis asignaciones de visitas para encuestadores.
  *
- * Permite consultar visitas asignadas y reportar el resultado operativo.
+ * Esta vista pertenece al flujo del FUNCIONARIO_ENCUESTADOR.
+ * Permite consultar únicamente las visitas asignadas al usuario autenticado
+ * y registrar el resultado operativo de campo.
  */
 export default function PageMisAsignacionesCallCenter() {
   const [items, setItems] = useState<CallCenterVisitaResponse[]>([]);
@@ -78,7 +93,7 @@ export default function PageMisAsignacionesCallCenter() {
   const [success, setSuccess] = useState<string | null>(null);
 
   /**
-   * Carga las visitas asignadas al usuario autenticado.
+   * Carga las visitas asignadas al encuestador autenticado.
    */
   async function loadData() {
     try {
@@ -86,10 +101,10 @@ export default function PageMisAsignacionesCallCenter() {
       setError(null);
 
       const response = await getMisCallCenterVisitas(page, size);
-      const content = response.content ?? response.items ?? response.data ?? [];
+      const content = getPageContent<CallCenterVisitaResponse>(response);
 
       setItems(content);
-      setTotal(response.totalElements ?? response.totalItems ?? response.total ?? content.length);
+      setTotal(getTotalElements(response, content.length));
     } catch (exception) {
       setError(getErrorMessage(exception, 'No fue posible cargar las asignaciones.'));
     } finally {
@@ -101,6 +116,13 @@ export default function PageMisAsignacionesCallCenter() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, size]);
+
+  /**
+   * Refresca manualmente las visitas asignadas.
+   */
+  function refresh() {
+    loadData();
+  }
 
   /**
    * Abre el formulario para registrar el resultado de la visita.
@@ -123,10 +145,43 @@ export default function PageMisAsignacionesCallCenter() {
   }
 
   /**
+   * Cierra el formulario de resultado.
+   */
+  function handleCloseResultado() {
+    setSelected(null);
+    setForm(initialResultadoForm);
+  }
+
+  /**
+   * Cambia el estado de visita seleccionado y ajusta campos relacionados.
+   *
+   * @param estado estado seleccionado.
+   */
+  function handleChangeEstadoVisita(estado: CallCenterEstadoVisita) {
+    setForm((current) => ({
+      ...current,
+      estadoVisita: estado,
+      encuestaRealizada: estado === 'REALIZADA',
+      motivoNoEncuesta: estado === 'REALIZADA' ? '' : current.motivoNoEncuesta,
+      fechaReprogramacion: estado === 'REPROGRAMADA' ? current.fechaReprogramacion : null,
+    }));
+  }
+
+  /**
    * Guarda el resultado operativo de la visita seleccionada.
    */
   async function handleSaveResultado() {
     if (!selected) {
+      return;
+    }
+
+    if (form.estadoVisita !== 'REALIZADA' && !form.motivoNoEncuesta?.trim()) {
+      setError('Debes registrar el motivo cuando la visita no queda realizada.');
+      return;
+    }
+
+    if (form.estadoVisita === 'REPROGRAMADA' && !form.fechaReprogramacion) {
+      setError('Debes seleccionar la fecha de reprogramación.');
       return;
     }
 
@@ -137,7 +192,7 @@ export default function PageMisAsignacionesCallCenter() {
       await actualizarCallCenterResultadoVisita(selected.id, form);
 
       setSuccess('Resultado de visita actualizado correctamente.');
-      setSelected(null);
+      handleCloseResultado();
       await loadData();
     } catch (exception) {
       setError(getErrorMessage(exception, 'No fue posible actualizar el resultado de visita.'));
@@ -158,6 +213,7 @@ export default function PageMisAsignacionesCallCenter() {
         }}
       >
         <CircularProgress />
+
         <Typography component="p" sx={{ mt: 2 }}>
           Cargando asignaciones...
         </Typography>
@@ -167,18 +223,38 @@ export default function PageMisAsignacionesCallCenter() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Box>
-        <Typography component="h1" variant="h5" sx={{ fontWeight: 700 }}>
-          Mis asignaciones
-        </Typography>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          justifyContent: 'space-between',
+          gap: 1.5,
+        }}
+      >
+        <Box>
+          <Typography component="h1" variant="h5" sx={{ fontWeight: 800 }}>
+            Mis asignaciones
+          </Typography>
 
-        <Typography component="p" sx={{ color: 'text.secondary' }}>
-          Consulta las visitas asignadas y registra el resultado de campo.
-        </Typography>
+          <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+            Consulta tus visitas asignadas y registra el resultado de campo.
+          </Typography>
+        </Box>
+
+        <Button
+          variant="outlined"
+          startIcon={<RefreshIcon />}
+          onClick={refresh}
+          disabled={loading}
+        >
+          Actualizar
+        </Button>
       </Box>
 
       {items.length === 0 ? (
-        <Alert severity="info">No tienes visitas asignadas en este momento.</Alert>
+        <Alert severity="info">
+          No tienes visitas asignadas en este momento.
+        </Alert>
       ) : (
         <Box
           sx={{
@@ -194,7 +270,7 @@ export default function PageMisAsignacionesCallCenter() {
           {items.map((item) => (
             <Card key={item.id} variant="outlined">
               <CardContent>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.2 }}>
                   <Box
                     sx={{
                       display: 'flex',
@@ -202,25 +278,64 @@ export default function PageMisAsignacionesCallCenter() {
                       gap: 1,
                     }}
                   >
-                    <Typography component="p" sx={{ fontWeight: 700 }}>
-                      {`Caso #${item.callCenterRegistroId}`}
-                    </Typography>
+                    <Box>
+                      <Typography component="p" sx={{ fontWeight: 800 }}>
+                        {`Caso #${item.callCenterRegistroId}`}
+                      </Typography>
 
-                    <Chip size="small" label={item.estadoVisita} />
+                      <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+                        {`Visita #${item.id}`}
+                      </Typography>
+                    </Box>
+
+                    <Chip
+                      size="small"
+                      label={formatLabel(item.estadoVisita)}
+                      color={getStatusColor(item.estadoVisita)}
+                    />
                   </Box>
 
-                  <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                    {`Encuestador: ${item.encuestadorNombre ?? 'No disponible'}`}
-                  </Typography>
+                  <InfoItem
+                    label="Encuestador"
+                    value={item.encuestadorNombre ?? 'No disponible'}
+                  />
 
-                  <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                    {`Programada: ${item.fechaProgramada ?? 'Sin fecha'} ${item.horaProgramada ?? ''}`}
-                  </Typography>
+                  <InfoItem
+                    label="Fecha programada"
+                    value={`${item.fechaProgramada ?? 'Sin fecha'} ${item.horaProgramada ?? ''}`.trim()}
+                  />
+
+                  {item.fechaVisitaReal && (
+                    <InfoItem
+                      label="Fecha visita real"
+                      value={`${item.fechaVisitaReal} ${item.horaVisitaReal ?? ''}`.trim()}
+                    />
+                  )}
+
+                  {item.encuestaRealizada !== null && item.encuestaRealizada !== undefined && (
+                    <InfoItem
+                      label="Encuesta realizada"
+                      value={item.encuestaRealizada ? 'Sí' : 'No'}
+                    />
+                  )}
+
+                  {item.motivoNoEncuesta && (
+                    <InfoItem
+                      label="Motivo no encuesta"
+                      value={item.motivoNoEncuesta}
+                    />
+                  )}
 
                   {item.observacionEncuestador && (
-                    <Typography component="p" variant="body2">
-                      {item.observacionEncuestador}
-                    </Typography>
+                    <Box>
+                      <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+                        Observación
+                      </Typography>
+
+                      <Typography component="p" variant="body2">
+                        {item.observacionEncuestador}
+                      </Typography>
+                    </Box>
                   )}
 
                   <Button
@@ -248,9 +363,10 @@ export default function PageMisAsignacionesCallCenter() {
           setPage(0);
         }}
         rowsPerPageOptions={[10, 20, 50]}
+        labelRowsPerPage="Filas"
       />
 
-      <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} maxWidth="sm" fullWidth>
+      <Dialog open={Boolean(selected)} onClose={handleCloseResultado} maxWidth="sm" fullWidth>
         <DialogTitle>Registrar resultado de visita</DialogTitle>
 
         <DialogContent>
@@ -262,18 +378,12 @@ export default function PageMisAsignacionesCallCenter() {
                 label="Estado visita"
                 value={form.estadoVisita}
                 onChange={(event) => {
-                  const estado = event.target.value as CallCenterEstadoVisita;
-
-                  setForm((current) => ({
-                    ...current,
-                    estadoVisita: estado,
-                    encuestaRealizada: estado === 'REALIZADA',
-                  }));
+                  handleChangeEstadoVisita(event.target.value as CallCenterEstadoVisita);
                 }}
               >
                 {ESTADOS_VISITA.map((estado) => (
                   <MenuItem key={estado} value={estado}>
-                    {formatEstadoVisita(estado)}
+                    {formatLabel(estado)}
                   </MenuItem>
                 ))}
               </Select>
@@ -311,6 +421,7 @@ export default function PageMisAsignacionesCallCenter() {
                   ...current,
                   motivoNoEncuesta: event.target.value,
                 }))}
+                required
                 fullWidth
               />
             )}
@@ -325,6 +436,7 @@ export default function PageMisAsignacionesCallCenter() {
                   fechaReprogramacion: event.target.value || null,
                 }))}
                 slotProps={{ inputLabel: { shrink: true } }}
+                required
                 fullWidth
               />
             )}
@@ -344,7 +456,7 @@ export default function PageMisAsignacionesCallCenter() {
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={() => setSelected(null)}>
+          <Button onClick={handleCloseResultado}>
             Cancelar
           </Button>
 
@@ -382,6 +494,57 @@ export default function PageMisAsignacionesCallCenter() {
 }
 
 /**
+ * Componente auxiliar para mostrar un dato breve de la visita.
+ */
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <Box>
+      <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+        {label}
+      </Typography>
+
+      <Typography component="p" variant="body2" sx={{ fontWeight: 700 }}>
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+/**
+ * Extrae el contenido de una respuesta paginada de forma tolerante.
+ *
+ * @param pageResponse respuesta recibida.
+ * @returns arreglo de registros.
+ */
+function getPageContent<T>(pageResponse: unknown): T[] {
+  const data = pageResponse as {
+    content?: T[];
+    items?: T[];
+    data?: T[];
+  };
+
+  return data.content ?? data.items ?? data.data ?? [];
+}
+
+/**
+ * Obtiene el total de registros de una respuesta paginada.
+ *
+ * @param pageResponse respuesta recibida.
+ * @param fallback total alternativo.
+ * @returns total de registros.
+ */
+function getTotalElements(pageResponse: unknown, fallback: number) {
+  const data = pageResponse as {
+    totalElements?: number;
+    totalItems?: number;
+    total?: number;
+    totalRecords?: number;
+  };
+
+  return data.totalElements ?? data.totalItems ?? data.total ?? data.totalRecords ?? fallback;
+}
+
+/**
  * Obtiene un mensaje de error legible.
  *
  * @param exception excepción recibida.
@@ -402,15 +565,43 @@ function getErrorMessage(exception: unknown, fallback: string) {
 }
 
 /**
- * Convierte un estado técnico de visita en una etiqueta visible.
+ * Convierte códigos técnicos en etiquetas legibles.
  *
- * @param value estado técnico.
- * @returns etiqueta legible.
+ * @param value código técnico.
+ * @returns etiqueta visible.
  */
-function formatEstadoVisita(value: string) {
-  return value
+function formatLabel(value?: string | null) {
+  return String(value ?? 'Sin estado')
     .split('_')
     .join(' ')
     .toLowerCase()
     .replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+/**
+ * Define el color visual de los estados.
+ *
+ * @param value estado técnico.
+ * @returns color del chip.
+ */
+function getStatusColor(value?: string | null): ChipColor {
+  const normalized = String(value ?? '').toUpperCase();
+
+  if (normalized.includes('REALIZADA')) {
+    return 'success';
+  }
+
+  if (normalized.includes('PENDIENTE') || normalized.includes('PROGRAMADA')) {
+    return 'info';
+  }
+
+  if (normalized.includes('REPROGRAMADA') || normalized.includes('NO_ATENDIDA')) {
+    return 'warning';
+  }
+
+  if (normalized.includes('CANCELADA')) {
+    return 'error';
+  }
+
+  return 'default';
 }

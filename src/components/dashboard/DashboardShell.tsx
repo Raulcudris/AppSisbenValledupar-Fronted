@@ -1,18 +1,18 @@
 'use client';
 
+import ApartmentIcon from '@mui/icons-material/Apartment';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import HeadsetMicIcon from '@mui/icons-material/HeadsetMic';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
-import ApartmentIcon from '@mui/icons-material/Apartment';
 import LockResetIcon from '@mui/icons-material/LockReset';
 import LogoutIcon from '@mui/icons-material/Logout';
 import MenuIcon from '@mui/icons-material/Menu';
 import PeopleIcon from '@mui/icons-material/People';
 import SecurityIcon from '@mui/icons-material/Security';
-import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import {
   AppBar,
   Box,
@@ -23,7 +23,6 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Stack,
   Toolbar,
   Tooltip,
   Typography,
@@ -32,6 +31,7 @@ import {
 } from '@mui/material';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
+
 import { clearSession, getStoredUser, getToken } from '@/lib/authToken';
 import {
   canAccessDashboardPath,
@@ -46,6 +46,9 @@ const collapsedDrawerWidth = 78;
 const headerHeight = 72;
 const sisbenLogoPath = '/images/logo-sisben.png';
 
+/**
+ * Relación de iconos usados por el menú lateral.
+ */
 const dashboardIcons: Record<DashboardIconKey, ReactNode> = {
   dashboard: <DashboardIcon />,
   ventanilla: <AssessmentIcon />,
@@ -65,22 +68,110 @@ type DashboardShellProps = {
   children: ReactNode;
 };
 
+/**
+ * Obtiene el nombre del módulo actual según la ruta.
+ *
+ * @param pathname ruta actual.
+ * @returns nombre visible del módulo.
+ */
 function getCurrentModuleLabel(pathname: string) {
-  if (pathname.includes('/dashboard/ventanilla')) return 'Ventanilla';
-  if (pathname.includes('/dashboard/dmc')) return 'DMC';
-  if (pathname.includes('/dashboard/callcenter/asignar-funcionarios')) return 'Asignar funcionarios Call Center';
-  if (pathname.includes('/dashboard/callcenter/mis-registros')) return 'Mis registros Call Center';
-  if (pathname.includes('/dashboard/callcenter/mis-asignaciones')) return 'Mis asignaciones';
-  if (pathname.includes('/dashboard/callcenter')) return 'Call Center';
-  if (pathname.includes('/dashboard/reportes')) return 'Reportes';
-  if (pathname.includes('/dashboard/exportaciones')) return 'Exportaciones';
-  if (pathname.includes('/dashboard/auditoria')) return 'Auditoría';
-  if (pathname.includes('/dashboard/usuarios')) return 'Usuarios';
-  if (pathname.includes('/dashboard/password')) return 'Cambiar contraseña';
+  if (pathname.includes('/dashboard/ventanilla/historial-usuario')) {
+    return 'Historial de usuario';
+  }
+
+  if (pathname.includes('/dashboard/ventanilla')) {
+    return 'Ventanilla';
+  }
+
+  if (pathname.includes('/dashboard/dmc')) {
+    return 'DMC';
+  }
+
+  if (pathname.includes('/dashboard/callcenter/asignar-funcionarios')) {
+    return 'Asignar funcionarios Call Center';
+  }
+
+  if (pathname.includes('/dashboard/callcenter/mis-registros/')) {
+    return 'Gestión caso Call Center';
+  }
+
+  if (pathname.includes('/dashboard/callcenter/mis-registros')) {
+    return 'Mis registros Call Center';
+  }
+
+  if (pathname.includes('/dashboard/callcenter/mis-asignaciones')) {
+    return 'Mis asignaciones';
+  }
+
+  if (pathname.includes('/dashboard/callcenter/registros/nuevo')) {
+    return 'Nuevo registro Call Center';
+  }
+
+  if (pathname.includes('/dashboard/callcenter/registros/cargar-ventanilla')) {
+    return 'Cargar desde Ventanilla';
+  }
+
+  if (pathname.includes('/dashboard/callcenter/registros')) {
+    return 'Registros Call Center';
+  }
+
+  if (pathname.includes('/dashboard/callcenter')) {
+    return 'Call Center';
+  }
+
+  if (pathname.includes('/dashboard/reportes')) {
+    return 'Reportes';
+  }
+
+  if (pathname.includes('/dashboard/exportaciones')) {
+    return 'Exportaciones';
+  }
+
+  if (pathname.includes('/dashboard/auditoria')) {
+    return 'Auditoría';
+  }
+
+  if (pathname.includes('/dashboard/usuarios')) {
+    return 'Usuarios';
+  }
+
+  if (pathname.includes('/dashboard/territory/barrios')) {
+    return 'Barrios';
+  }
+
+  if (pathname.includes('/dashboard/territory/comunas')) {
+    return 'Comunas';
+  }
+
+  if (pathname.includes('/dashboard/cuenta/cambiar-password')) {
+    return 'Cambiar contraseña';
+  }
 
   return 'Inicio';
 }
 
+/**
+ * Verifica si un ítem del menú debe marcarse como activo.
+ *
+ * @param pathname ruta actual.
+ * @param href ruta del ítem.
+ * @returns true si el ítem corresponde a la ruta actual.
+ */
+function isMenuItemSelected(pathname: string, href: string) {
+  if (pathname === href) {
+    return true;
+  }
+
+  if (href === '/dashboard') {
+    return false;
+  }
+
+  return pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Logo lateral del sistema.
+ */
 function SidebarLogo({ compact }: { compact: boolean }) {
   return (
     <Box
@@ -142,9 +233,17 @@ function SidebarLogo({ compact }: { compact: boolean }) {
   );
 }
 
+/**
+ * Contenedor principal del dashboard.
+ *
+ * Controla:
+ * - Validación de sesión.
+ * - Validación de rutas por rol.
+ * - Menú lateral por rol.
+ * - Encabezado del módulo actual.
+ */
 export default function DashboardShell({ children }: DashboardShellProps) {
   const theme = useTheme();
-
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'), {
     noSsr: true,
   });
@@ -165,11 +264,13 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   }, [roleCode]);
 
   const expanded = sidebarExpanded || !isDesktop;
+
   const currentDrawerWidth = isDesktop
     ? sidebarExpanded
       ? drawerWidth
       : collapsedDrawerWidth
     : drawerWidth;
+
   const currentModule = getCurrentModuleLabel(pathname);
 
   useEffect(() => {
@@ -199,23 +300,32 @@ export default function DashboardShell({ children }: DashboardShellProps) {
     }
   }, [mounted, checkingAccess, pathname, router, user]);
 
-  const toggleSidebar = () => {
+  /**
+   * Abre o contrae el menú lateral según el tamaño de pantalla.
+   */
+  function toggleSidebar() {
     if (isDesktop) {
       setSidebarExpanded((current) => !current);
       return;
     }
 
     setMobileOpen(true);
-  };
+  }
 
-  const closeMobileMenu = () => {
+  /**
+   * Cierra el menú móvil.
+   */
+  function closeMobileMenu() {
     setMobileOpen(false);
-  };
+  }
 
-  const handleLogout = () => {
+  /**
+   * Cierra la sesión del usuario.
+   */
+  function handleLogout() {
     clearSession();
     router.replace('/login');
-  };
+  }
 
   if (!mounted || checkingAccess || !user) {
     return null;
@@ -236,6 +346,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       <Box sx={{ px: expanded ? 1.7 : 1, py: 1.5 }}>
         {expanded ? (
           <Typography
+            component="p"
             sx={{
               fontSize: 12,
               fontWeight: 900,
@@ -252,7 +363,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
 
         <List sx={{ p: 0 }}>
           {menuItems.map((item) => {
-            const selected = pathname === item.href;
+            const selected = isMenuItemSelected(pathname, item.href);
 
             const button = (
               <ListItemButton
@@ -301,7 +412,14 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 {expanded ? (
                   <ListItemText
                     primary={
-                      <Typography noWrap sx={{ fontWeight: selected ? 900 : 700, fontSize: 14 }}>
+                      <Typography
+                        component="span"
+                        noWrap
+                        sx={{
+                          fontWeight: selected ? 900 : 700,
+                          fontSize: 14,
+                        }}
+                      >
                         {item.label}
                       </Typography>
                     }
@@ -326,7 +444,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       <Divider sx={{ mt: 'auto' }} />
 
       <Box sx={{ p: expanded ? 1.7 : 1 }}>
-        <Stack spacing={1.4}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.4 }}>
           {expanded ? (
             <Box
               sx={{
@@ -337,11 +455,27 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                 borderColor: 'divider',
               }}
             >
-              <Typography noWrap color="text.primary" align='center' sx={{ fontWeight: 900 }}>
+              <Typography
+                component="p"
+                noWrap
+                sx={{
+                  color: 'text.primary',
+                  textAlign: 'center',
+                  fontWeight: 900,
+                }}
+              >
                 {user.username ?? 'Usuario'}
               </Typography>
 
-              <Typography noWrap color="text.secondary" align='center' sx={{ fontSize: 13 }}>
+              <Typography
+                component="p"
+                noWrap
+                sx={{
+                  color: 'text.secondary',
+                  textAlign: 'center',
+                  fontSize: 13,
+                }}
+              >
                 {user.rolNombre ?? user.rolCodigo ?? 'Rol no disponible'}
               </Typography>
             </Box>
@@ -377,7 +511,14 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               {expanded ? (
                 <ListItemText
                   primary={
-                    <Typography  noWrap sx={{ fontWeight: 800, fontSize: 14 }}>
+                    <Typography
+                      component="span"
+                      noWrap
+                      sx={{
+                        fontWeight: 800,
+                        fontSize: 14,
+                      }}
+                    >
                       Cerrar sesión
                     </Typography>
                   }
@@ -385,7 +526,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               ) : null}
             </ListItemButton>
           </Tooltip>
-        </Stack>
+        </Box>
       </Box>
     </Box>
   );
@@ -447,12 +588,29 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               justifyContent: 'center',
             }}
           >
-            <Typography variant="h6" noWrap sx={{ fontWeight: 900, lineHeight: 1.15 }}>
+            <Typography
+              component="h1"
+              variant="h6"
+              noWrap
+              sx={{
+                fontWeight: 900,
+                lineHeight: 1.15,
+              }}
+            >
               {currentModule}
             </Typography>
 
-            <Typography noWrap color="text.secondary" sx={{ fontSize: 12.5, fontWeight: 600, mt: 0.2 }}>
-              Sistema de información Sisbén · {user.rolNombre ?? user.rolCodigo}
+            <Typography
+              component="p"
+              noWrap
+              sx={{
+                color: 'text.secondary',
+                fontSize: 12.5,
+                fontWeight: 600,
+                mt: 0.2,
+              }}
+            >
+              {`Sistema de información Sisbén · ${user.rolNombre ?? user.rolCodigo}`}
             </Typography>
           </Box>
 

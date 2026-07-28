@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import AddIcCallIcon from '@mui/icons-material/AddIcCall';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import {
   Alert,
   Box,
@@ -21,15 +22,14 @@ import {
   MenuItem,
   Select,
   Snackbar,
-  Stack,
   Switch,
   TextField,
   Typography,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import AddIcCallIcon from '@mui/icons-material/AddIcCall';
-import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 
+import { apiRequest } from '@/lib/apiClient';
 import { getCallCenterEncuestadoresOptions } from '@/services/callcenter.service';
 import {
   asignarCallCenterVisita,
@@ -38,14 +38,28 @@ import {
   getCallCenterVisitas,
   registrarCallCenterLlamada,
 } from '@/services/callcenter-workflow.service';
+import { ApiResponse } from '@/types/api.types';
+import { CallCenterResponse } from '@/types/callcenter.types';
+import { SelectOption } from '@/types/catalog.types';
 import {
   CallCenterGestionLlamadaRequest,
   CallCenterGestionLlamadaResponse,
   CallCenterResultadoLlamadaResponse,
-  CallCenterSelectOption,
   CallCenterVisitaAsignacionRequest,
   CallCenterVisitaResponse,
 } from '@/types/callcenter-workflow.types';
+
+/**
+ * Color permitido para chips de estado.
+ */
+type ChipColor =
+  | 'default'
+  | 'primary'
+  | 'secondary'
+  | 'error'
+  | 'info'
+  | 'success'
+  | 'warning';
 
 /**
  * Estado inicial del formulario para registrar llamadas.
@@ -73,8 +87,13 @@ const initialVisitaForm: CallCenterVisitaAsignacionRequest = {
 /**
  * Página de gestión operativa del caso Call Center.
  *
- * Permite consultar historial de llamadas, registrar una nueva gestión,
- * consultar visitas y asignar visita a encuestador.
+ * Esta vista es usada por el funcionario Call Center para:
+ * - Consultar datos principales del ciudadano.
+ * - Revisar el estado del caso.
+ * - Registrar llamadas.
+ * - Consultar historial de llamadas.
+ * - Asignar visita a encuestador.
+ * - Consultar historial de visitas.
  */
 export default function PageCallCenterGestionCaso() {
   const router = useRouter();
@@ -86,6 +105,7 @@ export default function PageCallCenterGestionCaso() {
     return Array.isArray(value) ? value[0] : value;
   }, [params]);
 
+  const [caso, setCaso] = useState<CallCenterResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingLlamada, setSavingLlamada] = useState(false);
   const [savingVisita, setSavingVisita] = useState(false);
@@ -93,7 +113,7 @@ export default function PageCallCenterGestionCaso() {
   const [resultados, setResultados] = useState<CallCenterResultadoLlamadaResponse[]>([]);
   const [llamadas, setLlamadas] = useState<CallCenterGestionLlamadaResponse[]>([]);
   const [visitas, setVisitas] = useState<CallCenterVisitaResponse[]>([]);
-  const [encuestadores, setEncuestadores] = useState<CallCenterSelectOption[]>([]);
+  const [encuestadores, setEncuestadores] = useState<SelectOption[]>([]);
 
   const [openLlamada, setOpenLlamada] = useState(false);
   const [openVisita, setOpenVisita] = useState(false);
@@ -104,8 +124,16 @@ export default function PageCallCenterGestionCaso() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const estadoCaso = caso
+    ? getStringField(caso, 'estadoCaso') || caso.estadoVisita || 'PENDIENTE'
+    : 'PENDIENTE';
+
+  const tipoSolicitud = caso
+    ? getStringField(caso, 'tipoSolicitudCallcenter') || getStringField(caso, 'solicitudNombre')
+    : null;
+
   /**
-   * Carga la información operativa del caso.
+   * Carga la información completa del caso.
    */
   async function loadData() {
     if (!caseId) {
@@ -117,13 +145,21 @@ export default function PageCallCenterGestionCaso() {
       setLoading(true);
       setError(null);
 
-      const [resultadosData, llamadasData, visitasData, encuestadoresData] = await Promise.all([
+      const [
+        casoData,
+        resultadosData,
+        llamadasData,
+        visitasData,
+        encuestadoresData,
+      ] = await Promise.all([
+        getCallCenterDetalle(caseId),
         getCallCenterResultadosLlamada(),
         getCallCenterLlamadas(caseId),
         getCallCenterVisitas(caseId),
         getCallCenterEncuestadoresOptions(),
       ]);
 
+      setCaso(casoData);
       setResultados(resultadosData);
       setLlamadas(llamadasData);
       setVisitas(visitasData);
@@ -141,7 +177,30 @@ export default function PageCallCenterGestionCaso() {
   }, [caseId]);
 
   /**
-   * Registra una llamada y refresca el historial.
+   * Abre el formulario de llamada con valores iniciales.
+   */
+  function openRegistrarLlamada() {
+    const now = new Date();
+
+    setLlamadaForm({
+      ...initialLlamadaForm,
+      fechaLlamada: now.toISOString().slice(0, 10),
+      horaLlamada: now.toTimeString().slice(0, 5),
+    });
+
+    setOpenLlamada(true);
+  }
+
+  /**
+   * Abre el formulario de asignación de visita.
+   */
+  function openAsignarVisita() {
+    setVisitaForm(initialVisitaForm);
+    setOpenVisita(true);
+  }
+
+  /**
+   * Registra una llamada y refresca el historial del caso.
    */
   async function handleRegistrarLlamada() {
     if (!caseId) {
@@ -171,7 +230,7 @@ export default function PageCallCenterGestionCaso() {
   }
 
   /**
-   * Asigna una visita a encuestador y refresca la lista.
+   * Asigna una visita a encuestador y refresca el historial.
    */
   async function handleAsignarVisita() {
     if (!caseId) {
@@ -202,32 +261,51 @@ export default function PageCallCenterGestionCaso() {
 
   if (loading) {
     return (
-      <Stack sx={{ minHeight: 320, alignItems: 'center', justifyContent: 'center' }}>
+      <Box
+        sx={{
+          minHeight: 320,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+        }}
+      >
         <CircularProgress />
+
         <Typography component="p" sx={{ mt: 2 }}>
           Cargando gestión del caso...
         </Typography>
-      </Stack>
+      </Box>
     );
   }
 
   return (
-    <Stack spacing={2}>
-      <Stack
-        direction={{ xs: 'column', md: 'row' }}
-        spacing={1}
-        sx={{ justifyContent: 'space-between' }}
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: 1.5,
+          justifyContent: 'space-between',
+        }}
       >
         <Box>
-          <Typography component="h1" variant="h5" sx={{ fontWeight: 700 }}>
+          <Typography component="h1" variant="h5" sx={{ fontWeight: 800 }}>
             {`Gestión caso Call Center #${caseId ?? ''}`}
           </Typography>
-          <Typography component="p" sx={{ color: 'text.secondary' }}>
-            Historial de llamadas, asignación de visitas y trazabilidad del caso.
+
+          <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+            Gestión telefónica, asignación de visita y trazabilidad del caso.
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: 1,
+          }}
+        >
           <Button
             variant="outlined"
             startIcon={<ArrowBackIcon />}
@@ -239,7 +317,7 @@ export default function PageCallCenterGestionCaso() {
           <Button
             variant="contained"
             startIcon={<AddIcCallIcon />}
-            onClick={() => setOpenLlamada(true)}
+            onClick={openRegistrarLlamada}
           >
             Registrar llamada
           </Button>
@@ -247,12 +325,81 @@ export default function PageCallCenterGestionCaso() {
           <Button
             variant="contained"
             startIcon={<AssignmentIndIcon />}
-            onClick={() => setOpenVisita(true)}
+            onClick={openAsignarVisita}
           >
             Asignar visita
           </Button>
-        </Stack>
-      </Stack>
+        </Box>
+      </Box>
+
+      <Card>
+        <CardContent>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', md: 'row' },
+              justifyContent: 'space-between',
+              gap: 2,
+              mb: 2,
+            }}
+          >
+            <Box>
+              <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+                Datos principales del ciudadano
+              </Typography>
+
+              <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+                Información base para realizar la gestión del caso.
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Chip
+                size="small"
+                label={formatLabel(estadoCaso)}
+                color={getStatusColor(estadoCaso)}
+              />
+
+              {tipoSolicitud && (
+                <Chip
+                  size="small"
+                  label={formatLabel(tipoSolicitud)}
+                  variant="outlined"
+                />
+              )}
+            </Box>
+          </Box>
+
+          <Divider sx={{ mb: 2 }} />
+
+          {!caso ? (
+            <Alert severity="warning">
+              No fue posible encontrar la información principal del caso.
+            </Alert>
+          ) : (
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: '1fr 1fr',
+                  lg: '1fr 1fr 1fr 1fr',
+                },
+                gap: 2,
+              }}
+            >
+              <InfoItem label="Ciudadano" value={caso.nombreCompleto || 'Sin nombre'} />
+              <InfoItem label="Cédula" value={caso.cedulaSolicitante || 'Sin dato'} />
+              <InfoItem label="Teléfono" value={caso.telefono || 'Sin dato'} />
+              <InfoItem label="Fecha llamada" value={caso.fechaLlamada || 'Sin fecha'} />
+              <InfoItem label="Dirección" value={caso.direccionTexto || 'Sin dirección'} />
+              <InfoItem label="Barrio" value={caso.barrioNombre || 'Sin barrio'} />
+              <InfoItem label="Comuna" value={caso.comunaNombre || 'Sin comuna'} />
+              <InfoItem label="Encuestador" value={caso.encuestadorAsignadoNombre || 'Sin asignar'} />
+            </Box>
+          )}
+        </CardContent>
+      </Card>
 
       <Box
         sx={{
@@ -263,27 +410,54 @@ export default function PageCallCenterGestionCaso() {
       >
         <Card>
           <CardContent>
-            <Typography component="h2" variant="h6" sx={{ fontWeight: 700 }}>
-              Historial de llamadas
-            </Typography>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 1,
+                mb: 2,
+              }}
+            >
+              <Box>
+                <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+                  Historial de llamadas
+                </Typography>
 
-            <Divider sx={{ my: 2 }} />
+                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+                  Registro de intentos y resultados de contacto.
+                </Typography>
+              </Box>
+
+              <Chip size="small" label={`${llamadas.length} llamada(s)`} />
+            </Box>
+
+            <Divider sx={{ mb: 2 }} />
 
             {llamadas.length === 0 ? (
-              <Alert severity="info">Este caso aún no tiene llamadas registradas.</Alert>
+              <Alert severity="info">
+                Este caso aún no tiene llamadas registradas.
+              </Alert>
             ) : (
-              <Stack spacing={1.5}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 {llamadas.map((item) => (
                   <Card key={item.id} variant="outlined">
                     <CardContent>
-                      <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 1,
+                        }}
+                      >
                         <Box>
-                          <Typography component="p" sx={{ fontWeight: 700 }}>
-                            {`Intento #${item.intentoNumero} - ${formatResultado(item.resultadoLlamada)}`}
+                          <Typography component="p" sx={{ fontWeight: 800 }}>
+                            {`Intento #${item.intentoNumero} - ${formatLabel(item.resultadoLlamada)}`}
                           </Typography>
+
                           <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
                             {`${item.fechaLlamada} ${item.horaLlamada ?? ''}`}
                           </Typography>
+
                           <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
                             {`Funcionario: ${item.funcionarioCallcenterNombre ?? item.funcionarioCallcenterUsername ?? 'No disponible'}`}
                           </Typography>
@@ -294,7 +468,7 @@ export default function PageCallCenterGestionCaso() {
                           label={item.llamadaConectada ? 'Conectada' : 'No conectada'}
                           color={item.llamadaConectada ? 'success' : 'warning'}
                         />
-                      </Stack>
+                      </Box>
 
                       {item.motivoNoContactoNombre && (
                         <Typography component="p" variant="body2" sx={{ mt: 1 }}>
@@ -316,38 +490,68 @@ export default function PageCallCenterGestionCaso() {
                     </CardContent>
                   </Card>
                 ))}
-              </Stack>
+              </Box>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardContent>
-            <Typography component="h2" variant="h6" sx={{ fontWeight: 700 }}>
-              Visitas de encuestadores
-            </Typography>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 1,
+                mb: 2,
+              }}
+            >
+              <Box>
+                <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+                  Visitas de encuestadores
+                </Typography>
 
-            <Divider sx={{ my: 2 }} />
+                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+                  Seguimiento de visitas asignadas al caso.
+                </Typography>
+              </Box>
+
+              <Chip size="small" label={`${visitas.length} visita(s)`} />
+            </Box>
+
+            <Divider sx={{ mb: 2 }} />
 
             {visitas.length === 0 ? (
-              <Alert severity="info">Este caso aún no tiene visitas asignadas.</Alert>
+              <Alert severity="info">
+                Este caso aún no tiene visitas asignadas.
+              </Alert>
             ) : (
-              <Stack spacing={1.5}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 {visitas.map((item) => (
                   <Card key={item.id} variant="outlined">
                     <CardContent>
-                      <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 1,
+                        }}
+                      >
                         <Box>
-                          <Typography component="p" sx={{ fontWeight: 700 }}>
+                          <Typography component="p" sx={{ fontWeight: 800 }}>
                             {item.encuestadorNombre ?? 'Encuestador no disponible'}
                           </Typography>
+
                           <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
                             {`Programada: ${item.fechaProgramada ?? 'Sin fecha'} ${item.horaProgramada ?? ''}`}
                           </Typography>
                         </Box>
 
-                        <Chip size="small" label={item.estadoVisita} />
-                      </Stack>
+                        <Chip
+                          size="small"
+                          label={formatLabel(item.estadoVisita)}
+                          color={getStatusColor(item.estadoVisita)}
+                        />
+                      </Box>
 
                       {item.encuestaRealizada !== null && item.encuestaRealizada !== undefined && (
                         <Typography component="p" variant="body2" sx={{ mt: 1 }}>
@@ -363,7 +567,7 @@ export default function PageCallCenterGestionCaso() {
                     </CardContent>
                   </Card>
                 ))}
-              </Stack>
+              </Box>
             )}
           </CardContent>
         </Card>
@@ -371,8 +575,9 @@ export default function PageCallCenterGestionCaso() {
 
       <Dialog open={openLlamada} onClose={() => setOpenLlamada(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Registrar gestión de llamada</DialogTitle>
+
         <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <FormControlLabel
               control={
                 <Switch
@@ -388,6 +593,7 @@ export default function PageCallCenterGestionCaso() {
 
             <FormControl fullWidth>
               <InputLabel>Resultado de llamada</InputLabel>
+
               <Select
                 label="Resultado de llamada"
                 value={llamadaForm.resultadoLlamada}
@@ -439,10 +645,14 @@ export default function PageCallCenterGestionCaso() {
               multiline
               fullWidth
             />
-          </Stack>
+          </Box>
         </DialogContent>
+
         <DialogActions>
-          <Button onClick={() => setOpenLlamada(false)}>Cancelar</Button>
+          <Button onClick={() => setOpenLlamada(false)}>
+            Cancelar
+          </Button>
+
           <Button
             variant="contained"
             disabled={savingLlamada}
@@ -455,20 +665,22 @@ export default function PageCallCenterGestionCaso() {
 
       <Dialog open={openVisita} onClose={() => setOpenVisita(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Asignar visita a encuestador</DialogTitle>
+
         <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <FormControl fullWidth>
               <InputLabel>Encuestador</InputLabel>
+
               <Select
                 label="Encuestador"
-                value={visitaForm.encuestadorId || ''}
+                value={visitaForm.encuestadorId ? String(visitaForm.encuestadorId) : ''}
                 onChange={(event) => setVisitaForm((current) => ({
                   ...current,
                   encuestadorId: Number(event.target.value),
                 }))}
               >
                 {encuestadores.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>
+                  <MenuItem key={item.id} value={String(item.id)}>
                     {item.label}
                   </MenuItem>
                 ))}
@@ -510,10 +722,14 @@ export default function PageCallCenterGestionCaso() {
               multiline
               fullWidth
             />
-          </Stack>
+          </Box>
         </DialogContent>
+
         <DialogActions>
-          <Button onClick={() => setOpenVisita(false)}>Cancelar</Button>
+          <Button onClick={() => setOpenVisita(false)}>
+            Cancelar
+          </Button>
+
           <Button
             variant="contained"
             disabled={savingVisita}
@@ -543,12 +759,67 @@ export default function PageCallCenterGestionCaso() {
           {success}
         </Alert>
       </Snackbar>
-    </Stack>
+    </Box>
   );
 }
 
 /**
+ * Consulta el detalle principal del caso Call Center.
+ *
+ * @param id identificador del caso.
+ * @returns información del caso.
+ */
+async function getCallCenterDetalle(id: string) {
+  const response = await apiRequest<ApiResponse<CallCenterResponse>>(
+    `/api/callcenter/${id}?_t=${Date.now()}`
+  );
+
+  return response.data;
+}
+
+/**
+ * Componente visual para mostrar un dato principal del caso.
+ */
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <Box>
+      <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+        {label}
+      </Typography>
+
+      <Typography component="p" variant="body2" sx={{ fontWeight: 700 }}>
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+/**
+ * Obtiene un campo string opcional desde la respuesta sin romper el tipado.
+ *
+ * @param record registro Call Center.
+ * @param field nombre del campo.
+ * @returns valor string o null.
+ */
+function getStringField(record: CallCenterResponse, field: string) {
+  const data = record as unknown as Record<string, unknown>;
+  const value = data[field];
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
  * Obtiene un mensaje de error legible.
+ *
+ * @param exception excepción recibida.
+ * @param fallback mensaje por defecto.
+ * @returns mensaje de error.
  */
 function getErrorMessage(exception: unknown, fallback: string) {
   if (
@@ -564,12 +835,59 @@ function getErrorMessage(exception: unknown, fallback: string) {
 }
 
 /**
- * Convierte un código técnico en una etiqueta legible.
+ * Convierte códigos técnicos en etiquetas legibles.
+ *
+ * @param value código técnico.
+ * @returns etiqueta visible.
  */
-function formatResultado(value: string) {
-  return value
+function formatLabel(value?: string | null) {
+  return String(value ?? 'Sin estado')
     .split('_')
     .join(' ')
     .toLowerCase()
     .replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+/**
+ * Define el color visual de los estados.
+ *
+ * @param value estado técnico.
+ * @returns color del chip.
+ */
+function getStatusColor(value?: string | null): ChipColor {
+  const normalized = String(value ?? '').toUpperCase();
+
+  if (
+    normalized.includes('REALIZADA') ||
+    normalized.includes('CERRADO') ||
+    normalized.includes('CONTACTADO_ACEPTA')
+  ) {
+    return 'success';
+  }
+
+  if (
+    normalized.includes('PENDIENTE') ||
+    normalized.includes('PROGRAMADA') ||
+    normalized.includes('ASIGNADO')
+  ) {
+    return 'info';
+  }
+
+  if (
+    normalized.includes('REPROGRAMADO') ||
+    normalized.includes('NO_CONTACTADO') ||
+    normalized.includes('NO_ATENDIDA')
+  ) {
+    return 'warning';
+  }
+
+  if (
+    normalized.includes('CANCELADO') ||
+    normalized.includes('NO_ACEPTA') ||
+    normalized.includes('SIN_DISPOSICION')
+  ) {
+    return 'error';
+  }
+
+  return 'default';
 }

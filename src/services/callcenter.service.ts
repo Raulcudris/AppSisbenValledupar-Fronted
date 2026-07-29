@@ -652,29 +652,39 @@ export async function getPendientesAsignarFuncionarioCallCenter(
   return response.data;
 }
 
-/**
- * Consulta los casos asignados al funcionario Call Center autenticado.
- *
- * Esta función alimenta la vista:
- * `/dashboard/callcenter/mis-registros`.
- *
- * @param filter paginación.
- * @returns página de casos asignados al funcionario.
- */
+function normalizeFilterValue(value: string | null | undefined, emptyValue: string) {
+  if (!value || value === emptyValue) {
+    return undefined;
+  }
+
+  return value;
+}
+
 export async function getMisRegistrosCallCenter(
-  filter: Pick<CallCenterFilter, 'page' | 'size'> = {},
+  filter: Pick<
+    CallCenterFilter,
+    | 'page'
+    | 'size'
+    | 'q'
+    | 'estadoCaso'
+    | 'tipoSolicitudCallcenter'
+    | 'condicion'
+  > = {},
 ) {
   const response = await apiRequest<ApiResponse<PageResponse<CallCenterResponse>>>(
     `/api/callcenter/mis-registros-callcenter${toQueryString({
       page: filter.page ?? 0,
       size: filter.size ?? 20,
+      q: filter.q,
+      estadoCaso: normalizeFilterValue(filter.estadoCaso, 'TODOS'),
+      tipoSolicitudCallcenter: normalizeFilterValue(filter.tipoSolicitudCallcenter, 'TODOS'),
+      condicion: normalizeFilterValue(filter.condicion, 'TODOS'),
       _t: Date.now(),
     })}`,
   );
 
   return response.data;
 }
-
 /**
  * Consulta funcionarios Call Center activos para asignación de casos.
  *

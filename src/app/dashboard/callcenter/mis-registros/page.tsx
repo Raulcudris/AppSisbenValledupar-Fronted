@@ -40,7 +40,6 @@ import {
 import { useRouter } from 'next/navigation';
 import {
   ChangeEvent,
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -112,11 +111,21 @@ const ESTADOS_CASO_FILTRO = [
 ];
 
 /**
+ * Tipos de solicitud disponibles para el filtro de Mis registros.
+ */
+const TIPOS_SOLICITUD_FILTRO = [
+  'NUEVA_ENCUESTA',
+  'INCLUSION',
+  'VERIFICACION',
+  'OTRO',
+];
+
+/**
  * Página de casos asignados al funcionario Call Center autenticado.
  *
- * Esta pantalla lista los casos asignados, permite aplicar filtros visuales
- * y abrir la gestión operativa del caso. El registro de llamadas y la
- * asignación de visita se realizan desde la pantalla de detalle.
+ * Esta pantalla lista los casos asignados, permite aplicar filtros desde
+ * backend y abrir la gestión operativa del caso. El registro de llamadas y
+ * la asignación de visita se realizan desde la pantalla de detalle.
  */
 export default function MisRegistrosCallCenterPage() {
   const router = useRouter();
@@ -141,32 +150,20 @@ export default function MisRegistrosCallCenterPage() {
   const size = pageData?.size ?? 20;
   const total = pageData?.totalElements ?? 0;
 
-  const filteredRecords = useMemo(() => {
-    return records.filter((record) => matchesFilters(record, appliedFilters));
-  }, [records, appliedFilters]);
-
   const casosAbiertos = useMemo(
     () => records.filter((record) => !isRecordClosed(record)).length,
-    [records]
+    [records],
   );
 
   const casosCerrados = useMemo(
     () => records.filter((record) => isRecordClosed(record)).length,
-    [records]
+    [records],
   );
 
   const casosConEncuestador = useMemo(
     () => records.filter((record) => hasEncuestador(record)).length,
-    [records]
+    [records],
   );
-
-  const tiposSolicitudDisponibles = useMemo(() => {
-    const values = records
-      .map((record) => record.tipoSolicitudCallcenter || 'NUEVA_ENCUESTA')
-      .filter((value) => Boolean(value));
-
-    return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, 'es'));
-  }, [records]);
 
   const hasActiveFilters = Boolean(
     searchText.trim()
@@ -203,18 +200,28 @@ export default function MisRegistrosCallCenterPage() {
   }
 
   /**
-   * Carga los registros asignados al funcionario Call Center autenticado.
+   * Carga los registros asignados al funcionario Call Center autenticado
+   * aplicando filtros desde backend.
    *
    * @param nextPage página solicitada.
    * @param nextSize tamaño de página.
+   * @param filters filtros aplicados.
    */
-  const load = useCallback(async (nextPage = 0, nextSize = 20) => {
+  async function load(
+    nextPage = 0,
+    nextSize = 20,
+    filters: RegistroFilterState = initialFilters,
+  ) {
     setLoading(true);
 
     try {
       const response = await getMisRegistrosCallCenter({
         page: nextPage,
         size: nextSize,
+        q: filters.q,
+        estadoCaso: filters.estadoCaso,
+        tipoSolicitudCallcenter: filters.tipoSolicitud,
+        condicion: filters.condicion,
       });
 
       setPageData(response);
@@ -227,28 +234,30 @@ export default function MisRegistrosCallCenterPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }
 
   useEffect(() => {
-    load(0, 20);
-  }, [load]);
+    load(0, 20, initialFilters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
-   * Ejecuta la búsqueda con los filtros seleccionados.
-   *
-   * Los filtros se aplican sobre los registros cargados en la página actual.
+   * Ejecuta la búsqueda con los filtros seleccionados contra backend.
    */
   function handleSearch() {
-    setAppliedFilters({
+    const nextFilters: RegistroFilterState = {
       q: searchText,
       estadoCaso: estadoCasoFiltro,
       tipoSolicitud: tipoSolicitudFiltro,
       condicion: condicionFiltro,
-    });
+    };
+
+    setAppliedFilters(nextFilters);
+    load(0, size, nextFilters);
   }
 
   /**
-   * Limpia los filtros visuales y aplicados.
+   * Limpia los filtros visuales y vuelve a consultar sin filtros.
    */
   function clearFilters() {
     setSearchText('');
@@ -256,34 +265,35 @@ export default function MisRegistrosCallCenterPage() {
     setTipoSolicitudFiltro('TODOS');
     setCondicionFiltro('TODOS');
     setAppliedFilters(initialFilters);
+    load(0, size, initialFilters);
   }
 
   /**
-   * Cambia la página de la tabla.
+   * Cambia la página de la tabla conservando filtros backend.
    *
    * @param _ evento no utilizado.
    * @param nextPage página siguiente.
    */
   function handlePageChange(_: unknown, nextPage: number) {
-    load(nextPage, size);
+    load(nextPage, size, appliedFilters);
   }
 
   /**
-   * Cambia el tamaño de página.
+   * Cambia el tamaño de página conservando filtros backend.
    *
    * @param event evento del selector de tamaño.
    */
   function handleRowsPerPageChange(
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
-    load(0, Number(event.target.value));
+    load(0, Number(event.target.value), appliedFilters);
   }
 
   /**
-   * Refresca la página actual de registros.
+   * Refresca la página actual conservando filtros backend.
    */
   function refresh() {
-    load(page, size);
+    load(page, size, appliedFilters);
   }
 
   /**
@@ -372,7 +382,7 @@ export default function MisRegistrosCallCenterPage() {
                 </Typography>
 
                 <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                  Selecciona los filtros y pulsa Buscar. Los filtros se aplican sobre la página actual cargada.
+                  Selecciona los filtros y pulsa Buscar. La consulta se realiza directamente en base de datos.
                 </Typography>
               </Box>
 
@@ -423,7 +433,7 @@ export default function MisRegistrosCallCenterPage() {
                   >
                     <MenuItem value="TODOS">Todas</MenuItem>
 
-                    {tiposSolicitudDisponibles.map((tipo) => (
+                    {TIPOS_SOLICITUD_FILTRO.map((tipo) => (
                       <MenuItem key={tipo} value={tipo}>
                         {formatLabel(tipo)}
                       </MenuItem>
@@ -459,7 +469,7 @@ export default function MisRegistrosCallCenterPage() {
                 <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
                   {loading
                     ? 'Actualizando registros...'
-                    : `Mostrando ${filteredRecords.length} de ${records.length} registro(s) cargado(s).`}
+                    : `Mostrando ${records.length} de ${total} registro(s).`}
                 </Typography>
 
                 <Box sx={{ display: 'flex', gap: 1, justifyContent: { xs: 'stretch', sm: 'flex-end' } }}>
@@ -494,13 +504,7 @@ export default function MisRegistrosCallCenterPage() {
         {records.length === 0 ? (
           <Paper sx={{ p: 3 }}>
             <Alert severity="info">
-              No tienes registros asignados.
-            </Alert>
-          </Paper>
-        ) : filteredRecords.length === 0 ? (
-          <Paper sx={{ p: 3 }}>
-            <Alert severity="warning">
-              No se encontraron registros con los filtros seleccionados.
+              No se encontraron registros con los filtros aplicados.
             </Alert>
           </Paper>
         ) : (
@@ -521,7 +525,7 @@ export default function MisRegistrosCallCenterPage() {
                 </TableHead>
 
                 <TableBody>
-                  {filteredRecords.map((record) => {
+                  {records.map((record) => {
                     const closed = isRecordClosed(record);
                     const encuestadorNombre = record.encuestadorAsignadoNombre
                       || record.encuestadorProgramadoNombre
@@ -708,64 +712,6 @@ function InfoCell({
 }
 
 /**
- * Evalúa si un registro cumple con los filtros aplicados.
- *
- * @param record registro evaluado.
- * @param filters filtros aplicados.
- * @returns true si el registro cumple.
- */
-function matchesFilters(record: CallCenterResponse, filters: RegistroFilterState) {
-  const estadoCaso = normalizeCode(record.estadoCaso);
-  const tipoSolicitud = normalizeCode(record.tipoSolicitudCallcenter || 'NUEVA_ENCUESTA');
-
-  if (filters.estadoCaso !== 'TODOS' && estadoCaso !== filters.estadoCaso) {
-    return false;
-  }
-
-  if (filters.tipoSolicitud !== 'TODOS' && tipoSolicitud !== normalizeCode(filters.tipoSolicitud)) {
-    return false;
-  }
-
-  if (filters.condicion === 'ABIERTOS' && isRecordClosed(record)) {
-    return false;
-  }
-
-  if (filters.condicion === 'CERRADOS' && !isRecordClosed(record)) {
-    return false;
-  }
-
-  if (filters.condicion === 'CON_ENCUESTADOR' && !hasEncuestador(record)) {
-    return false;
-  }
-
-  if (filters.condicion === 'SIN_ENCUESTADOR' && hasEncuestador(record)) {
-    return false;
-  }
-
-  const q = normalizeSearch(filters.q);
-
-  if (!q) {
-    return true;
-  }
-
-  const searchableText = normalizeSearch([
-    record.id,
-    record.nombreCompleto,
-    record.cedulaSolicitante,
-    record.telefono,
-    record.direccionTexto,
-    record.barrioNombre,
-    record.comunaNombre,
-    record.tipoSolicitudCallcenter,
-    record.estadoCaso,
-    record.encuestadorAsignadoNombre,
-    record.encuestadorProgramadoNombre,
-  ].filter((value) => value !== null && value !== undefined).join(' '));
-
-  return searchableText.includes(q);
-}
-
-/**
  * Valida si el registro tiene encuestador asociado.
  *
  * @param record registro evaluado.
@@ -831,20 +777,6 @@ function normalizeCode(value?: string | number | null) {
 }
 
 /**
- * Normaliza texto para búsqueda flexible.
- *
- * @param value valor recibido.
- * @returns texto normalizado.
- */
-function normalizeSearch(value?: string | number | null) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-/**
  * Convierte códigos técnicos en etiquetas legibles.
  *
  * @param value código técnico.
@@ -868,34 +800,34 @@ function getStatusColor(value?: string | null): ChipColor {
   const normalized = String(value ?? '').toUpperCase();
 
   if (
-    normalized.includes('CERRADO') ||
-    normalized.includes('REALIZADA') ||
-    normalized.includes('CONTACTADO')
+    normalized.includes('CERRADO')
+    || normalized.includes('REALIZADA')
+    || normalized.includes('CONTACTADO')
   ) {
     return 'success';
   }
 
   if (
-    normalized.includes('PENDIENTE') ||
-    normalized.includes('ASIGNADO') ||
-    normalized.includes('GESTION') ||
-    normalized.includes('PROGRAMADA')
+    normalized.includes('PENDIENTE')
+    || normalized.includes('ASIGNADO')
+    || normalized.includes('GESTION')
+    || normalized.includes('PROGRAMADA')
   ) {
     return 'info';
   }
 
   if (
-    normalized.includes('REPROGRAMADO') ||
-    normalized.includes('NO_CONTACTADO') ||
-    normalized.includes('NO_ATENDIDA')
+    normalized.includes('REPROGRAMADO')
+    || normalized.includes('NO_CONTACTADO')
+    || normalized.includes('NO_ATENDIDA')
   ) {
     return 'warning';
   }
 
   if (
-    normalized.includes('CANCELADO') ||
-    normalized.includes('SIN_DISPOSICION') ||
-    normalized.includes('NO_ACEPTA')
+    normalized.includes('CANCELADO')
+    || normalized.includes('SIN_DISPOSICION')
+    || normalized.includes('NO_ACEPTA')
   ) {
     return 'error';
   }

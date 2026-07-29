@@ -131,6 +131,10 @@ export type CallCenterFilter = {
    * Tipo de solicitud que originó el caso.
    */
   tipoSolicitudCallcenter?: CallCenterTipoSolicitud | string;
+  /**
+ * Condición funcional para filtros rápidos de Mis registros.
+ */
+condicion?: string;
 };
 
 /**

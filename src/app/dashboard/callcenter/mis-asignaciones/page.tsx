@@ -8,6 +8,11 @@ import FactCheckIcon from '@mui/icons-material/FactCheck';
 import FilterAltOffIcon from '@mui/icons-material/FilterAltOff';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
+import PersonIcon from '@mui/icons-material/Person';
+import PhoneIcon from '@mui/icons-material/Phone';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import ReplayIcon from '@mui/icons-material/Replay';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import SearchIcon from '@mui/icons-material/Search';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
@@ -34,11 +39,6 @@ import {
   Typography,
 } from '@mui/material';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import PersonIcon from '@mui/icons-material/Person';
-import PhoneIcon from '@mui/icons-material/Phone';
-import ReplayIcon from '@mui/icons-material/Replay';
-import ScheduleIcon from '@mui/icons-material/Schedule';
 
 import {
   actualizarCallCenterResultadoVisita,
@@ -63,6 +63,20 @@ type ChipColor =
   | 'warning';
 
 /**
+ * Estado local de filtros de visitas.
+ *
+ * Se separan los filtros escritos en pantalla de los filtros aplicados,
+ * para evitar consultas automáticas mientras el usuario escribe.
+ */
+type VisitaFilterState = {
+  q: string;
+  estadoVisita: string;
+  condicion: string;
+  fechaDesde: string;
+  fechaHasta: string;
+};
+
+/**
  * Estados permitidos para actualizar visitas desde frontend.
  */
 const ESTADOS_VISITA: CallCenterEstadoVisita[] = [
@@ -83,6 +97,17 @@ const ESTADOS_VISITA_FILTRO = [
   'REPROGRAMADA',
   'CANCELADA',
 ];
+
+/**
+ * Filtros iniciales de consulta.
+ */
+const initialFilters: VisitaFilterState = {
+  q: '',
+  estadoVisita: 'TODOS',
+  condicion: 'TODAS',
+  fechaDesde: '',
+  fechaHasta: '',
+};
 
 /**
  * Estado inicial del formulario de resultado de visita.
@@ -118,6 +143,7 @@ export default function PageMisAsignacionesCallCenter() {
   const [condicionFiltro, setCondicionFiltro] = useState('TODAS');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState<VisitaFilterState>(initialFilters);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -143,26 +169,30 @@ export default function PageMisAsignacionesCallCenter() {
     || fechaHasta
   );
 
-  const filteredItems = useMemo(() => {
-    return items.filter((item) => matchesFilters(
-      item,
-      searchText,
-      estadoVisitaFiltro,
-      condicionFiltro,
-      fechaDesde,
-      fechaHasta
-    ));
-  }, [items, searchText, estadoVisitaFiltro, condicionFiltro, fechaDesde, fechaHasta]);
-
   /**
-   * Carga las visitas asignadas al encuestador autenticado.
+   * Carga las visitas asignadas al encuestador autenticado aplicando filtros desde backend.
+   *
+   * @param nextPage página solicitada.
+   * @param nextSize tamaño de página.
+   * @param filters filtros aplicados.
    */
-  async function loadData() {
+  async function loadData(
+    nextPage = page,
+    nextSize = size,
+    filters = appliedFilters
+  ) {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await getMisCallCenterVisitas(page, size);
+      const response = await getMisCallCenterVisitas(nextPage, nextSize, {
+        q: filters.q,
+        estadoVisita: filters.estadoVisita,
+        condicion: filters.condicion,
+        fechaDesde: filters.fechaDesde,
+        fechaHasta: filters.fechaHasta,
+      });
+
       const content = getPageContent<CallCenterVisitaResponse>(response);
 
       setItems(content);
@@ -175,19 +205,38 @@ export default function PageMisAsignacionesCallCenter() {
   }
 
   useEffect(() => {
-    loadData();
+    loadData(page, size, appliedFilters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, size]);
+  }, [page, size, appliedFilters]);
 
   /**
-   * Refresca manualmente las visitas asignadas.
+   * Refresca manualmente las visitas asignadas usando los últimos filtros aplicados.
    */
   function refresh() {
-    loadData();
+    loadData(page, size, appliedFilters);
   }
 
   /**
-   * Limpia todos los filtros visuales de la página.
+   * Ejecuta la búsqueda con los filtros seleccionados.
+   *
+   * No se consulta automáticamente mientras el usuario escribe; la búsqueda
+   * se ejecuta únicamente al pulsar el botón Buscar.
+   */
+  function handleSearch() {
+    const nextFilters: VisitaFilterState = {
+      q: searchText,
+      estadoVisita: estadoVisitaFiltro,
+      condicion: condicionFiltro,
+      fechaDesde,
+      fechaHasta,
+    };
+
+    setPage(0);
+    setAppliedFilters(nextFilters);
+  }
+
+  /**
+   * Limpia todos los filtros visuales y vuelve a consultar las visitas sin filtros.
    */
   function clearFilters() {
     setSearchText('');
@@ -195,6 +244,8 @@ export default function PageMisAsignacionesCallCenter() {
     setCondicionFiltro('TODAS');
     setFechaDesde('');
     setFechaHasta('');
+    setPage(0);
+    setAppliedFilters(initialFilters);
   }
 
   /**
@@ -276,7 +327,7 @@ export default function PageMisAsignacionesCallCenter() {
 
       setSuccess('Resultado de visita actualizado correctamente.');
       handleCloseResultado();
-      await loadData();
+      await loadData(page, size, appliedFilters);
     } catch (exception) {
       setError(getErrorMessage(exception, 'No fue posible actualizar el resultado de visita.'));
     } finally {
@@ -284,7 +335,7 @@ export default function PageMisAsignacionesCallCenter() {
     }
   }
 
-  if (loading) {
+  if (loading && items.length === 0) {
     return (
       <Box
         sx={{
@@ -359,7 +410,7 @@ export default function PageMisAsignacionesCallCenter() {
               </Typography>
 
               <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                Los filtros se aplican sobre las visitas cargadas en la página actual.
+                Selecciona los filtros y pulsa Buscar para consultar en base de datos.
               </Typography>
             </Box>
 
@@ -444,17 +495,28 @@ export default function PageMisAsignacionesCallCenter() {
               }}
             >
               <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                {`Mostrando ${filteredItems.length} de ${items.length} visita(s) cargada(s).`}
+                {loading ? 'Buscando visitas...' : `Mostrando ${items.length} de ${total} visita(s).`}
               </Typography>
 
-              <Button
-                variant="text"
-                startIcon={<FilterAltOffIcon />}
-                onClick={clearFilters}
-                disabled={!hasActiveFilters}
-              >
-                Limpiar filtros
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1, justifyContent: { xs: 'stretch', sm: 'flex-end' } }}>
+                <Button
+                  variant="contained"
+                  startIcon={<SearchIcon />}
+                  onClick={handleSearch}
+                  disabled={loading}
+                >
+                  Buscar
+                </Button>
+
+                <Button
+                  variant="text"
+                  startIcon={<FilterAltOffIcon />}
+                  onClick={clearFilters}
+                  disabled={!hasActiveFilters || loading}
+                >
+                  Limpiar filtros
+                </Button>
+              </Box>
             </Box>
           </Box>
         </CardContent>
@@ -469,11 +531,7 @@ export default function PageMisAsignacionesCallCenter() {
 
       {items.length === 0 ? (
         <Alert severity="info">
-          No tienes visitas asignadas en este momento.
-        </Alert>
-      ) : filteredItems.length === 0 ? (
-        <Alert severity="warning">
-          No se encontraron visitas con los filtros seleccionados.
+          No tienes visitas asignadas con los filtros aplicados.
         </Alert>
       ) : (
         <Box
@@ -485,9 +543,11 @@ export default function PageMisAsignacionesCallCenter() {
               xl: '1fr 1fr 1fr',
             },
             gap: 2,
+            opacity: loading ? 0.65 : 1,
+            pointerEvents: loading ? 'none' : 'auto',
           }}
         >
-          {filteredItems.map((item) => {
+          {items.map((item) => {
             const locked = isVisitLocked(item);
             const estadoCaso = getOptionalStringField(item, 'estadoCaso');
             const tipoSolicitud = getOptionalStringField(item, 'tipoSolicitudCallcenter');
@@ -668,10 +728,12 @@ export default function PageMisAsignacionesCallCenter() {
 
       <TablePagination
         component="div"
-        count={hasActiveFilters ? filteredItems.length : total}
+        count={total}
         page={page}
         rowsPerPage={size}
-        onPageChange={(_, newPage) => setPage(newPage)}
+        onPageChange={(_, newPage) => {
+          setPage(newPage);
+        }}
         onRowsPerPageChange={(event) => {
           setSize(Number(event.target.value));
           setPage(0);
@@ -931,103 +993,6 @@ function isVisitLocked(item: CallCenterVisitaResponse) {
 }
 
 /**
- * Evalúa si una visita cumple con los filtros activos de la pantalla.
- *
- * @param item visita evaluada.
- * @param searchText texto de búsqueda.
- * @param estadoVisitaFiltro estado de visita seleccionado.
- * @param condicionFiltro condición seleccionada.
- * @param fechaDesde fecha inicial.
- * @param fechaHasta fecha final.
- * @returns true si cumple con los filtros.
- */
-function matchesFilters(
-  item: CallCenterVisitaResponse,
-  searchText: string,
-  estadoVisitaFiltro: string,
-  condicionFiltro: string,
-  fechaDesde: string,
-  fechaHasta: string
-) {
-  const normalizedSearch = normalizeSearch(searchText);
-  const estadoVisita = normalizeCode(item.estadoVisita);
-  const estadoCaso = normalizeCode(getOptionalStringField(item, 'estadoCaso'));
-
-  if (estadoVisitaFiltro !== 'TODOS' && estadoVisita !== estadoVisitaFiltro) {
-    return false;
-  }
-
-  if (condicionFiltro === 'ABIERTAS' && isVisitLocked(item)) {
-    return false;
-  }
-
-  if (condicionFiltro === 'FINALIZADAS' && !isVisitLocked(item)) {
-    return false;
-  }
-
-  if (condicionFiltro === 'CERRADO' && estadoCaso !== 'CERRADO') {
-    return false;
-  }
-
-  if (condicionFiltro === 'CANCELADO' && estadoCaso !== 'CANCELADO') {
-    return false;
-  }
-
-  if (!isDateInRange(item.fechaProgramada ?? null, fechaDesde, fechaHasta)) {
-    return false;
-  }
-
-  if (!normalizedSearch) {
-    return true;
-  }
-
-  const searchableText = normalizeSearch([
-    item.callCenterRegistroId,
-    item.id,
-    item.nombreCompleto,
-    item.cedulaSolicitante,
-    item.telefono,
-    item.direccionTexto,
-    item.barrioNombre,
-    item.comunaNombre,
-    item.encuestadorNombre,
-    item.tipoSolicitudCallcenter,
-    item.estadoVisita,
-    estadoCaso,
-  ].filter((value) => value !== null && value !== undefined).join(' '));
-
-  return searchableText.includes(normalizedSearch);
-}
-
-/**
- * Valida si una fecha está dentro del rango seleccionado.
- *
- * @param dateValue fecha del registro.
- * @param from fecha inicial.
- * @param to fecha final.
- * @returns true si la fecha cumple con el rango.
- */
-function isDateInRange(dateValue: string | null, from: string, to: string) {
-  if (!from && !to) {
-    return true;
-  }
-
-  if (!dateValue) {
-    return false;
-  }
-
-  if (from && dateValue < from) {
-    return false;
-  }
-
-  if (to && dateValue > to) {
-    return false;
-  }
-
-  return true;
-}
-
-/**
  * Obtiene un icono representativo según el estado de la visita.
  *
  * @param item visita evaluada.
@@ -1067,20 +1032,6 @@ function getVisitIcon(item: CallCenterVisitaResponse) {
  */
 function normalizeCode(value?: string | number | null) {
   return String(value ?? '').trim().toUpperCase();
-}
-
-/**
- * Normaliza texto para búsqueda flexible.
- *
- * @param value valor recibido.
- * @returns texto normalizado.
- */
-function normalizeSearch(value?: string | number | null) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
 }
 
 /**

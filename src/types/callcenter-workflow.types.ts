@@ -198,3 +198,18 @@ export type CallCenterPageResponse<T> = {
   page?: number;
   size?: number;
 };
+
+/**
+ * Filtros para consultar las visitas asignadas desde backend.
+ *
+ * Estos filtros alimentan la pantalla:
+ * `/dashboard/callcenter/mis-asignaciones`.
+ */
+export type CallCenterVisitaFilterRequest = {
+  q?: string | null;
+  estadoVisita?: string | null;
+  estadoCaso?: string | null;
+  condicion?: string | null;
+  fechaDesde?: string | null;
+  fechaHasta?: string | null;
+};

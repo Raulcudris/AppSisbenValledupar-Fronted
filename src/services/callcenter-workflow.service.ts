@@ -5,6 +5,7 @@ import {
   CallCenterPageResponse,
   CallCenterResultadoLlamadaResponse,
   CallCenterVisitaAsignacionRequest,
+  CallCenterVisitaFilterRequest,
   CallCenterVisitaResponse,
   CallCenterVisitaResultadoRequest,
 } from '@/types/callcenter-workflow.types';
@@ -167,21 +168,44 @@ export async function asignarCallCenterVisita(
  *
  * @param page página solicitada.
  * @param size cantidad de registros por página.
+ * @param filter filtros de búsqueda aplicados desde backend.
  * @returns respuesta paginada de visitas.
  */
 export async function getMisCallCenterVisitas(
   page = 0,
   size = 20,
+  filter: CallCenterVisitaFilterRequest = {},
 ): Promise<CallCenterPageResponse<CallCenterVisitaResponse>> {
   const response = await apiRequest(
     `/api/callcenter/visitas/mis-asignaciones${toQueryString({
       page,
       size,
+      q: filter.q,
+      estadoVisita: normalizeFilterValue(filter.estadoVisita, 'TODOS'),
+      estadoCaso: normalizeFilterValue(filter.estadoCaso, 'TODOS'),
+      condicion: normalizeFilterValue(filter.condicion, 'TODAS'),
+      fechaDesde: filter.fechaDesde,
+      fechaHasta: filter.fechaHasta,
       _t: Date.now(),
     })}`,
   );
 
   return unwrapApiResponse<CallCenterPageResponse<CallCenterVisitaResponse>>(response);
+}
+
+/**
+ * Limpia valores visuales de filtros antes de enviarlos al backend.
+ *
+ * @param value valor seleccionado.
+ * @param emptyValue valor que representa "sin filtro".
+ * @returns valor útil o undefined.
+ */
+function normalizeFilterValue(value: string | null | undefined, emptyValue: string) {
+  if (!value || value === emptyValue) {
+    return undefined;
+  }
+
+  return value;
 }
 
 /**

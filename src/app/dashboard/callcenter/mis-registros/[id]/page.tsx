@@ -3,6 +3,8 @@
 import AddIcCallIcon from '@mui/icons-material/AddIcCall';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import EditIcon from '@mui/icons-material/Edit';
+import SaveIcon from '@mui/icons-material/Save';
 import {
   Alert,
   Box,
@@ -30,7 +32,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 import { apiRequest } from '@/lib/apiClient';
-import { getCallCenterEncuestadoresOptions } from '@/services/callcenter.service';
+import {
+  getCallCenterEncuestadoresOptions,
+  updateCallCenterRegistro,
+} from '@/services/callcenter.service';
 import {
   asignarCallCenterVisita,
   getCallCenterLlamadas,
@@ -39,8 +44,7 @@ import {
   registrarCallCenterLlamada,
 } from '@/services/callcenter-workflow.service';
 import { ApiResponse } from '@/types/api.types';
-import { CallCenterResponse } from '@/types/callcenter.types';
-import { SelectOption } from '@/types/catalog.types';
+import { CallCenterRequest, CallCenterResponse } from '@/types/callcenter.types';
 import {
   CallCenterGestionLlamadaRequest,
   CallCenterGestionLlamadaResponse,
@@ -48,6 +52,7 @@ import {
   CallCenterVisitaAsignacionRequest,
   CallCenterVisitaResponse,
 } from '@/types/callcenter-workflow.types';
+import { SelectOption } from '@/types/catalog.types';
 
 /**
  * Color permitido para chips de estado.
@@ -60,6 +65,29 @@ type ChipColor =
   | 'info'
   | 'success'
   | 'warning';
+
+/**
+ * Estructura local para leer catálogos simples del backend.
+ */
+type CallCenterCatalogItem = {
+  id: number;
+  codigo?: string | null;
+  nombre?: string | null;
+  descripcion?: string | null;
+  activo?: boolean | null;
+};
+
+/**
+ * Estado local del formulario de edición del caso.
+ */
+type CallCenterEditFormState = {
+  cedulaSolicitante: string;
+  nombreCompleto: string;
+  telefono: string;
+  direccionTexto: string;
+  tipoSolicitudCallcenter: string;
+  observacion: string;
+};
 
 /**
  * Estado inicial del formulario para registrar llamadas.
@@ -83,11 +111,34 @@ const initialVisitaForm: CallCenterVisitaAsignacionRequest = {
   horaProgramada: null,
   observacion: '',
 };
+
+/**
+ * Estado inicial del formulario de edición.
+ */
+const initialEditForm: CallCenterEditFormState = {
+  cedulaSolicitante: '',
+  nombreCompleto: '',
+  telefono: '',
+  direccionTexto: '',
+  tipoSolicitudCallcenter: 'NUEVA_ENCUESTA',
+  observacion: '',
+};
+
+/**
+ * Tipos de solicitud permitidos en el flujo Call Center.
+ */
+const TIPOS_SOLICITUD = [
+  'NUEVA_ENCUESTA',
+  'INCLUSION',
+  'VERIFICACION',
+  'OTRO',
+];
+
 /**
  * Página de gestión operativa del caso Call Center.
  *
- * Esta vista permite consultar la trazabilidad del caso, registrar llamadas
- * y asignar visitas únicamente cuando el caso permanece abierto.
+ * Esta vista permite consultar la trazabilidad del caso, editar datos generales,
+ * registrar llamadas y asignar visitas únicamente cuando el caso permanece abierto.
  */
 export default function PageCallCenterGestionCaso() {
   const router = useRouter();
@@ -101,6 +152,7 @@ export default function PageCallCenterGestionCaso() {
 
   const [caso, setCaso] = useState<CallCenterResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [savingLlamada, setSavingLlamada] = useState(false);
   const [savingVisita, setSavingVisita] = useState(false);
 
@@ -108,10 +160,13 @@ export default function PageCallCenterGestionCaso() {
   const [llamadas, setLlamadas] = useState<CallCenterGestionLlamadaResponse[]>([]);
   const [visitas, setVisitas] = useState<CallCenterVisitaResponse[]>([]);
   const [encuestadores, setEncuestadores] = useState<SelectOption[]>([]);
+  const [motivosNoContacto, setMotivosNoContacto] = useState<SelectOption[]>([]);
 
+  const [openEdit, setOpenEdit] = useState(false);
   const [openLlamada, setOpenLlamada] = useState(false);
   const [openVisita, setOpenVisita] = useState(false);
 
+  const [editForm, setEditForm] = useState<CallCenterEditFormState>(initialEditForm);
   const [llamadaForm, setLlamadaForm] = useState<CallCenterGestionLlamadaRequest>(initialLlamadaForm);
   const [visitaForm, setVisitaForm] = useState<CallCenterVisitaAsignacionRequest>(initialVisitaForm);
 
@@ -147,12 +202,14 @@ export default function PageCallCenterGestionCaso() {
         llamadasData,
         visitasData,
         encuestadoresData,
+        motivosNoContactoData,
       ] = await Promise.all([
         getCallCenterDetalle(caseId),
         getCallCenterResultadosLlamada(),
         getCallCenterLlamadas(caseId),
         getCallCenterVisitas(caseId),
         getCallCenterEncuestadoresOptions(),
+        getCallCenterMotivosNoContactoOptions(),
       ]);
 
       setCaso(casoData);
@@ -160,6 +217,7 @@ export default function PageCallCenterGestionCaso() {
       setLlamadas(llamadasData);
       setVisitas(visitasData);
       setEncuestadores(encuestadoresData);
+      setMotivosNoContacto(motivosNoContactoData);
     } catch (exception) {
       setError(getErrorMessage(exception, 'No fue posible cargar la gestión del caso Call Center.'));
     } finally {
@@ -171,6 +229,32 @@ export default function PageCallCenterGestionCaso() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
+
+  /**
+   * Abre el formulario de edición con los datos actuales del caso.
+   */
+  function openEditarDatos() {
+    if (!caso) {
+      setError('No fue posible cargar los datos del caso para edición.');
+      return;
+    }
+
+    if (caseClosedOrCancelled) {
+      setError('No se pueden editar datos de un caso cerrado o cancelado.');
+      return;
+    }
+
+    setEditForm({
+      cedulaSolicitante: caso.cedulaSolicitante || '',
+      nombreCompleto: caso.nombreCompleto || '',
+      telefono: caso.telefono || '',
+      direccionTexto: caso.direccionTexto || '',
+      tipoSolicitudCallcenter: caso.tipoSolicitudCallcenter || 'NUEVA_ENCUESTA',
+      observacion: caso.observacion || '',
+    });
+
+    setOpenEdit(true);
+  }
 
   /**
    * Abre el formulario de llamada con valores iniciales.
@@ -185,6 +269,7 @@ export default function PageCallCenterGestionCaso() {
 
     setLlamadaForm({
       ...initialLlamadaForm,
+      llamadaConectada: false,
       fechaLlamada: now.toISOString().slice(0, 10),
       horaLlamada: now.toTimeString().slice(0, 5),
     });
@@ -206,6 +291,53 @@ export default function PageCallCenterGestionCaso() {
   }
 
   /**
+   * Guarda la edición de datos generales del caso.
+   */
+  async function handleActualizarDatos() {
+    if (!caseId || !caso) {
+      return;
+    }
+
+    if (caseClosedOrCancelled) {
+      setError('No se pueden editar datos de un caso cerrado o cancelado.');
+      return;
+    }
+
+    if (!editForm.nombreCompleto.trim()) {
+      setError('Debe registrar el nombre completo del ciudadano.');
+      return;
+    }
+
+    if (!editForm.cedulaSolicitante.trim()) {
+      setError('Debe registrar la cédula del ciudadano.');
+      return;
+    }
+
+    if (!editForm.telefono.trim()) {
+      setError('Debe registrar el teléfono del ciudadano.');
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      setError(null);
+
+      await updateCallCenterRegistro(
+        Number(caseId),
+        buildUpdateRequest(caso, editForm),
+      );
+
+      setSuccess('Datos del caso actualizados correctamente.');
+      setOpenEdit(false);
+      await loadData();
+    } catch (exception) {
+      setError(getErrorMessage(exception, 'No fue posible actualizar los datos del caso.'));
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  /**
    * Registra una llamada y refresca el historial del caso.
    */
   async function handleRegistrarLlamada() {
@@ -220,6 +352,11 @@ export default function PageCallCenterGestionCaso() {
 
     if (!llamadaForm.resultadoLlamada) {
       setError('Debe seleccionar el resultado de la llamada.');
+      return;
+    }
+
+    if (!llamadaForm.llamadaConectada && !llamadaForm.motivoNoContactoId) {
+      setError('Debe seleccionar el motivo por el cual no se logró conectar la llamada.');
       return;
     }
 
@@ -311,7 +448,7 @@ export default function PageCallCenterGestionCaso() {
           </Typography>
 
           <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-            Gestión telefónica, asignación de visita y trazabilidad del caso.
+            Gestión telefónica, edición de datos, asignación de visita y trazabilidad del caso.
           </Typography>
         </Box>
 
@@ -328,6 +465,15 @@ export default function PageCallCenterGestionCaso() {
             onClick={() => router.push('/dashboard/callcenter/mis-registros')}
           >
             Volver
+          </Button>
+
+          <Button
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={openEditarDatos}
+            disabled={caseClosedOrCancelled || !caso}
+          >
+            Editar datos
           </Button>
 
           <Button
@@ -352,8 +498,8 @@ export default function PageCallCenterGestionCaso() {
 
       {caseClosedOrCancelled && (
         <Alert severity={estadoCaso === 'CERRADO' ? 'success' : 'warning'}>
-          Este caso se encuentra <strong>{formatLabel(estadoCaso)}</strong>. No permite registrar nuevas llamadas
-          ni asignar nuevas visitas. La información se muestra solo para consulta y trazabilidad.
+          Este caso se encuentra <strong>{formatLabel(estadoCaso)}</strong>. No permite registrar nuevas llamadas,
+          editar datos ni asignar nuevas visitas. La información se muestra solo para consulta y trazabilidad.
         </Alert>
       )}
 
@@ -421,6 +567,7 @@ export default function PageCallCenterGestionCaso() {
               <InfoItem label="Barrio" value={caso.barrioNombre || 'Sin barrio'} />
               <InfoItem label="Comuna" value={caso.comunaNombre || 'Sin comuna'} />
               <InfoItem label="Encuestador" value={caso.encuestadorAsignadoNombre || 'Sin asignar'} />
+              <InfoItem label="Observación" value={caso.observacion || 'Sin observación'} />
 
               {caseClosedOrCancelled && (
                 <>
@@ -495,7 +642,11 @@ export default function PageCallCenterGestionCaso() {
                           </Typography>
 
                           <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                            {`Funcionario: ${item.funcionarioCallcenterNombre ?? item.funcionarioCallcenterUsername ?? 'No disponible'}`}
+                            {`Funcionario: ${
+                              item.funcionarioCallcenterNombre
+                              ?? item.funcionarioCallcenterUsername
+                              ?? 'No disponible'
+                            }`}
                           </Typography>
                         </Box>
 
@@ -609,6 +760,103 @@ export default function PageCallCenterGestionCaso() {
         </Card>
       </Box>
 
+      <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Editar datos del caso</DialogTitle>
+
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Nombre completo"
+              value={editForm.nombreCompleto}
+              onChange={(event) => setEditForm((current) => ({
+                ...current,
+                nombreCompleto: event.target.value,
+              }))}
+              fullWidth
+              required
+            />
+
+            <TextField
+              label="Cédula"
+              value={editForm.cedulaSolicitante}
+              onChange={(event) => setEditForm((current) => ({
+                ...current,
+                cedulaSolicitante: event.target.value,
+              }))}
+              fullWidth
+              required
+            />
+
+            <TextField
+              label="Teléfono"
+              value={editForm.telefono}
+              onChange={(event) => setEditForm((current) => ({
+                ...current,
+                telefono: event.target.value,
+              }))}
+              fullWidth
+              required
+            />
+
+            <TextField
+              label="Dirección"
+              value={editForm.direccionTexto}
+              onChange={(event) => setEditForm((current) => ({
+                ...current,
+                direccionTexto: event.target.value,
+              }))}
+              fullWidth
+            />
+
+            <FormControl fullWidth>
+              <InputLabel>Tipo de solicitud</InputLabel>
+
+              <Select
+                label="Tipo de solicitud"
+                value={editForm.tipoSolicitudCallcenter}
+                onChange={(event) => setEditForm((current) => ({
+                  ...current,
+                  tipoSolicitudCallcenter: String(event.target.value),
+                }))}
+              >
+                {TIPOS_SOLICITUD.map((tipo) => (
+                  <MenuItem key={tipo} value={tipo}>
+                    {formatLabel(tipo)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <TextField
+              label="Observación general"
+              value={editForm.observacion}
+              onChange={(event) => setEditForm((current) => ({
+                ...current,
+                observacion: event.target.value,
+              }))}
+              minRows={3}
+              multiline
+              fullWidth
+            />
+          </Box>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setOpenEdit(false)}>
+            Cancelar
+          </Button>
+
+          <Button
+            variant="contained"
+            startIcon={<SaveIcon />}
+            disabled={savingEdit || caseClosedOrCancelled}
+            onClick={handleActualizarDatos}
+          >
+            {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={openLlamada} onClose={() => setOpenLlamada(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Registrar gestión de llamada</DialogTitle>
 
@@ -618,16 +866,27 @@ export default function PageCallCenterGestionCaso() {
               control={
                 <Switch
                   checked={llamadaForm.llamadaConectada}
-                  onChange={(event) => setLlamadaForm((current) => ({
-                    ...current,
-                    llamadaConectada: event.target.checked,
-                  }))}
+                  onChange={(event) => {
+                    const connected = event.target.checked;
+
+                    setLlamadaForm((current) => ({
+                      ...current,
+                      llamadaConectada: connected,
+                      motivoNoContactoId: connected ? null : current.motivoNoContactoId,
+                    }));
+                  }}
                 />
               }
-              label="Llamada conectada"
+              label={llamadaForm.llamadaConectada ? 'Llamada conectada: Sí' : 'Llamada conectada: No'}
             />
 
-            <FormControl fullWidth>
+            {!llamadaForm.llamadaConectada && (
+              <Alert severity="warning">
+                La llamada quedó marcada como <strong>No conectada</strong>. Debes registrar el motivo de no contacto.
+              </Alert>
+            )}
+
+            <FormControl fullWidth required>
               <InputLabel>Resultado de llamada</InputLabel>
 
               <Select
@@ -645,6 +904,31 @@ export default function PageCallCenterGestionCaso() {
                 ))}
               </Select>
             </FormControl>
+
+            {!llamadaForm.llamadaConectada && (
+              <FormControl fullWidth required>
+                <InputLabel>Motivo de no contacto</InputLabel>
+
+                <Select
+                  label="Motivo de no contacto"
+                  value={llamadaForm.motivoNoContactoId ? String(llamadaForm.motivoNoContactoId) : ''}
+                  onChange={(event) => setLlamadaForm((current) => ({
+                    ...current,
+                    motivoNoContactoId: event.target.value ? Number(event.target.value) : null,
+                  }))}
+                >
+                  <MenuItem value="">
+                    Selecciona el motivo
+                  </MenuItem>
+
+                  {motivosNoContacto.map((item) => (
+                    <MenuItem key={item.id} value={String(item.id)}>
+                      {item.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
             <TextField
               label="Fecha llamada"
@@ -694,7 +978,7 @@ export default function PageCallCenterGestionCaso() {
             disabled={savingLlamada || caseClosedOrCancelled}
             onClick={handleRegistrarLlamada}
           >
-            Guardar llamada
+            {savingLlamada ? 'Guardando...' : 'Guardar llamada'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -771,7 +1055,7 @@ export default function PageCallCenterGestionCaso() {
             disabled={savingVisita || caseClosedOrCancelled}
             onClick={handleAsignarVisita}
           >
-            Asignar visita
+            {savingVisita ? 'Asignando...' : 'Asignar visita'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -807,18 +1091,119 @@ export default function PageCallCenterGestionCaso() {
  */
 async function getCallCenterDetalle(id: string) {
   const response = await apiRequest<ApiResponse<CallCenterResponse> | CallCenterResponse>(
-    `/api/callcenter/${id}?_t=${Date.now()}`
+    `/api/callcenter/${id}?_t=${Date.now()}`,
   );
 
   if (
-    response &&
-    typeof response === 'object' &&
-    'data' in response
+    response
+    && typeof response === 'object'
+    && 'data' in response
   ) {
     return response.data;
   }
 
   return response as CallCenterResponse;
+}
+
+/**
+ * Consulta el catálogo de motivos de no contacto.
+ *
+ * Este catálogo se usa cuando el funcionario registra una llamada no conectada.
+ *
+ * @returns opciones para el selector de motivo de no contacto.
+ */
+async function getCallCenterMotivosNoContactoOptions() {
+  const response = await apiRequest<ApiResponse<CallCenterCatalogItem[]> | CallCenterCatalogItem[]>(
+    `/api/callcenter/catalogs/motivos-no-contacto?_t=${Date.now()}`,
+  );
+
+  const data = response
+    && typeof response === 'object'
+    && 'data' in response
+    ? response.data
+    : response as CallCenterCatalogItem[];
+
+  return (data ?? []).map((item) => ({
+    id: item.id,
+    label: item.nombre || item.codigo || `Motivo #${item.id}`,
+  }));
+}
+
+/**
+ * Construye el request completo para actualizar el caso Call Center.
+ *
+ * <p>Se conservan los datos actuales del caso y solo se reemplazan los campos
+ * editados desde el formulario. Esto evita borrar información existente al
+ * ejecutar el PUT del backend.</p>
+ *
+ * @param caso caso actual.
+ * @param form datos editados.
+ * @returns request completo para actualización.
+ */
+function buildUpdateRequest(
+  caso: CallCenterResponse,
+  form: CallCenterEditFormState,
+): CallCenterRequest {
+  const legacyCallConnected = resolveLegacyCallConnected(caso);
+
+  return {
+    marcaTemporal: caso.marcaTemporal ?? null,
+    fechaLlamada: caso.fechaLlamada ?? null,
+    horaLlamada: caso.horaLlamada ?? null,
+    tipoRegistro: caso.tipoRegistro ?? 'LLAMADA',
+    origenRegistro: caso.origenRegistro ?? 'MANUAL',
+    ventanillaRegistroId: caso.ventanillaRegistroId ?? null,
+
+    cedulaSolicitante: form.cedulaSolicitante.trim(),
+    nombreCompleto: form.nombreCompleto.trim(),
+    telefono: form.telefono.trim(),
+    llamadaConectada: legacyCallConnected as unknown as boolean,
+
+    motivoNoContactoId: caso.motivoNoContactoId ?? null,
+    motivoNoContactoTexto: caso.motivoNoContactoTexto ?? null,
+    encuestadorProgramadoId: caso.encuestadorProgramadoId ?? null,
+    fechaEncuestaProgramada: caso.fechaEncuestaProgramada ?? null,
+
+    solicitoNuevaEncuesta: caso.solicitoNuevaEncuesta ?? true,
+    direccionTexto: form.direccionTexto.trim() || null,
+    barrioId: caso.barrioId ?? null,
+    fechaAplicacionInformada: caso.fechaAplicacionInformada ?? null,
+    disposicionRecibirEncuesta: caso.disposicionRecibirEncuesta ?? null,
+
+    motivoNoDisposicionId: caso.motivoNoDisposicionId ?? null,
+    motivoNoDisposicionTexto: caso.motivoNoDisposicionTexto ?? null,
+    encuestadorAsignadoId: caso.encuestadorAsignadoId ?? null,
+    explicoInformanteCalificado: caso.explicoInformanteCalificado ?? null,
+
+    observacion: form.observacion.trim() || null,
+    activo: caso.activo ?? true,
+    verificado: caso.verificado ?? null,
+
+    estadoCaso: caso.estadoCaso ?? 'ASIGNADO_CALLCENTER',
+    tipoSolicitudCallcenter: form.tipoSolicitudCallcenter || 'NUEVA_ENCUESTA',
+  };
+}
+
+/**
+ * Resuelve el valor legacy de llamada conectada para editar datos generales.
+ *
+ * <p>Si el caso tiene llamada no conectada pero no tiene motivo asociado, se
+ * envía null para no disparar la validación de motivo en una edición general.</p>
+ *
+ * @param caso caso actual.
+ * @returns valor seguro para actualización.
+ */
+function resolveLegacyCallConnected(caso: CallCenterResponse) {
+  const hasNoContactReason = Boolean(
+    caso.motivoNoContactoId
+    || caso.motivoNoContactoTexto,
+  );
+
+  if (caso.llamadaConectada === false && !hasNoContactReason) {
+    return null;
+  }
+
+  return caso.llamadaConectada ?? null;
 }
 
 /**
@@ -879,10 +1264,10 @@ function isCaseClosedOrCancelled(value?: string | null) {
  */
 function getErrorMessage(exception: unknown, fallback: string) {
   if (
-    exception &&
-    typeof exception === 'object' &&
-    'message' in exception &&
-    typeof exception.message === 'string'
+    exception
+    && typeof exception === 'object'
+    && 'message' in exception
+    && typeof exception.message === 'string'
   ) {
     return exception.message;
   }
@@ -914,33 +1299,33 @@ function getStatusColor(value?: string | null): ChipColor {
   const normalized = String(value ?? '').toUpperCase();
 
   if (
-    normalized.includes('REALIZADA') ||
-    normalized.includes('CERRADO') ||
-    normalized.includes('CONTACTADO_ACEPTA')
+    normalized.includes('REALIZADA')
+    || normalized.includes('CERRADO')
+    || normalized.includes('CONTACTADO_ACEPTA')
   ) {
     return 'success';
   }
 
   if (
-    normalized.includes('PENDIENTE') ||
-    normalized.includes('PROGRAMADA') ||
-    normalized.includes('ASIGNADO')
+    normalized.includes('PENDIENTE')
+    || normalized.includes('PROGRAMADA')
+    || normalized.includes('ASIGNADO')
   ) {
     return 'info';
   }
 
   if (
-    normalized.includes('REPROGRAMADO') ||
-    normalized.includes('NO_CONTACTADO') ||
-    normalized.includes('NO_ATENDIDA')
+    normalized.includes('REPROGRAMADO')
+    || normalized.includes('NO_CONTACTADO')
+    || normalized.includes('NO_ATENDIDA')
   ) {
     return 'warning';
   }
 
   if (
-    normalized.includes('CANCELADO') ||
-    normalized.includes('NO_ACEPTA') ||
-    normalized.includes('SIN_DISPOSICION')
+    normalized.includes('CANCELADO')
+    || normalized.includes('NO_ACEPTA')
+    || normalized.includes('SIN_DISPOSICION')
   ) {
     return 'error';
   }

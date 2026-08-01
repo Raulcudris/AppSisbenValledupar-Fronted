@@ -146,6 +146,12 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
     roles: CALLCENTER_ADMIN_ROLES,
   },
   {
+  label: 'Jornada de encuestas',
+  href: '/dashboard/callcenter/jornada',
+  iconKey: 'callcenter',
+  roles: CALLCENTER_ADMIN_ROLES,
+},
+  {
     label: 'Mis registros Call Center',
     href: '/dashboard/callcenter/mis-registros',
     iconKey: 'callcenter',
@@ -273,6 +279,15 @@ export const dashboardActions: DashboardActionItem[] = [
     primary: true,
   },
   {
+  title: 'Jornada de encuestas',
+  description: 'Agrega ciudadanos de última hora y asigna directamente su visita.',
+  href: '/dashboard/callcenter/jornada',
+  buttonLabel: 'Abrir jornada',
+  iconKey: 'callcenter',
+  roles: CALLCENTER_ADMIN_ROLES,
+  primary: true,
+},
+  {
     title: 'Mis registros Call Center',
     description: 'Gestiona llamadas y seguimiento de los casos asignados a tu usuario.',
     href: '/dashboard/callcenter/mis-registros',
@@ -365,6 +380,7 @@ ADMIN: [
   '/dashboard/dmc',
   '/dashboard/dmc/registros',
   '/dashboard/callcenter',
+  '/dashboard/callcenter/jornada',
   '/dashboard/callcenter/registros',
   '/dashboard/callcenter/registros/nuevo',
   '/dashboard/callcenter/registros/cargar-ventanilla',
@@ -390,6 +406,7 @@ ADMIN: [
     '/dashboard/callcenter/registros/nuevo',
     '/dashboard/callcenter/registros/cargar-ventanilla',
     '/dashboard/callcenter/asignar-funcionarios',
+    '/dashboard/callcenter/jornada',
     '/dashboard/auditoria',
     '/dashboard/reportes',
     '/dashboard/exportaciones',
@@ -402,6 +419,7 @@ ADMIN: [
     '/dashboard/callcenter/registros/nuevo',
     '/dashboard/callcenter/registros/cargar-ventanilla',
     '/dashboard/callcenter/asignar-funcionarios',
+    '/dashboard/callcenter/jornada',
     '/dashboard/cuenta/cambiar-password',
   ],
   FUNCIONARIO_VENTANILLA: [

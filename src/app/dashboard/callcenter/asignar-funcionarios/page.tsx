@@ -2,15 +2,24 @@
 
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import FilterAltOffIcon from '@mui/icons-material/FilterAltOff';
+import PersonIcon from '@mui/icons-material/Person';
+import PhoneIcon from '@mui/icons-material/Phone';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
 import {
   Alert,
   Box,
   Button,
+  Card,
+  CardContent,
   Checkbox,
   Chip,
+  FormControl,
+  InputLabel,
   MenuItem,
   Paper,
+  Select,
   Snackbar,
   Table,
   TableBody,
@@ -24,12 +33,13 @@ import {
   Typography,
 } from '@mui/material';
 import { useRouter } from 'next/navigation';
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import {
   asignarFuncionarioCallCenter,
   getFuncionariosCallCenterOptions,
   getPendientesAsignarFuncionarioCallCenter,
+  searchCallCenter,
 } from '@/services/callcenter.service';
 import { PageResponse } from '@/types/api.types';
 import { CallCenterUserOptionResponse } from '@/types/callcenter-assignment.types';
@@ -45,20 +55,56 @@ type SnackbarState = {
 };
 
 /**
+ * Color permitido para chips de estado.
+ */
+type ChipColor =
+  | 'default'
+  | 'primary'
+  | 'secondary'
+  | 'error'
+  | 'info'
+  | 'success'
+  | 'warning';
+
+/**
+ * Filtros para consultar registros ya asignados a un funcionario Call Center.
+ */
+type AssignedFilterState = {
+  funcionarioId: string;
+  q: string;
+};
+
+/**
+ * Filtros iniciales de la consulta de registros asignados.
+ */
+const initialAssignedFilters: AssignedFilterState = {
+  funcionarioId: '',
+  q: '',
+};
+
+/**
  * Página de asignación de casos Call Center a funcionarios.
  *
  * Esta vista pertenece al flujo del Coordinador / Enrutador Call Center.
- * Su responsabilidad es tomar los casos pendientes de enrutamiento y
- * asignarlos a un funcionario Call Center para que este gestione las llamadas.
+ * Permite asignar casos pendientes a funcionarios Call Center y consultar
+ * los ciudadanos que ya fueron asignados a cada funcionario.
  */
 export default function AsignarFuncionariosCallCenterPage() {
   const router = useRouter();
 
   const [pageData, setPageData] = useState<PageResponse<CallCenterResponse> | null>(null);
+  const [assignedPageData, setAssignedPageData] = useState<PageResponse<CallCenterResponse> | null>(null);
+
   const [funcionarios, setFuncionarios] = useState<CallCenterUserOptionResponse[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [funcionarioId, setFuncionarioId] = useState('');
-  const [loading, setLoading] = useState(false);
+
+  const [assignedFuncionarioId, setAssignedFuncionarioId] = useState('');
+  const [assignedSearchText, setAssignedSearchText] = useState('');
+  const [appliedAssignedFilters, setAppliedAssignedFilters] = useState<AssignedFilterState>(initialAssignedFilters);
+
+  const [loadingPending, setLoadingPending] = useState(false);
+  const [loadingAssigned, setLoadingAssigned] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [snackbar, setSnackbar] = useState<SnackbarState>({
@@ -72,12 +118,44 @@ export default function AsignarFuncionariosCallCenterPage() {
   const size = pageData?.size ?? 20;
   const total = pageData?.totalElements ?? 0;
 
+  const assignedRecords = assignedPageData?.content ?? [];
+  const assignedPage = assignedPageData?.page ?? 0;
+  const assignedSize = assignedPageData?.size ?? 10;
+  const assignedTotal = assignedPageData?.totalElements ?? 0;
+
   const allVisibleSelected = records.length > 0
     && records.every((record) => selectedIds.includes(record.id));
 
   const someVisibleSelected = records.some((record) => selectedIds.includes(record.id));
 
   const selectedCount = useMemo(() => selectedIds.length, [selectedIds]);
+
+  const selectedFuncionarioName = useMemo(
+    () => getFuncionarioLabel(funcionarios.find((item) => String(item.id) === funcionarioId)),
+    [funcionarios, funcionarioId],
+  );
+
+  const assignedFuncionarioName = useMemo(
+    () => getFuncionarioLabel(funcionarios.find((item) => String(item.id) === assignedFuncionarioId)),
+    [funcionarios, assignedFuncionarioId],
+  );
+
+  const assignedHasFilters = Boolean(assignedFuncionarioId || assignedSearchText.trim());
+
+  useEffect(() => {
+    void loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Carga datos iniciales de la vista.
+   */
+  async function loadInitialData() {
+    await Promise.all([
+      loadCatalogs(),
+      loadPending(0, 20),
+    ]);
+  }
 
   /**
    * Muestra un mensaje temporal en pantalla.
@@ -107,13 +185,26 @@ export default function AsignarFuncionariosCallCenterPage() {
   }
 
   /**
+   * Carga el catálogo de funcionarios Call Center activos.
+   */
+  async function loadCatalogs() {
+    try {
+      const data = await getFuncionariosCallCenterOptions();
+
+      setFuncionarios(data);
+    } catch {
+      showMessage('No fue posible cargar funcionarios Call Center.', 'warning');
+    }
+  }
+
+  /**
    * Carga los casos pendientes por asignar a funcionarios Call Center.
    *
    * @param nextPage página solicitada.
    * @param nextSize cantidad de registros por página.
    */
-  const load = useCallback(async (nextPage = 0, nextSize = 20) => {
-    setLoading(true);
+  async function loadPending(nextPage = 0, nextSize = 20) {
+    setLoadingPending(true);
 
     try {
       const response = await getPendientesAsignarFuncionarioCallCenter({
@@ -130,30 +221,52 @@ export default function AsignarFuncionariosCallCenterPage() {
 
       showMessage(message, 'error');
     } finally {
-      setLoading(false);
+      setLoadingPending(false);
     }
-  }, []);
+  }
 
   /**
-   * Carga el catálogo de funcionarios Call Center activos.
+   * Consulta los registros ya asignados a un funcionario Call Center.
+   *
+   * @param nextPage página solicitada.
+   * @param nextSize cantidad de registros por página.
+   * @param filters filtros aplicados.
    */
-  const loadCatalogs = useCallback(async () => {
-    try {
-      const data = await getFuncionariosCallCenterOptions();
-
-      setFuncionarios(data);
-    } catch {
-      showMessage('No fue posible cargar funcionarios Call Center.', 'warning');
+  async function loadAssigned(
+    nextPage = 0,
+    nextSize = 10,
+    filters: AssignedFilterState = appliedAssignedFilters,
+  ) {
+    if (!filters.funcionarioId) {
+      setAssignedPageData(null);
+      return;
     }
-  }, []);
 
-  useEffect(() => {
-    loadCatalogs();
-    load(0, 20);
-  }, [loadCatalogs, load]);
+    setLoadingAssigned(true);
+
+    try {
+      const response = await searchCallCenter({
+        page: nextPage,
+        size: nextSize,
+        q: filters.q,
+        funcionarioCallcenterAsignadoId: Number(filters.funcionarioId),
+        activo: true,
+      });
+
+      setAssignedPageData(response);
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : 'No fue posible consultar los registros asignados al funcionario.';
+
+      showMessage(message, 'error');
+    } finally {
+      setLoadingAssigned(false);
+    }
+  }
 
   /**
-   * Selecciona o deselecciona un registro.
+   * Selecciona o deselecciona un registro pendiente.
    *
    * @param id identificador del registro.
    */
@@ -201,9 +314,22 @@ export default function AsignarFuncionariosCallCenterPage() {
         registroIds: selectedIds,
       });
 
-      showMessage('Registros asignados correctamente.', 'success');
+      showMessage(`Registros asignados correctamente a ${selectedFuncionarioName}.`, 'success');
+
+      const nextAssignedFilters: AssignedFilterState = {
+        funcionarioId,
+        q: '',
+      };
+
+      setAssignedFuncionarioId(funcionarioId);
+      setAssignedSearchText('');
+      setAppliedAssignedFilters(nextAssignedFilters);
       setFuncionarioId('');
-      await load(page, size);
+
+      await Promise.all([
+        loadPending(page, size),
+        loadAssigned(0, assignedSize, nextAssignedFilters),
+      ]);
     } catch (error) {
       const message = error instanceof Error
         ? error.message
@@ -216,24 +342,73 @@ export default function AsignarFuncionariosCallCenterPage() {
   }
 
   /**
-   * Cambia la página de la tabla.
+   * Ejecuta la búsqueda de registros asignados al funcionario seleccionado.
+   */
+  function searchAssigned() {
+    if (!assignedFuncionarioId) {
+      showMessage('Selecciona un funcionario para consultar sus registros asignados.', 'warning');
+      return;
+    }
+
+    const nextFilters: AssignedFilterState = {
+      funcionarioId: assignedFuncionarioId,
+      q: assignedSearchText,
+    };
+
+    setAppliedAssignedFilters(nextFilters);
+    void loadAssigned(0, assignedSize, nextFilters);
+  }
+
+  /**
+   * Limpia la consulta de registros asignados.
+   */
+  function clearAssignedFilters() {
+    setAssignedFuncionarioId('');
+    setAssignedSearchText('');
+    setAppliedAssignedFilters(initialAssignedFilters);
+    setAssignedPageData(null);
+  }
+
+  /**
+   * Cambia la página de la tabla de pendientes.
    *
    * @param _ evento no utilizado.
    * @param nextPage página siguiente.
    */
   function handlePageChange(_: unknown, nextPage: number) {
-    load(nextPage, size);
+    void loadPending(nextPage, size);
   }
 
   /**
-   * Cambia la cantidad de registros por página.
+   * Cambia la cantidad de pendientes por página.
    *
    * @param event evento del selector de filas.
    */
   function handleRowsPerPageChange(
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
-    load(0, Number(event.target.value));
+    void loadPending(0, Number(event.target.value));
+  }
+
+  /**
+   * Cambia la página de la tabla de asignados.
+   *
+   * @param _ evento no utilizado.
+   * @param nextPage página siguiente.
+   */
+  function handleAssignedPageChange(_: unknown, nextPage: number) {
+    void loadAssigned(nextPage, assignedSize, appliedAssignedFilters);
+  }
+
+  /**
+   * Cambia la cantidad de asignados por página.
+   *
+   * @param event evento del selector de filas.
+   */
+  function handleAssignedRowsPerPageChange(
+    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    void loadAssigned(0, Number(event.target.value), appliedAssignedFilters);
   }
 
   return (
@@ -253,7 +428,7 @@ export default function AsignarFuncionariosCallCenterPage() {
             </Typography>
 
             <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-              Selecciona los casos pendientes y asígnalos al funcionario que realizará la gestión telefónica.
+              Asigna casos pendientes y consulta los ciudadanos asignados a cada funcionario Call Center.
             </Typography>
           </Box>
 
@@ -275,168 +450,200 @@ export default function AsignarFuncionariosCallCenterPage() {
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
-              onClick={() => load(page, size)}
-              disabled={loading}
+              onClick={() => loadPending(page, size)}
+              disabled={loadingPending}
             >
-              Actualizar
+              Actualizar pendientes
             </Button>
           </Box>
         </Box>
 
-        <Paper sx={{ p: 2 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: { xs: 'column', md: 'row' },
-              gap: 2,
-            }}
-          >
-            <TextField
-              label="Funcionario Call Center"
-              select
-              value={funcionarioId}
-              onChange={(event) => setFuncionarioId(event.target.value)}
-              fullWidth
-              size="small"
-            >
-              <MenuItem value="">
-                Selecciona un funcionario
-              </MenuItem>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: '1fr 1fr',
+              lg: '1fr 1fr 1fr 1fr',
+            },
+            gap: 1.5,
+          }}
+        >
+          <SummaryCard label="Pendientes cargados" value={records.length} />
+          <SummaryCard label="Seleccionados" value={selectedCount} />
+          <SummaryCard label="Funcionarios activos" value={funcionarios.length} />
+          <SummaryCard label="Asignados consultados" value={assignedRecords.length} />
+        </Box>
 
-              {funcionarios.map((item) => (
-                <MenuItem key={item.id} value={item.id}>
-                  {item.nombreCompleto || item.username}
-                </MenuItem>
-              ))}
-            </TextField>
+        <Card variant="outlined">
+          <CardContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+                  Asignación de pendientes
+                </Typography>
 
-            <Button
-              variant="contained"
-              startIcon={<AssignmentIndIcon />}
-              onClick={assign}
-              disabled={saving || selectedCount === 0}
-            >
-              {`Asignar seleccionados (${selectedCount})`}
-            </Button>
-          </Box>
-        </Paper>
+                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+                  Selecciona uno o varios ciudadanos pendientes y elige el funcionario que realizará la gestión.
+                </Typography>
+              </Box>
 
-        {loading ? (
-          <Paper sx={{ p: 3 }}>
-            <Alert severity="info">
-              Cargando pendientes...
-            </Alert>
-          </Paper>
-        ) : records.length === 0 ? (
-          <Paper sx={{ p: 3 }}>
-            <Alert severity="info">
-              No hay registros pendientes por asignar a funcionario Call Center.
-            </Alert>
-          </Paper>
-        ) : (
-          <Paper>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        checked={allVisibleSelected}
-                        indeterminate={!allVisibleSelected && someVisibleSelected}
-                        onChange={toggleAllVisible}
-                      />
-                    </TableCell>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    md: '2fr auto',
+                  },
+                  gap: 1.5,
+                  alignItems: 'center',
+                }}
+              >
+                <FormControl fullWidth size="small">
+                  <InputLabel>Funcionario Call Center</InputLabel>
 
-                    <TableCell>Fecha</TableCell>
-                    <TableCell>Ciudadano</TableCell>
-                    <TableCell>Teléfono</TableCell>
-                    <TableCell>Barrio / Comuna</TableCell>
-                    <TableCell>Estado</TableCell>
-                  </TableRow>
-                </TableHead>
+                  <Select
+                    label="Funcionario Call Center"
+                    value={funcionarioId}
+                    onChange={(event) => setFuncionarioId(String(event.target.value))}
+                  >
+                    <MenuItem value="">
+                      Selecciona un funcionario
+                    </MenuItem>
 
-                <TableBody>
-                  {records.map((record) => {
-                    const estadoCaso = getStringField(record, 'estadoCaso');
-                    const tipoSolicitud = getStringField(record, 'tipoSolicitudCallcenter');
+                    {funcionarios.map((item) => (
+                      <MenuItem key={item.id} value={String(item.id)}>
+                        {getFuncionarioLabel(item)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-                    return (
-                      <TableRow
-                        key={record.id}
-                        hover
-                        selected={selectedIds.includes(record.id)}
-                      >
-                        <TableCell padding="checkbox">
-                          <Checkbox
-                            checked={selectedIds.includes(record.id)}
-                            onChange={() => toggleRecord(record.id)}
-                          />
-                        </TableCell>
+                <Button
+                  variant="contained"
+                  startIcon={<AssignmentIndIcon />}
+                  onClick={assign}
+                  disabled={saving || selectedCount === 0 || !funcionarioId}
+                >
+                  {saving ? 'Asignando...' : `Asignar seleccionados (${selectedCount})`}
+                </Button>
+              </Box>
 
-                        <TableCell>
-                          {record.fechaLlamada || 'Sin fecha'}
-                        </TableCell>
+              {funcionarioId && (
+                <Alert severity="info">
+                  Los registros seleccionados se asignarán a <strong>{selectedFuncionarioName}</strong>.
+                </Alert>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
 
-                        <TableCell>
-                          <Typography component="p" variant="body2" sx={{ fontWeight: 700 }}>
-                            {record.nombreCompleto || 'Sin nombre'}
-                          </Typography>
+        <Card variant="outlined">
+          <CardContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+                  Consultar asignados por funcionario
+                </Typography>
 
-                          <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
-                            {`C.C. ${record.cedulaSolicitante || 'Sin dato'}`}
-                          </Typography>
+                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+                  Permite que el administrador o coordinador vea los ciudadanos asignados a cada funcionario Call Center.
+                </Typography>
+              </Box>
 
-                          {tipoSolicitud && (
-                            <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
-                              {formatLabel(tipoSolicitud)}
-                            </Typography>
-                          )}
-                        </TableCell>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    md: '1.5fr 2fr auto auto',
+                  },
+                  gap: 1.5,
+                  alignItems: 'center',
+                }}
+              >
+                <FormControl fullWidth size="small">
+                  <InputLabel>Funcionario asignado</InputLabel>
 
-                        <TableCell>
-                          {record.telefono || 'Sin dato'}
-                        </TableCell>
+                  <Select
+                    label="Funcionario asignado"
+                    value={assignedFuncionarioId}
+                    onChange={(event) => setAssignedFuncionarioId(String(event.target.value))}
+                  >
+                    <MenuItem value="">
+                      Selecciona un funcionario
+                    </MenuItem>
 
-                        <TableCell>
-                          <Typography component="p" variant="body2">
-                            {record.barrioNombre || 'Sin barrio'}
-                          </Typography>
+                    {funcionarios.map((item) => (
+                      <MenuItem key={item.id} value={String(item.id)}>
+                        {getFuncionarioLabel(item)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-                          <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
-                            {record.comunaNombre || 'Sin comuna'}
-                          </Typography>
-                        </TableCell>
+                <TextField
+                  label="Buscar usuario asignado"
+                  value={assignedSearchText}
+                  onChange={(event) => setAssignedSearchText(event.target.value)}
+                  placeholder="Nombre, cédula, teléfono, barrio o dirección"
+                  size="small"
+                  fullWidth
+                />
 
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={formatLabel(estadoCaso || 'PENDIENTE ENRUTAMIENTO')}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
+                <Button
+                  variant="contained"
+                  startIcon={<SearchIcon />}
+                  onClick={searchAssigned}
+                  disabled={loadingAssigned || !assignedFuncionarioId}
+                >
+                  Buscar
+                </Button>
 
-                <TableFooter>
-                  <TableRow>
-                    <TablePagination
-                      component="td"
-                      colSpan={6}
-                      count={total}
-                      page={page}
-                      rowsPerPage={size}
-                      rowsPerPageOptions={[10, 20, 50, 100]}
-                      onPageChange={handlePageChange}
-                      onRowsPerPageChange={handleRowsPerPageChange}
-                      labelRowsPerPage="Filas"
-                    />
-                  </TableRow>
-                </TableFooter>
-              </Table>
-            </TableContainer>
-          </Paper>
-        )}
+                <Button
+                  variant="text"
+                  startIcon={<FilterAltOffIcon />}
+                  onClick={clearAssignedFilters}
+                  disabled={loadingAssigned || !assignedHasFilters}
+                >
+                  Limpiar
+                </Button>
+              </Box>
+
+              {appliedAssignedFilters.funcionarioId && (
+                <Alert severity="success">
+                  Mostrando ciudadanos asignados a <strong>{assignedFuncionarioName}</strong>.
+                </Alert>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
+
+        <PendingRecordsTable
+          records={records}
+          loading={loadingPending}
+          selectedIds={selectedIds}
+          allVisibleSelected={allVisibleSelected}
+          someVisibleSelected={someVisibleSelected}
+          total={total}
+          page={page}
+          size={size}
+          onToggleRecord={toggleRecord}
+          onToggleAllVisible={toggleAllVisible}
+          onPageChange={handlePageChange}
+          onRowsPerPageChange={handleRowsPerPageChange}
+        />
+
+        <AssignedRecordsTable
+          records={assignedRecords}
+          loading={loadingAssigned}
+          total={assignedTotal}
+          page={assignedPage}
+          size={assignedSize}
+          hasFuncionarioFilter={Boolean(appliedAssignedFilters.funcionarioId)}
+          onPageChange={handleAssignedPageChange}
+          onRowsPerPageChange={handleAssignedRowsPerPageChange}
+        />
       </Box>
 
       <Snackbar
@@ -458,10 +665,430 @@ export default function AsignarFuncionariosCallCenterPage() {
 }
 
 /**
- * Obtiene un campo string opcional desde la respuesta sin romper el tipado.
+ * Propiedades de la tabla de registros pendientes.
+ */
+type PendingRecordsTableProps = {
+  records: CallCenterResponse[];
+  loading: boolean;
+  selectedIds: number[];
+  allVisibleSelected: boolean;
+  someVisibleSelected: boolean;
+  total: number;
+  page: number;
+  size: number;
+  onToggleRecord: (id: number) => void;
+  onToggleAllVisible: () => void;
+  onPageChange: (_: unknown, nextPage: number) => void;
+  onRowsPerPageChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+};
+
+/**
+ * Tabla de registros pendientes por asignar a funcionario Call Center.
+ */
+function PendingRecordsTable({
+  records,
+  loading,
+  selectedIds,
+  allVisibleSelected,
+  someVisibleSelected,
+  total,
+  page,
+  size,
+  onToggleRecord,
+  onToggleAllVisible,
+  onPageChange,
+  onRowsPerPageChange,
+}: PendingRecordsTableProps) {
+  if (loading) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="info">
+          Cargando pendientes...
+        </Alert>
+      </Paper>
+    );
+  }
+
+  if (records.length === 0) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="info">
+          No hay registros pendientes por asignar a funcionario Call Center.
+        </Alert>
+      </Paper>
+    );
+  }
+
+  return (
+    <Paper>
+      <Box sx={{ p: 2 }}>
+        <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+          Pendientes por asignar
+        </Typography>
+
+        <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+          Estos registros aún no tienen funcionario Call Center asignado.
+        </Typography>
+      </Box>
+
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  checked={allVisibleSelected}
+                  indeterminate={!allVisibleSelected && someVisibleSelected}
+                  onChange={onToggleAllVisible}
+                />
+              </TableCell>
+
+              <TableCell>Caso</TableCell>
+              <TableCell>Ciudadano</TableCell>
+              <TableCell>Contacto</TableCell>
+              <TableCell>Barrio / Comuna</TableCell>
+              <TableCell>Solicitud</TableCell>
+              <TableCell>Estado</TableCell>
+            </TableRow>
+          </TableHead>
+
+          <TableBody>
+            {records.map((record) => {
+              const estadoCaso = getStringField(record, 'estadoCaso') || 'PENDIENTE_ENRUTAMIENTO';
+              const tipoSolicitud = getStringField(record, 'tipoSolicitudCallcenter') || 'NUEVA_ENCUESTA';
+
+              return (
+                <TableRow
+                  key={record.id}
+                  hover
+                  selected={selectedIds.includes(record.id)}
+                >
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selectedIds.includes(record.id)}
+                      onChange={() => onToggleRecord(record.id)}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <Typography component="p" variant="body2" sx={{ fontWeight: 800 }}>
+                      {`Caso #${record.id}`}
+                    </Typography>
+
+                    <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+                      {record.fechaLlamada || 'Sin fecha'}
+                    </Typography>
+                  </TableCell>
+
+                  <TableCell>
+                    <InfoCell
+                      icon={<PersonIcon fontSize="small" />}
+                      title={record.nombreCompleto || 'Sin nombre'}
+                      subtitle={`C.C. ${record.cedulaSolicitante || 'Sin dato'}`}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <InfoCell
+                      icon={<PhoneIcon fontSize="small" />}
+                      title={record.telefono || 'Sin teléfono'}
+                      subtitle={record.direccionTexto || 'Sin dirección'}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <Typography component="p" variant="body2">
+                      {record.barrioNombre || 'Sin barrio'}
+                    </Typography>
+
+                    <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+                      {record.comunaNombre || 'Sin comuna'}
+                    </Typography>
+                  </TableCell>
+
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={formatLabel(tipoSolicitud)}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      color={getStatusColor(estadoCaso)}
+                      label={formatLabel(estadoCaso)}
+                    />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+
+          <TableFooter>
+            <TableRow>
+              <TablePagination
+                component="td"
+                colSpan={7}
+                count={total}
+                page={page}
+                rowsPerPage={size}
+                rowsPerPageOptions={[10, 20, 50, 100]}
+                onPageChange={onPageChange}
+                onRowsPerPageChange={onRowsPerPageChange}
+                labelRowsPerPage="Filas"
+              />
+            </TableRow>
+          </TableFooter>
+        </Table>
+      </TableContainer>
+    </Paper>
+  );
+}
+
+/**
+ * Propiedades de la tabla de registros asignados.
+ */
+type AssignedRecordsTableProps = {
+  records: CallCenterResponse[];
+  loading: boolean;
+  total: number;
+  page: number;
+  size: number;
+  hasFuncionarioFilter: boolean;
+  onPageChange: (_: unknown, nextPage: number) => void;
+  onRowsPerPageChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+};
+
+/**
+ * Tabla de ciudadanos ya asignados a un funcionario Call Center.
+ */
+function AssignedRecordsTable({
+  records,
+  loading,
+  total,
+  page,
+  size,
+  hasFuncionarioFilter,
+  onPageChange,
+  onRowsPerPageChange,
+}: AssignedRecordsTableProps) {
+  if (!hasFuncionarioFilter) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="info">
+          Selecciona un funcionario Call Center para ver los ciudadanos que tiene asignados.
+        </Alert>
+      </Paper>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="info">
+          Consultando registros asignados...
+        </Alert>
+      </Paper>
+    );
+  }
+
+  if (records.length === 0) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="warning">
+          No se encontraron ciudadanos asignados al funcionario seleccionado.
+        </Alert>
+      </Paper>
+    );
+  }
+
+  return (
+    <Paper>
+      <Box sx={{ p: 2 }}>
+        <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+          Ciudadanos asignados al funcionario
+        </Typography>
+
+        <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+          Consulta de registros ya enrutados para gestión telefónica.
+        </Typography>
+      </Box>
+
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Funcionario</TableCell>
+              <TableCell>Ciudadano</TableCell>
+              <TableCell>Contacto</TableCell>
+              <TableCell>Barrio / Comuna</TableCell>
+              <TableCell>Solicitud</TableCell>
+              <TableCell>Estado</TableCell>
+              <TableCell>Fecha asignación</TableCell>
+            </TableRow>
+          </TableHead>
+
+          <TableBody>
+            {records.map((record) => {
+              const funcionarioNombre = getStringField(record, 'funcionarioCallcenterAsignadoNombre')
+                || getStringField(record, 'funcionarioCallcenterAsignadoUsername')
+                || 'Sin funcionario';
+
+              const estadoCaso = getStringField(record, 'estadoCaso') || 'ASIGNADO_CALLCENTER';
+              const tipoSolicitud = getStringField(record, 'tipoSolicitudCallcenter') || 'NUEVA_ENCUESTA';
+              const fechaAsignacion = getStringField(record, 'fechaAsignacionCallcenter');
+
+              return (
+                <TableRow key={record.id} hover>
+                  <TableCell>
+                    <Typography component="p" variant="body2" sx={{ fontWeight: 800 }}>
+                      {funcionarioNombre}
+                    </Typography>
+
+                    <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+                      {`Caso #${record.id}`}
+                    </Typography>
+                  </TableCell>
+
+                  <TableCell>
+                    <InfoCell
+                      icon={<PersonIcon fontSize="small" />}
+                      title={record.nombreCompleto || 'Sin nombre'}
+                      subtitle={`C.C. ${record.cedulaSolicitante || 'Sin dato'}`}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <InfoCell
+                      icon={<PhoneIcon fontSize="small" />}
+                      title={record.telefono || 'Sin teléfono'}
+                      subtitle={record.direccionTexto || 'Sin dirección'}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <Typography component="p" variant="body2">
+                      {record.barrioNombre || 'Sin barrio'}
+                    </Typography>
+
+                    <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+                      {record.comunaNombre || 'Sin comuna'}
+                    </Typography>
+                  </TableCell>
+
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={formatLabel(tipoSolicitud)}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      color={getStatusColor(estadoCaso)}
+                      label={formatLabel(estadoCaso)}
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    {formatDateTime(fechaAsignacion)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+
+          <TableFooter>
+            <TableRow>
+              <TablePagination
+                component="td"
+                colSpan={7}
+                count={total}
+                page={page}
+                rowsPerPage={size}
+                rowsPerPageOptions={[10, 20, 50, 100]}
+                onPageChange={onPageChange}
+                onRowsPerPageChange={onRowsPerPageChange}
+                labelRowsPerPage="Filas"
+              />
+            </TableRow>
+          </TableFooter>
+        </Table>
+      </TableContainer>
+    </Paper>
+  );
+}
+
+/**
+ * Tarjeta breve para mostrar un indicador de resumen.
+ */
+function SummaryCard({ label, value }: { label: string; value: number }) {
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+          {label}
+        </Typography>
+
+        <Typography component="p" variant="h5" sx={{ fontWeight: 900 }}>
+          {value}
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Celda auxiliar con icono, título y subtítulo.
+ */
+function InfoCell({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+      <Box sx={{ color: 'text.secondary', mt: 0.2 }}>
+        {icon}
+      </Box>
+
+      <Box>
+        <Typography component="p" variant="body2" sx={{ fontWeight: 700 }}>
+          {title}
+        </Typography>
+
+        <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+          {subtitle}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Construye la etiqueta visible de un funcionario Call Center.
  *
- * Se usa para campos nuevos del flujo formal que pueden no estar todavía
- * declarados en CallCenterResponse durante la transición del módulo.
+ * @param item funcionario seleccionado.
+ * @returns etiqueta visible.
+ */
+function getFuncionarioLabel(item?: CallCenterUserOptionResponse) {
+  if (!item) {
+    return 'Sin funcionario';
+  }
+
+  return item.nombreCompleto || item.username || `Funcionario #${item.id}`;
+}
+
+/**
+ * Obtiene un campo string opcional desde la respuesta sin romper el tipado.
  *
  * @param record registro Call Center.
  * @param field nombre técnico del campo.
@@ -492,4 +1119,63 @@ function formatLabel(value: string) {
     .join(' ')
     .toLowerCase()
     .replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+/**
+ * Formatea una fecha y hora técnica para la tabla.
+ *
+ * @param value valor de fecha recibido desde backend.
+ * @returns fecha visible.
+ */
+function formatDateTime(value?: string | null) {
+  if (!value) {
+    return 'Sin fecha';
+  }
+
+  return value.replace('T', ' ').slice(0, 16);
+}
+
+/**
+ * Define el color visual de los estados del caso.
+ *
+ * @param value estado técnico.
+ * @returns color del chip.
+ */
+function getStatusColor(value?: string | null): ChipColor {
+  const normalized = String(value ?? '').toUpperCase();
+
+  if (
+    normalized.includes('CERRADO')
+    || normalized.includes('REALIZADA')
+    || normalized.includes('CONTACTADO')
+  ) {
+    return 'success';
+  }
+
+  if (
+    normalized.includes('PENDIENTE')
+    || normalized.includes('ASIGNADO')
+    || normalized.includes('GESTION')
+    || normalized.includes('PROGRAMADA')
+  ) {
+    return 'info';
+  }
+
+  if (
+    normalized.includes('REPROGRAMADO')
+    || normalized.includes('NO_CONTACTADO')
+    || normalized.includes('NO_ATENDIDA')
+  ) {
+    return 'warning';
+  }
+
+  if (
+    normalized.includes('CANCELADO')
+    || normalized.includes('SIN_DISPOSICION')
+    || normalized.includes('NO_ACEPTA')
+  ) {
+    return 'error';
+  }
+
+  return 'default';
 }

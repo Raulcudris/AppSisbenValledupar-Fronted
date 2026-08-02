@@ -64,7 +64,17 @@ type Props = {
   refreshKey?: number;
 };
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
+type NextActionInfo = {
+  label: string;
+  detail: string;
+  color: ChipColor;
+};
+
+const PAGE_SIZE_OPTIONS = [
+  10,
+  20,
+  50,
+];
 
 const ESTADOS_CASO = [
   'PENDIENTE_ENRUTAMIENTO',
@@ -95,8 +105,8 @@ function getLocalToday() {
   const now = new Date();
 
   const localTime =
-    now.getTime()
-    - now.getTimezoneOffset() * 60_000;
+    now.getTime() -
+    now.getTimezoneOffset() * 60_000;
 
   return new Date(localTime)
     .toISOString()
@@ -115,17 +125,21 @@ function buildInitialFilters(): JornadaFilterState {
   };
 }
 
-function getPageContent<T>(page: unknown): T[] {
+function getPageContent<T>(
+  page: unknown,
+): T[] {
   const data = page as {
     content?: T[];
     items?: T[];
     data?: T[];
   };
 
-  return data?.content
-    ?? data?.items
-    ?? data?.data
-    ?? [];
+  return (
+    data?.content ??
+    data?.items ??
+    data?.data ??
+    []
+  );
 }
 
 function getTotalElements(
@@ -139,27 +153,13 @@ function getTotalElements(
     totalRecords?: number;
   };
 
-  return data?.totalElements
-    ?? data?.totalItems
-    ?? data?.total
-    ?? data?.totalRecords
-    ?? currentLength;
-}
-
-function formatDate(value?: string | null) {
-  if (!value) {
-    return 'Sin fecha';
-  }
-
-  const parts = value.split('-');
-
-  if (parts.length !== 3) {
-    return value;
-  }
-
-  const [year, month, day] = parts;
-
-  return `${day}/${month}/${year}`;
+  return (
+    data?.totalElements ??
+    data?.totalItems ??
+    data?.total ??
+    data?.totalRecords ??
+    currentLength
+  );
 }
 
 function funcionarioLabel(
@@ -171,100 +171,6 @@ function funcionarioLabel(
   return name
     ? `${name} (${funcionario.username})`
     : funcionario.username;
-}
-
-function getFuncionarioRegistroLabel(
-  record: CallCenterResponse,
-) {
-  return record.funcionarioCallcenterAsignadoNombre
-    ?? record.funcionarioCallcenterAsignadoUsername
-    ?? 'Sin funcionario';
-}
-
-function getEncuestadorRegistroLabel(
-  record: CallCenterResponse,
-) {
-  return record.encuestadorAsignadoNombre
-    ?? record.encuestadorProgramadoNombre
-    ?? 'Sin encuestador';
-}
-
-function getLlamadaLabel(
-  value?: boolean | null,
-) {
-  if (value === true) {
-    return 'Conectada';
-  }
-
-  if (value === false) {
-    return 'No conectada';
-  }
-
-  return 'Sin gestión';
-}
-
-function getLlamadaColor(
-  value?: boolean | null,
-): ChipColor {
-  if (value === true) {
-    return 'success';
-  }
-
-  if (value === false) {
-    return 'warning';
-  }
-
-  return 'default';
-}
-
-function getEstadoColor(
-  value?: string | null,
-): ChipColor {
-  const normalized =
-    String(value ?? '')
-      .trim()
-      .toUpperCase();
-
-  if (
-    normalized === 'CERRADO'
-    || normalized === 'VISITA_REALIZADA'
-    || normalized === 'REALIZADA'
-  ) {
-    return 'success';
-  }
-
-  if (
-    normalized === 'CANCELADO'
-    || normalized === 'CANCELADA'
-  ) {
-    return 'error';
-  }
-
-  if (
-    normalized === 'NO_CONTACTADO'
-    || normalized === 'VISITA_NO_ATENDIDA'
-    || normalized === 'NO_ATENDIDA'
-    || normalized === 'CONTACTADO_SIN_DISPOSICION'
-  ) {
-    return 'warning';
-  }
-
-  if (
-    normalized === 'VISITA_PROGRAMADA'
-    || normalized === 'PROGRAMADA'
-    || normalized === 'ASIGNADO_ENCUESTADOR'
-  ) {
-    return 'primary';
-  }
-
-  if (
-    normalized === 'REPROGRAMADO'
-    || normalized === 'REPROGRAMADA'
-  ) {
-    return 'info';
-  }
-
-  return 'default';
 }
 
 export default function CallCenterJornadaConsolidada({
@@ -280,10 +186,12 @@ export default function CallCenterJornadaConsolidada({
       buildInitialFilters,
     );
 
-  const [appliedFilters, setAppliedFilters] =
-    useState<JornadaFilterState>(
-      buildInitialFilters,
-    );
+  const [
+    appliedFilters,
+    setAppliedFilters,
+  ] = useState<JornadaFilterState>(
+    buildInitialFilters,
+  );
 
   const [records, setRecords] =
     useState<CallCenterResponse[]>([]);
@@ -303,112 +211,148 @@ export default function CallCenterJornadaConsolidada({
   const [error, setError] =
     useState<string | null>(null);
 
-  const pageStats =
-    useMemo(
-      () => ({
-        conectadas:
-          records.filter(
-            (record) =>
-              record.llamadaConectada === true,
-          ).length,
+  const pageStats = useMemo(() => {
+    const programadas =
+      records.filter((record) =>
+        hasVisitProgramming(record),
+      ).length;
 
-        noConectadas:
-          records.filter(
-            (record) =>
-              record.llamadaConectada === false,
-          ).length,
+    const pendientesLlamada =
+      records.filter(
+        (record) =>
+          !isCaseFinalized(record) &&
+          !hasPhoneManagement(record),
+      ).length;
 
-        realizadas:
-          records.filter(
-            (record) =>
-              record.encuestaRealizada === true
-              || record.estadoVisita === 'REALIZADA'
-              || record.estadoCaso === 'VISITA_REALIZADA',
-          ).length,
-      }),
-      [records],
-    );
+    const llamadasRegistradas =
+      records.filter((record) =>
+        hasPhoneManagement(record),
+      ).length;
 
-  const load =
-    useCallback(async () => {
-      setLoading(true);
-      setError(null);
+    const pendientesVisita =
+      records.filter(
+        (record) =>
+          !isCaseFinalized(record) &&
+          !isVisitFinalResult(record) &&
+          !isVisitReprogrammed(record) &&
+          hasVisitProgramming(record),
+      ).length;
 
-      try {
-        const response =
-          await searchCallCenter({
-            page,
-            size,
+    const conResultado =
+      records.filter((record) =>
+        isVisitFinalResult(record),
+      ).length;
 
-            q:
-              appliedFilters.q.trim()
-              || undefined,
+    const reprogramadas =
+      records.filter((record) =>
+        isVisitReprogrammed(record),
+      ).length;
 
-            fechaEncuestaInicio:
-              appliedFilters.fecha
-              || undefined,
+    const pendientesCierre =
+      records.filter(
+        (record) =>
+          !isCaseFinalized(record) &&
+          isVisitFinalResult(record),
+      ).length;
 
-            fechaEncuestaFin:
-              appliedFilters.fecha
-              || undefined,
+    const finalizadas =
+      records.filter((record) =>
+        isCaseFinalized(record),
+      ).length;
 
-            funcionarioCallcenterAsignadoId:
-              appliedFilters.funcionarioCallcenterId
-              || undefined,
+    return {
+      programadas,
+      pendientesLlamada,
+      llamadasRegistradas,
+      pendientesVisita,
+      conResultado,
+      reprogramadas,
+      pendientesCierre,
+      finalizadas,
+    };
+  }, [records]);
 
-            encuestadorAsignadoId:
-              appliedFilters.encuestadorId
-              || undefined,
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-            estadoCaso:
-              appliedFilters.estadoCaso === 'TODOS'
-                ? undefined
-                : appliedFilters.estadoCaso,
+    try {
+      const response =
+        await searchCallCenter({
+          page,
+          size,
 
-            estadoVisita:
-              appliedFilters.estadoVisita === 'TODOS'
-                ? undefined
-                : appliedFilters.estadoVisita,
+          q:
+            appliedFilters.q.trim() ||
+            undefined,
 
-            origenRegistro:
-              appliedFilters.origenRegistro === 'TODOS'
-                ? undefined
-                : appliedFilters.origenRegistro,
+          fechaEncuestaInicio:
+            appliedFilters.fecha ||
+            undefined,
 
-            solicitoNuevaEncuesta: true,
-            activo: true,
-          });
+          fechaEncuestaFin:
+            appliedFilters.fecha ||
+            undefined,
 
-        const content =
-          getPageContent<CallCenterResponse>(
-            response,
-          );
+          funcionarioCallcenterAsignadoId:
+            appliedFilters.funcionarioCallcenterId ||
+            undefined,
 
-        setRecords(content);
+          encuestadorAsignadoId:
+            appliedFilters.encuestadorId ||
+            undefined,
 
-        setTotal(
-          getTotalElements(
-            response,
-            content.length,
-          ),
+          estadoCaso:
+            appliedFilters.estadoCaso ===
+            'TODOS'
+              ? undefined
+              : appliedFilters.estadoCaso,
+
+          estadoVisita:
+            appliedFilters.estadoVisita ===
+            'TODOS'
+              ? undefined
+              : appliedFilters.estadoVisita,
+
+          origenRegistro:
+            appliedFilters.origenRegistro ===
+            'TODOS'
+              ? undefined
+              : appliedFilters.origenRegistro,
+
+          activo: true,
+        });
+
+      const content =
+        getPageContent<CallCenterResponse>(
+          response,
         );
-      } catch (loadError) {
-        const message =
-          loadError instanceof Error
-            ? loadError.message
-            : 'No fue posible consultar la jornada.';
 
-        setError(message);
-        setRecords([]);
-        setTotal(0);
-      } finally {
-        setLoading(false);
-      }
-    }, [
-      appliedFilters,
-      page,
-      size,
-    ]);
+      setRecords(content);
+
+      setTotal(
+        getTotalElements(
+          response,
+          content.length,
+        ),
+      );
+    } catch (loadError) {
+      const message =
+        loadError instanceof Error
+          ? loadError.message
+          : 'No fue posible consultar la jornada.';
+
+      setError(message);
+      setRecords([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    appliedFilters,
+    page,
+    size,
+  ]);
 
   useEffect(() => {
     void load();
@@ -417,55 +361,60 @@ export default function CallCenterJornadaConsolidada({
     refreshKey,
   ]);
 
-  const updateFilter = (
+  function updateFilter(
     field: keyof JornadaFilterState,
     value: string,
-  ) => {
+  ) {
     setFilters((current) => ({
       ...current,
       [field]: value,
     }));
-  };
+  }
 
-  const applyFilters = () => {
+  function applyFilters() {
     setPage(0);
 
     setAppliedFilters({
       ...filters,
     });
-  };
+  }
 
-  const clearFilters = () => {
+  function clearFilters() {
     const initial =
       buildInitialFilters();
 
     setFilters(initial);
-
-    setAppliedFilters({
-      ...initial,
-    });
-
+    setAppliedFilters(initial);
     setPage(0);
-  };
+  }
 
-  const handlePageChange = (
+  function handlePageChange(
     _: unknown,
     nextPage: number,
-  ) => {
+  ) {
     setPage(nextPage);
-  };
+  }
 
-  const handleRowsPerPageChange = (
+  function handleRowsPerPageChange(
     event: ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement
+      HTMLInputElement |
+      HTMLTextAreaElement
     >,
-  ) => {
+  ) {
     setSize(
       Number(event.target.value),
     );
 
     setPage(0);
-  };
+  }
+
+  function openCase(
+    recordId: number,
+  ) {
+    router.push(
+      `/dashboard/callcenter/registros/nuevo?id=${recordId}`,
+    );
+  }
 
   return (
     <Card>
@@ -480,6 +429,7 @@ export default function CallCenterJornadaConsolidada({
         <Stack spacing={2.5}>
           <Box>
             <Typography
+              component="h2"
               variant="h6"
               sx={{
                 fontWeight: 800,
@@ -489,24 +439,32 @@ export default function CallCenterJornadaConsolidada({
             </Typography>
 
             <Typography
+              component="p"
               color="text.secondary"
               sx={{
                 fontSize: 14,
                 mt: 0.5,
               }}
             >
-              Consulta ciudadanos programados, asignaciones,
-              llamadas y estado actual de las visitas.
+              Consulta la llamada, la programación,
+              el resultado de campo y el estado formal
+              de cada caso.
             </Typography>
           </Box>
+
+          <Alert severity="info">
+            Los indicadores corresponden a la página
+            actualmente cargada. El total general se
+            obtiene de la consulta paginada del backend.
+          </Alert>
 
           <Box
             sx={{
               display: 'grid',
               gridTemplateColumns: {
                 xs: '1fr',
-                md: 'repeat(2, 1fr)',
-                lg: 'repeat(4, 1fr)',
+                md: 'repeat(2, minmax(0, 1fr))',
+                lg: 'repeat(4, minmax(0, 1fr))',
               },
               gap: 2,
             }}
@@ -568,9 +526,13 @@ export default function CallCenterJornadaConsolidada({
                 (funcionario) => (
                   <MenuItem
                     key={funcionario.id}
-                    value={String(funcionario.id)}
+                    value={String(
+                      funcionario.id,
+                    )}
                   >
-                    {funcionarioLabel(funcionario)}
+                    {funcionarioLabel(
+                      funcionario,
+                    )}
                   </MenuItem>
                 ),
               )}
@@ -579,7 +541,9 @@ export default function CallCenterJornadaConsolidada({
             <TextField
               label="Encuestador"
               select
-              value={filters.encuestadorId}
+              value={
+                filters.encuestadorId
+              }
               onChange={(event) =>
                 updateFilter(
                   'encuestadorId',
@@ -598,7 +562,9 @@ export default function CallCenterJornadaConsolidada({
                 (encuestador) => (
                   <MenuItem
                     key={encuestador.id}
-                    value={String(encuestador.id)}
+                    value={String(
+                      encuestador.id,
+                    )}
                   >
                     {encuestador.label}
                   </MenuItem>
@@ -609,7 +575,9 @@ export default function CallCenterJornadaConsolidada({
             <TextField
               label="Estado del caso"
               select
-              value={filters.estadoCaso}
+              value={
+                filters.estadoCaso
+              }
               onChange={(event) =>
                 updateFilter(
                   'estadoCaso',
@@ -629,7 +597,9 @@ export default function CallCenterJornadaConsolidada({
                     key={estado}
                     value={estado}
                   >
-                    {estado}
+                    {formatLabel(
+                      estado,
+                    )}
                   </MenuItem>
                 ),
               )}
@@ -638,7 +608,9 @@ export default function CallCenterJornadaConsolidada({
             <TextField
               label="Estado de visita"
               select
-              value={filters.estadoVisita}
+              value={
+                filters.estadoVisita
+              }
               onChange={(event) =>
                 updateFilter(
                   'estadoVisita',
@@ -658,7 +630,9 @@ export default function CallCenterJornadaConsolidada({
                     key={estado}
                     value={estado}
                   >
-                    {estado}
+                    {formatLabel(
+                      estado,
+                    )}
                   </MenuItem>
                 ),
               )}
@@ -667,7 +641,9 @@ export default function CallCenterJornadaConsolidada({
             <TextField
               label="Origen"
               select
-              value={filters.origenRegistro}
+              value={
+                filters.origenRegistro
+              }
               onChange={(event) =>
                 updateFilter(
                   'origenRegistro',
@@ -702,44 +678,23 @@ export default function CallCenterJornadaConsolidada({
             }}
             spacing={1}
             sx={{
-              justifyContent: 'space-between',
+              justifyContent:
+                'space-between',
               alignItems: {
                 xs: 'stretch',
                 sm: 'center',
               },
             }}
           >
-            <Stack
-              direction={{
-                xs: 'column',
-                sm: 'row',
-              }}
-              spacing={1}
-            >
-              <Chip
-                label={`${total} registro${total === 1 ? '' : 's'}`}
-                color="primary"
-                variant="outlined"
-              />
-
-              <Chip
-                label={`${pageStats.conectadas} conectada${pageStats.conectadas === 1 ? '' : 's'} en página`}
-                color="success"
-                variant="outlined"
-              />
-
-              <Chip
-                label={`${pageStats.noConectadas} no conectada${pageStats.noConectadas === 1 ? '' : 's'} en página`}
-                color="warning"
-                variant="outlined"
-              />
-
-              <Chip
-                label={`${pageStats.realizadas} realizada${pageStats.realizadas === 1 ? '' : 's'} en página`}
-                color="info"
-                variant="outlined"
-              />
-            </Stack>
+            <Chip
+              label={`${total} registro${
+                total === 1
+                  ? ''
+                  : 's'
+              } en total`}
+              color="primary"
+              variant="outlined"
+            />
 
             <Stack
               direction={{
@@ -750,7 +705,9 @@ export default function CallCenterJornadaConsolidada({
             >
               <Button
                 variant="text"
-                onClick={clearFilters}
+                onClick={
+                  clearFilters
+                }
                 disabled={loading}
               >
                 Limpiar filtros
@@ -758,7 +715,9 @@ export default function CallCenterJornadaConsolidada({
 
               <Button
                 variant="outlined"
-                onClick={() => void load()}
+                onClick={() =>
+                  void load()
+                }
                 disabled={loading}
               >
                 Actualizar
@@ -766,13 +725,83 @@ export default function CallCenterJornadaConsolidada({
 
               <Button
                 variant="contained"
-                onClick={applyFilters}
+                onClick={
+                  applyFilters
+                }
                 disabled={loading}
               >
                 Buscar
               </Button>
             </Stack>
           </Stack>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: '1fr',
+                sm: 'repeat(2, minmax(0, 1fr))',
+                lg: 'repeat(4, minmax(0, 1fr))',
+              },
+              gap: 1.5,
+            }}
+          >
+            <SummaryCard
+              label="Programadas"
+              value={
+                pageStats.programadas
+              }
+            />
+
+            <SummaryCard
+              label="Pendientes de llamada"
+              value={
+                pageStats.pendientesLlamada
+              }
+            />
+
+            <SummaryCard
+              label="Llamadas registradas"
+              value={
+                pageStats.llamadasRegistradas
+              }
+            />
+
+            <SummaryCard
+              label="Pendientes de visita"
+              value={
+                pageStats.pendientesVisita
+              }
+            />
+
+            <SummaryCard
+              label="Con resultado de campo"
+              value={
+                pageStats.conResultado
+              }
+            />
+
+            <SummaryCard
+              label="Reprogramadas"
+              value={
+                pageStats.reprogramadas
+              }
+            />
+
+            <SummaryCard
+              label="Pendientes de cierre"
+              value={
+                pageStats.pendientesCierre
+              }
+            />
+
+            <SummaryCard
+              label="Casos cerrados o cancelados"
+              value={
+                pageStats.finalizadas
+              }
+            />
+          </Box>
 
           {error && (
             <Alert severity="error">
@@ -783,19 +812,20 @@ export default function CallCenterJornadaConsolidada({
           {loading ? (
             <Paper
               variant="outlined"
-              sx={{
-                p: 3,
-              }}
+              sx={{ p: 3 }}
             >
               <Stack
                 direction="row"
                 spacing={2}
                 sx={{
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  justifyContent:
+                    'center',
                 }}
               >
-                <CircularProgress size={24} />
+                <CircularProgress
+                  size={24}
+                />
 
                 <Typography>
                   Consultando jornada...
@@ -804,8 +834,8 @@ export default function CallCenterJornadaConsolidada({
             </Paper>
           ) : records.length === 0 ? (
             <Alert severity="info">
-              No se encontraron ciudadanos programados con
-              los filtros seleccionados.
+              No se encontraron ciudadanos programados
+              con los filtros seleccionados.
             </Alert>
           ) : (
             <Paper variant="outlined">
@@ -813,21 +843,59 @@ export default function CallCenterJornadaConsolidada({
                 <Table
                   size="small"
                   sx={{
-                    minWidth: 1300,
+                    minWidth: 1650,
                   }}
                 >
                   <TableHead>
                     <TableRow>
-                      <TableCell>Caso</TableCell>
-                      <TableCell>Programación</TableCell>
-                      <TableCell>Ciudadano</TableCell>
-                      <TableCell>Contacto</TableCell>
-                      <TableCell>Funcionario Call Center</TableCell>
-                      <TableCell>Encuestador</TableCell>
-                      <TableCell>Llamada</TableCell>
-                      <TableCell>Estado del caso</TableCell>
-                      <TableCell>Visita</TableCell>
-                      <TableCell>Origen</TableCell>
+                      <TableCell>
+                        Caso
+                      </TableCell>
+
+                      <TableCell>
+                        Programación
+                      </TableCell>
+
+                      <TableCell>
+                        Ciudadano
+                      </TableCell>
+
+                      <TableCell>
+                        Contacto
+                      </TableCell>
+
+                      <TableCell>
+                        Funcionario Call Center
+                      </TableCell>
+
+                      <TableCell>
+                        Encuestador
+                      </TableCell>
+
+                      <TableCell>
+                        Llamada
+                      </TableCell>
+
+                      <TableCell>
+                        Visita
+                      </TableCell>
+
+                      <TableCell>
+                        Encuesta
+                      </TableCell>
+
+                      <TableCell>
+                        Estado del caso
+                      </TableCell>
+
+                      <TableCell>
+                        Próxima acción
+                      </TableCell>
+
+                      <TableCell>
+                        Origen
+                      </TableCell>
+
                       <TableCell align="right">
                         Acción
                       </TableCell>
@@ -836,146 +904,294 @@ export default function CallCenterJornadaConsolidada({
 
                   <TableBody>
                     {records.map(
-                      (record) => (
-                        <TableRow
-                          key={record.id}
-                          hover
-                        >
-                          <TableCell>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontWeight: 800,
-                              }}
-                            >
-                              #{record.id}
-                            </Typography>
-                          </TableCell>
+                      (record) => {
+                        const nextAction =
+                          getNextAction(
+                            record,
+                          );
 
-                          <TableCell>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontWeight: 700,
-                              }}
-                            >
-                              {formatDate(
-                                record.fechaEncuestaProgramada,
-                              )}
-                            </Typography>
-                          </TableCell>
+                        return (
+                          <TableRow
+                            key={record.id}
+                            hover
+                          >
+                            <TableCell>
+                              <Typography
+                                component="p"
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 800,
+                                }}
+                              >
+                                #{record.id}
+                              </Typography>
 
-                          <TableCell>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontWeight: 700,
-                              }}
-                            >
-                              {record.nombreCompleto}
-                            </Typography>
+                              <Typography
+                                component="p"
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                {formatLabel(
+                                  record.tipoSolicitudCallcenter ||
+                                    'NUEVA_ENCUESTA',
+                                )}
+                              </Typography>
+                            </TableCell>
 
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              C.C. {record.cedulaSolicitante}
-                            </Typography>
-                          </TableCell>
+                            <TableCell>
+                              <Typography
+                                component="p"
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {formatDate(
+                                  record.fechaEncuestaProgramada,
+                                )}
+                              </Typography>
 
-                          <TableCell>
-                            <Typography variant="body2">
-                              {record.telefono || 'Sin teléfono'}
-                            </Typography>
-
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              {record.direccionTexto || 'Sin dirección'}
-                            </Typography>
-                          </TableCell>
-
-                          <TableCell>
-                            {getFuncionarioRegistroLabel(record)}
-                          </TableCell>
-
-                          <TableCell>
-                            {getEncuestadorRegistroLabel(record)}
-                          </TableCell>
-
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={getLlamadaLabel(
-                                record.llamadaConectada,
-                              )}
-                              color={getLlamadaColor(
-                                record.llamadaConectada,
-                              )}
-                              variant="outlined"
-                            />
-                          </TableCell>
-
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={
-                                record.estadoCaso
-                                ?? 'SIN_ESTADO'
-                              }
-                              color={getEstadoColor(
-                                record.estadoCaso,
-                              )}
-                              variant="outlined"
-                            />
-                          </TableCell>
-
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={
-                                record.estadoVisita
-                                ?? 'PENDIENTE'
-                              }
-                              color={getEstadoColor(
-                                record.estadoVisita,
-                              )}
-                              variant="outlined"
-                            />
-                          </TableCell>
-
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={
-                                record.origenRegistro
-                                ?? 'SIN_ORIGEN'
-                              }
-                              color={
-                                record.origenRegistro === 'VENTANILLA'
-                                  ? 'primary'
-                                  : 'default'
-                              }
-                              variant="outlined"
-                            />
-                          </TableCell>
-
-                          <TableCell align="right">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() =>
-                                router.push(
-                                  `/dashboard/callcenter/registros/nuevo?id=${record.id}`,
+                              <Typography
+                                component="p"
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                {hasVisitProgramming(
+                                  record,
                                 )
-                              }
-                            >
-                              Editar caso
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ),
+                                  ? 'Visita programada'
+                                  : 'Programación pendiente'}
+                              </Typography>
+                            </TableCell>
+
+                            <TableCell>
+                              <Typography
+                                component="p"
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {record.nombreCompleto ||
+                                  'Ciudadano sin nombre'}
+                              </Typography>
+
+                              <Typography
+                                component="p"
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                C.C.{' '}
+                                {record.cedulaSolicitante ||
+                                  'Sin dato'}
+                              </Typography>
+                            </TableCell>
+
+                            <TableCell>
+                              <Typography
+                                component="p"
+                                variant="body2"
+                              >
+                                {record.telefono ||
+                                  'Sin teléfono'}
+                              </Typography>
+
+                              <Typography
+                                component="p"
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{
+                                  display: 'block',
+                                  maxWidth: 220,
+                                  overflowWrap:
+                                    'anywhere',
+                                }}
+                              >
+                                {record.direccionTexto ||
+                                  'Sin dirección'}
+                              </Typography>
+                            </TableCell>
+
+                            <TableCell>
+                              {getFuncionarioRegistroLabel(
+                                record,
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {getEncuestadorRegistroLabel(
+                                record,
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              <Stack
+                                spacing={0.5}
+                                sx={{
+                                  alignItems:
+                                    'flex-start',
+                                }}
+                              >
+                                <Chip
+                                  size="small"
+                                  label={
+                                    getLlamadaLabel(
+                                      record,
+                                    )
+                                  }
+                                  color={
+                                    getLlamadaColor(
+                                      record,
+                                    )
+                                  }
+                                  variant="outlined"
+                                />
+
+                                <Typography
+                                  component="p"
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {formatPhoneDate(
+                                    record,
+                                  )}
+                                </Typography>
+                              </Stack>
+                            </TableCell>
+
+                            <TableCell>
+                              <Chip
+                                size="small"
+                                label={formatLabel(
+                                  record.estadoVisita ||
+                                    'PENDIENTE',
+                                )}
+                                color={getEstadoColor(
+                                  record.estadoVisita,
+                                )}
+                                variant="outlined"
+                              />
+                            </TableCell>
+
+                            <TableCell>
+                              <Chip
+                                size="small"
+                                label={
+                                  getSurveyResultLabel(
+                                    record,
+                                  )
+                                }
+                                color={
+                                  getSurveyResultColor(
+                                    record,
+                                  )
+                                }
+                                variant="outlined"
+                              />
+                            </TableCell>
+
+                            <TableCell>
+                              <Stack
+                                spacing={0.5}
+                                sx={{
+                                  alignItems:
+                                    'flex-start',
+                                }}
+                              >
+                                <Chip
+                                  size="small"
+                                  label={formatLabel(
+                                    record.estadoCaso ||
+                                      'SIN_ESTADO',
+                                  )}
+                                  color={getEstadoColor(
+                                    record.estadoCaso,
+                                  )}
+                                  variant="outlined"
+                                />
+
+                                {!isCaseFinalized(
+                                  record,
+                                ) &&
+                                  isVisitFinalResult(
+                                    record,
+                                  ) && (
+                                    <Typography
+                                      component="p"
+                                      variant="caption"
+                                      sx={{
+                                        color:
+                                          'warning.main',
+                                      }}
+                                    >
+                                      Cierre pendiente
+                                    </Typography>
+                                  )}
+                              </Stack>
+                            </TableCell>
+
+                            <TableCell>
+                              <Stack
+                                spacing={0.5}
+                                sx={{
+                                  minWidth: 185,
+                                  alignItems:
+                                    'flex-start',
+                                }}
+                              >
+                                <Chip
+                                  size="small"
+                                  label={
+                                    nextAction.label
+                                  }
+                                  color={
+                                    nextAction.color
+                                  }
+                                />
+
+                                <Typography
+                                  component="p"
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {nextAction.detail}
+                                </Typography>
+                              </Stack>
+                            </TableCell>
+
+                            <TableCell>
+                              <Chip
+                                size="small"
+                                label={formatLabel(
+                                  record.origenRegistro ||
+                                    'SIN_ORIGEN',
+                                )}
+                                color={
+                                  record.origenRegistro ===
+                                  'VENTANILLA'
+                                    ? 'primary'
+                                    : 'default'
+                                }
+                                variant="outlined"
+                              />
+                            </TableCell>
+
+                            <TableCell align="right">
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() =>
+                                  openCase(
+                                    record.id,
+                                  )
+                                }
+                              >
+                                Abrir caso
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      },
                     )}
                   </TableBody>
                 </Table>
@@ -986,9 +1202,15 @@ export default function CallCenterJornadaConsolidada({
                 count={total}
                 page={page}
                 rowsPerPage={size}
-                rowsPerPageOptions={PAGE_SIZE_OPTIONS}
-                onPageChange={handlePageChange}
-                onRowsPerPageChange={handleRowsPerPageChange}
+                rowsPerPageOptions={
+                  PAGE_SIZE_OPTIONS
+                }
+                onPageChange={
+                  handlePageChange
+                }
+                onRowsPerPageChange={
+                  handleRowsPerPageChange
+                }
                 labelRowsPerPage="Filas"
                 labelDisplayedRows={({
                   from,
@@ -1008,4 +1230,480 @@ export default function CallCenterJornadaConsolidada({
       </CardContent>
     </Card>
   );
+}
+
+function SummaryCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <Typography
+          component="p"
+          variant="caption"
+          color="text.secondary"
+        >
+          {label}
+        </Typography>
+
+        <Typography
+          component="p"
+          variant="h5"
+          sx={{
+            fontWeight: 900,
+          }}
+        >
+          {value}
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}
+
+function getFuncionarioRegistroLabel(
+  record: CallCenterResponse,
+) {
+  return (
+    record.funcionarioCallcenterAsignadoNombre ??
+    record.funcionarioCallcenterAsignadoUsername ??
+    'Sin funcionario'
+  );
+}
+
+function getEncuestadorRegistroLabel(
+  record: CallCenterResponse,
+) {
+  return (
+    record.encuestadorAsignadoNombre ??
+    record.encuestadorProgramadoNombre ??
+    'Sin encuestador'
+  );
+}
+
+function hasPhoneManagement(
+  record: CallCenterResponse,
+) {
+  const estadoCaso =
+    normalizeCode(
+      record.estadoCaso,
+    );
+
+  return Boolean(
+    record.fechaLlamada ||
+      record.horaLlamada ||
+      record.llamadaConectada === true ||
+      record.llamadaConectada === false ||
+      estadoCaso === 'EN_GESTION_LLAMADA' ||
+      estadoCaso === 'NO_CONTACTADO' ||
+      estadoCaso ===
+        'CONTACTADO_SIN_DISPOSICION',
+  );
+}
+
+function getLlamadaLabel(
+  record: CallCenterResponse,
+) {
+  if (
+    !hasPhoneManagement(record)
+  ) {
+    return 'Pendiente';
+  }
+
+  if (
+    record.llamadaConectada === true
+  ) {
+    return 'Conectada';
+  }
+
+  if (
+    record.llamadaConectada === false ||
+    normalizeCode(
+      record.estadoCaso,
+    ) === 'NO_CONTACTADO'
+  ) {
+    return 'No conectada';
+  }
+
+  return 'Registrada';
+}
+
+function getLlamadaColor(
+  record: CallCenterResponse,
+): ChipColor {
+  if (
+    !hasPhoneManagement(record)
+  ) {
+    return 'default';
+  }
+
+  if (
+    record.llamadaConectada === true
+  ) {
+    return 'success';
+  }
+
+  if (
+    record.llamadaConectada === false ||
+    normalizeCode(
+      record.estadoCaso,
+    ) === 'NO_CONTACTADO'
+  ) {
+    return 'warning';
+  }
+
+  return 'info';
+}
+
+function formatPhoneDate(
+  record: CallCenterResponse,
+) {
+  if (!record.fechaLlamada) {
+    return hasPhoneManagement(record)
+      ? 'Consulta el historial'
+      : 'Sin intento registrado';
+  }
+
+  if (record.horaLlamada) {
+    return `${formatDate(
+      record.fechaLlamada,
+    )} · ${record.horaLlamada.slice(
+      0,
+      5,
+    )}`;
+  }
+
+  return formatDate(
+    record.fechaLlamada,
+  );
+}
+
+function hasEncuestador(
+  record: CallCenterResponse,
+) {
+  return Boolean(
+    record.encuestadorAsignadoId ||
+      record.encuestadorProgramadoId ||
+      record.encuestadorAsignadoNombre ||
+      record.encuestadorProgramadoNombre,
+  );
+}
+
+function hasVisitProgramming(
+  record: CallCenterResponse,
+) {
+  const estadoCaso =
+    normalizeCode(
+      record.estadoCaso,
+    );
+
+  const estadoVisita =
+    normalizeCode(
+      record.estadoVisita,
+    );
+
+  return Boolean(
+    record.fechaEncuestaProgramada ||
+      hasEncuestador(record) ||
+      estadoCaso ===
+        'ASIGNADO_ENCUESTADOR' ||
+      estadoCaso ===
+        'VISITA_PROGRAMADA' ||
+      estadoCaso ===
+        'REPROGRAMADO' ||
+      estadoVisita ===
+        'PROGRAMADA' ||
+      estadoVisita ===
+        'REPROGRAMADA',
+  );
+}
+
+function isVisitFinalResult(
+  record: CallCenterResponse,
+) {
+  const estadoVisita =
+    normalizeCode(
+      record.estadoVisita,
+    );
+
+  return (
+    record.encuestaRealizada === true ||
+    estadoVisita === 'REALIZADA' ||
+    estadoVisita === 'NO_ATENDIDA' ||
+    estadoVisita === 'CANCELADA'
+  );
+}
+
+function isVisitReprogrammed(
+  record: CallCenterResponse,
+) {
+  return (
+    normalizeCode(
+      record.estadoCaso,
+    ) === 'REPROGRAMADO' ||
+    normalizeCode(
+      record.estadoVisita,
+    ) === 'REPROGRAMADA'
+  );
+}
+
+function isCaseFinalized(
+  record: CallCenterResponse,
+) {
+  const estadoCaso =
+    normalizeCode(
+      record.estadoCaso,
+    );
+
+  return (
+    estadoCaso === 'CERRADO' ||
+    estadoCaso === 'CANCELADO'
+  );
+}
+
+function getSurveyResultLabel(
+  record: CallCenterResponse,
+) {
+  if (
+    record.encuestaRealizada === true
+  ) {
+    return 'Realizada';
+  }
+
+  if (
+    record.encuestaRealizada === false
+  ) {
+    return 'No realizada';
+  }
+
+  return 'Pendiente';
+}
+
+function getSurveyResultColor(
+  record: CallCenterResponse,
+): ChipColor {
+  if (
+    record.encuestaRealizada === true
+  ) {
+    return 'success';
+  }
+
+  if (
+    record.encuestaRealizada === false
+  ) {
+    return 'warning';
+  }
+
+  return 'default';
+}
+
+function getNextAction(
+  record: CallCenterResponse,
+): NextActionInfo {
+  const estadoCaso =
+    normalizeCode(
+      record.estadoCaso,
+    );
+
+  if (
+    estadoCaso === 'CANCELADO'
+  ) {
+    return {
+      label: 'Solo consulta',
+      detail:
+        'El caso está cancelado.',
+      color: 'default',
+    };
+  }
+
+  if (
+    estadoCaso === 'CERRADO'
+  ) {
+    return {
+      label: 'Caso cerrado',
+      detail:
+        'El seguimiento terminó formalmente.',
+      color: 'success',
+    };
+  }
+
+  if (
+    isVisitReprogrammed(record)
+  ) {
+    return {
+      label: 'Continuar reprogramación',
+      detail:
+        'El caso permanece abierto para la nueva fecha.',
+      color: 'warning',
+    };
+  }
+
+  if (
+    isVisitFinalResult(record)
+  ) {
+    return {
+      label: 'Pendiente de cierre',
+      detail:
+        'La visita tiene resultado y el caso sigue abierto.',
+      color: 'warning',
+    };
+  }
+
+  const hasPhone =
+    hasPhoneManagement(record);
+
+  const hasProgramming =
+    hasVisitProgramming(record);
+
+  if (
+    !hasPhone &&
+    !hasProgramming
+  ) {
+    return {
+      label: 'Llamar y programar',
+      detail:
+        'Falta llamada, encuestador y programación.',
+      color: 'primary',
+    };
+  }
+
+  if (
+    !hasPhone &&
+    hasProgramming
+  ) {
+    return {
+      label: 'Registrar llamada',
+      detail:
+        'La visita está programada; falta el intento telefónico.',
+      color: 'warning',
+    };
+  }
+
+  if (
+    hasPhone &&
+    !hasProgramming
+  ) {
+    return {
+      label: 'Programar visita',
+      detail:
+        'Falta asignar encuestador, fecha y hora.',
+      color: 'warning',
+    };
+  }
+
+  return {
+    label: 'Esperar resultado',
+    detail:
+      'La llamada y la visita ya están programadas.',
+    color: 'info',
+  };
+}
+
+function getEstadoColor(
+  value?: string | null,
+): ChipColor {
+  const normalized =
+    normalizeCode(value);
+
+  if (
+    normalized === 'CERRADO' ||
+    normalized ===
+      'VISITA_REALIZADA' ||
+    normalized === 'REALIZADA'
+  ) {
+    return 'success';
+  }
+
+  if (
+    normalized === 'CANCELADO' ||
+    normalized === 'CANCELADA'
+  ) {
+    return 'error';
+  }
+
+  if (
+    normalized === 'NO_CONTACTADO' ||
+    normalized ===
+      'VISITA_NO_ATENDIDA' ||
+    normalized === 'NO_ATENDIDA' ||
+    normalized ===
+      'CONTACTADO_SIN_DISPOSICION' ||
+    normalized === 'REPROGRAMADO' ||
+    normalized === 'REPROGRAMADA'
+  ) {
+    return 'warning';
+  }
+
+  if (
+    normalized ===
+      'VISITA_PROGRAMADA' ||
+    normalized === 'PROGRAMADA' ||
+    normalized ===
+      'ASIGNADO_ENCUESTADOR'
+  ) {
+    return 'primary';
+  }
+
+  if (
+    normalized.includes('PENDIENTE') ||
+    normalized.includes('ASIGNADO') ||
+    normalized.includes('GESTION')
+  ) {
+    return 'info';
+  }
+
+  return 'default';
+}
+
+function normalizeCode(
+  value?: string | number | null,
+) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase();
+}
+
+function formatLabel(
+  value?: string | null,
+) {
+  return String(
+    value ??
+      'Sin dato',
+  )
+    .split('_')
+    .join(' ')
+    .toLowerCase()
+    .replace(
+      /^\w/,
+      (letter) =>
+        letter.toUpperCase(),
+    );
+}
+
+function formatDate(
+  value?: string | null,
+) {
+  if (!value) {
+    return 'Sin fecha';
+  }
+
+  const parts =
+    value.split('-');
+
+  if (
+    parts.length !== 3
+  ) {
+    return value;
+  }
+
+  const [
+    year,
+    month,
+    day,
+  ] = parts;
+
+  return `${day}/${month}/${year}`;
 }

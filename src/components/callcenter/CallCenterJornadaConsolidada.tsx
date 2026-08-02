@@ -23,11 +23,11 @@ import {
 } from '@mui/material';
 import { useRouter } from 'next/navigation';
 import {
-  ChangeEvent,
   useCallback,
   useEffect,
   useMemo,
   useState,
+  type ChangeEvent,
 } from 'react';
 
 import { searchCallCenter } from '@/services/callcenter.service';
@@ -91,9 +91,6 @@ const ESTADOS_VISITA = [
   'CANCELADA',
 ];
 
-/**
- * Obtiene la fecha local actual en formato yyyy-MM-dd.
- */
 function getLocalToday() {
   const now = new Date();
 
@@ -149,22 +146,18 @@ function getTotalElements(
     ?? currentLength;
 }
 
-function formatDate(
-  value?: string | null,
-) {
+function formatDate(value?: string | null) {
   if (!value) {
     return 'Sin fecha';
   }
 
-  const parts =
-    value.split('-');
+  const parts = value.split('-');
 
   if (parts.length !== 3) {
     return value;
   }
 
-  const [year, month, day] =
-    parts;
+  const [year, month, day] = parts;
 
   return `${day}/${month}/${year}`;
 }
@@ -280,8 +273,7 @@ export default function CallCenterJornadaConsolidada({
   loadingCatalogs = false,
   refreshKey = 0,
 }: Props) {
-  const router =
-    useRouter();
+  const router = useRouter();
 
   const [filters, setFilters] =
     useState<JornadaFilterState>(
@@ -464,7 +456,9 @@ export default function CallCenterJornadaConsolidada({
   };
 
   const handleRowsPerPageChange = (
-    event: ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement
+    >,
   ) => {
     setSize(
       Number(event.target.value),
@@ -816,49 +810,24 @@ export default function CallCenterJornadaConsolidada({
           ) : (
             <Paper variant="outlined">
               <TableContainer>
-                <Table size="small">
+                <Table
+                  size="small"
+                  sx={{
+                    minWidth: 1300,
+                  }}
+                >
                   <TableHead>
                     <TableRow>
-                      <TableCell>
-                        Caso
-                      </TableCell>
-
-                      <TableCell>
-                        Programación
-                      </TableCell>
-
-                      <TableCell>
-                        Ciudadano
-                      </TableCell>
-
-                      <TableCell>
-                        Contacto
-                      </TableCell>
-
-                      <TableCell>
-                        Funcionario Call Center
-                      </TableCell>
-
-                      <TableCell>
-                        Encuestador
-                      </TableCell>
-
-                      <TableCell>
-                        Llamada
-                      </TableCell>
-
-                      <TableCell>
-                        Estado del caso
-                      </TableCell>
-
-                      <TableCell>
-                        Visita
-                      </TableCell>
-
-                      <TableCell>
-                        Origen
-                      </TableCell>
-
+                      <TableCell>Caso</TableCell>
+                      <TableCell>Programación</TableCell>
+                      <TableCell>Ciudadano</TableCell>
+                      <TableCell>Contacto</TableCell>
+                      <TableCell>Funcionario Call Center</TableCell>
+                      <TableCell>Encuestador</TableCell>
+                      <TableCell>Llamada</TableCell>
+                      <TableCell>Estado del caso</TableCell>
+                      <TableCell>Visita</TableCell>
+                      <TableCell>Origen</TableCell>
                       <TableCell align="right">
                         Acción
                       </TableCell>

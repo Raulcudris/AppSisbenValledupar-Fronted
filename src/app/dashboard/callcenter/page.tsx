@@ -2,8 +2,10 @@
 
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SearchIcon from '@mui/icons-material/Search';
 import SourceIcon from '@mui/icons-material/Source';
 import {
@@ -13,450 +15,650 @@ import {
   Card,
   CardContent,
   Chip,
-  Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  InputAdornment,
+  MenuItem,
   Paper,
+  Snackbar,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableFooter,
+  TableHead,
+  TablePagination,
+  TableRow,
+  TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
 
 import {
-  canAccessDashboardPath,
-  currentRole,
-} from '@/lib/roleAccess';
-import type { AppRole } from '@/lib/roleAccess';
+  activateCallCenterRegistro,
+  deactivateCallCenterRegistro,
+  getCallCenterEncuestadoresOptions,
+  searchCallCenter,
+} from '@/services/callcenter.service';
 
-type FlowAction = {
-  label: string;
-  path: string;
-  variant: 'contained' | 'outlined';
-  icon: ReactNode;
+import {
+  CallCenterFilter,
+  CallCenterOrigenRegistro,
+  CallCenterResponse,
+} from '@/types/callcenter.types';
+import { SelectOption } from '@/types/catalog.types';
+
+type SnackbarState = {
+  open: boolean;
+  message: string;
+  severity: 'success' | 'error' | 'warning' | 'info';
 };
 
-type FlowStep = {
-  number: number;
-  title: string;
-  description: string;
-  responsible: string;
-  result: string;
-  icon: ReactNode;
-  color: 'primary' | 'secondary' | 'success' | 'warning' | 'info';
-  actions: FlowAction[];
+type ConfirmAction = 'ACTIVATE' | 'DEACTIVATE' | null;
+
+type FilterState = {
+  q: string;
+  fechaInicio: string;
+  fechaFin: string;
+  encuestadorAsignadoId: string;
+  origenRegistro: 'ALL' | CallCenterOrigenRegistro;
+  llamadaConectada: 'ALL' | 'true' | 'false';
+  activo: 'ALL' | 'true' | 'false';
+  page: number;
+  size: number;
 };
 
-const FLOW_STEPS: FlowStep[] = [
-  {
-    number: 1,
-    title: 'Ingresar casos',
-    description:
-      'Incorpora ciudadanos desde Ventanilla o registra manualmente un caso de Call Center.',
-    responsible: 'Coordinación o supervisión',
-    result: 'Caso disponible para distribución',
-    icon: <SourceIcon />,
-    color: 'primary',
-    actions: [
-      {
-        label: 'Importar desde Ventanilla',
-        path: '/dashboard/callcenter/registros/cargar-ventanilla',
-        variant: 'contained',
-        icon: <SourceIcon />,
-      },
-      {
-        label: 'Registro manual',
-        path: '/dashboard/callcenter/registros/nuevo',
-        variant: 'outlined',
-        icon: <AddIcon />,
-      },
-    ],
-  },
-  {
-    number: 2,
-    title: 'Distribuir casos',
-    description:
-      'Asigna los casos pendientes a los funcionarios responsables de realizar la gestión telefónica.',
-    responsible: 'Coordinación o supervisión',
-    result: 'Caso asignado a un funcionario Call Center',
-    icon: <EditIcon />,
-    color: 'secondary',
-    actions: [
-      {
-        label: 'Distribuir casos',
-        path: '/dashboard/callcenter/asignar-funcionarios',
-        variant: 'contained',
-        icon: <EditIcon />,
-      },
-    ],
-  },
-  {
-    number: 3,
-    title: 'Gestionar llamadas',
-    description:
-      'El funcionario consulta sus casos, registra cada intento de llamada y actualiza los datos confirmados.',
-    responsible: 'Funcionario de Call Center',
-    result: 'Gestión telefónica registrada',
-    icon: <SearchIcon />,
-    color: 'info',
-    actions: [
-      {
-        label: 'Casos por gestionar',
-        path: '/dashboard/callcenter/mis-registros',
-        variant: 'contained',
-        icon: <SearchIcon />,
-      },
-    ],
-  },
-  {
-    number: 4,
-    title: 'Ejecutar la jornada de campo',
-    description:
-      'Consulta ciudadanos programados, encuestadores asignados, estados de visita y ciudadanos de última hora.',
-    responsible: 'Coordinación y encuestadores',
-    result: 'Visitas organizadas y resultados registrados',
-    icon: <RefreshIcon />,
-    color: 'warning',
-    actions: [
-      {
-        label: 'Jornada de campo',
-        path: '/dashboard/callcenter/jornada',
-        variant: 'contained',
-        icon: <RefreshIcon />,
-      },
-      {
-        label: 'Visitas asignadas',
-        path: '/dashboard/callcenter/mis-asignaciones',
-        variant: 'outlined',
-        icon: <CheckCircleIcon />,
-      },
-    ],
-  },
-  {
-    number: 5,
-    title: 'Supervisar resultados',
-    description:
-      'Consulta todos los casos, responsables, orígenes, llamadas, visitas y estados del proceso.',
-    responsible: 'Coordinación o supervisión',
-    result: 'Seguimiento general del proceso',
-    icon: <CheckCircleIcon />,
-    color: 'success',
-    actions: [
-      {
-        label: 'Control general de casos',
-        path: '/dashboard/callcenter/registros',
-        variant: 'contained',
-        icon: <CheckCircleIcon />,
-      },
-    ],
-  },
-];
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
-type ReferenceView = {
-  title: string;
-  description: string;
-  buttonLabel: string;
-  path: string;
+const initialFilter: FilterState = {
+  q: '',
+  fechaInicio: '',
+  fechaFin: '',
+  encuestadorAsignadoId: '',
+  origenRegistro: 'ALL',
+  llamadaConectada: 'ALL',
+  activo: 'true',
+  page: 0,
+  size: 20,
 };
 
-const REFERENCE_VIEWS: ReferenceView[] = [
-  {
-    title: 'Casos por gestionar',
-    description:
-      'Bandeja del funcionario Call Center. Contiene los casos que requieren gestión telefónica y seguimiento.',
-    buttonLabel: 'Abrir casos',
-    path: '/dashboard/callcenter/mis-registros',
-  },
-  {
-    title: 'Visitas asignadas',
-    description:
-      'Bandeja del encuestador. Contiene las visitas asignadas y permite registrar el resultado de campo.',
-    buttonLabel: 'Abrir visitas',
-    path: '/dashboard/callcenter/mis-asignaciones',
-  },
-  {
-    title: 'Control general de casos',
-    description:
-      'Consulta administrativa para supervisar todos los casos, responsables, llamadas y visitas.',
-    buttonLabel: 'Abrir control general',
-    path: '/dashboard/callcenter/registros',
-  },
-];
+function toBoolean(value: string): boolean | null {
+  if (value === 'true') {
+    return true;
+  }
 
-export default function CallCenterHomePage() {
+  if (value === 'false') {
+    return false;
+  }
+
+  return null;
+}
+
+function normalizeText(value?: string | null) {
+  return value?.trim() ?? '';
+}
+
+function getPageContent<T>(page: unknown): T[] {
+  const data = page as {
+    content?: T[];
+    items?: T[];
+    data?: T[];
+  };
+
+  return data?.content ?? data?.items ?? data?.data ?? [];
+}
+
+function getTotalElements(page: unknown, currentLength: number) {
+  const data = page as {
+    totalElements?: number;
+    total?: number;
+    totalRecords?: number;
+  };
+
+  return data?.totalElements ?? data?.total ?? data?.totalRecords ?? currentLength;
+}
+
+function origenColor(origen?: string | null) {
+  if (origen === 'VENTANILLA') {
+    return 'primary' as const;
+  }
+
+  if (origen === 'IMPORTACION') {
+    return 'secondary' as const;
+  }
+
+  return 'default' as const;
+}
+
+function buildFilter(filter: FilterState): CallCenterFilter {
+  const llamadaConectada = toBoolean(filter.llamadaConectada);
+  const activo = toBoolean(filter.activo);
+
+  return {
+    page: filter.page,
+    size: filter.size,
+    q: normalizeText(filter.q) || undefined,
+    fechaInicio: filter.fechaInicio || undefined,
+    fechaFin: filter.fechaFin || undefined,
+    encuestadorAsignadoId: filter.encuestadorAsignadoId || undefined,
+    origenRegistro: filter.origenRegistro === 'ALL' ? undefined : filter.origenRegistro,
+    llamadaConectada: llamadaConectada ?? undefined,
+    activo: activo ?? undefined,
+  };
+}
+
+export default function CallCenterRegistrosPage() {
   const router = useRouter();
 
-  const [role, setRole] = useState<AppRole | ''>('');
+  const [records, setRecords] = useState<CallCenterResponse[]>([]);
+  const [total, setTotal] = useState(0);
+  const [filter, setFilter] = useState<FilterState>(initialFilter);
+  const [loading, setLoading] = useState(false);
+  const [encuestadores, setEncuestadores] = useState<SelectOption[]>([]);
+
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [selectedRecord, setSelectedRecord] = useState<CallCenterResponse | null>(null);
+
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
+
+  const showMessage = (message: string, severity: SnackbarState['severity'] = 'success') => {
+    setSnackbar({
+      open: true,
+      message,
+      severity,
+    });
+  };
+
+  const closeSnackbar = () => {
+    setSnackbar((current) => ({
+      ...current,
+      open: false,
+    }));
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const page = await searchCallCenter(buildFilter(filter));
+      const content = getPageContent<CallCenterResponse>(page);
+
+      setRecords(content);
+      setTotal(getTotalElements(page, content.length));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible cargar los registros de Call Center.';
+      showMessage(message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [filter]);
 
   useEffect(() => {
-    setRole(currentRole());
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    getCallCenterEncuestadoresOptions()
+      .then(setEncuestadores)
+      .catch(() => {
+        showMessage('No fue posible cargar el catálogo de encuestadores.', 'warning');
+      });
   }, []);
 
-  const steps = useMemo(
-    () =>
-      FLOW_STEPS.map((step) => ({
-        ...step,
-        actions: step.actions.filter((action) =>
-          canAccessDashboardPath(role, action.path),
-        ),
-      })),
-    [role],
-  );
+  const stats = useMemo(() => {
+    const ventanilla = records.filter((item) => item.origenRegistro === 'VENTANILLA').length;
+    const manual = records.filter((item) => item.origenRegistro === 'MANUAL').length;
+    const connected = records.filter((item) => item.llamadaConectada).length;
 
-  const canOpen = (path: string) =>
-    canAccessDashboardPath(role, path);
+    return {
+      ventanilla,
+      manual,
+      connected,
+    };
+  }, [records]);
+
+  const updateFilter = (field: keyof FilterState, value: string | number) => {
+    setFilter((current) => ({
+      ...current,
+      [field]: value,
+      page: field === 'page' || field === 'size' ? current.page : 0,
+    }));
+  };
+
+  const openConfirm = (record: CallCenterResponse, action: ConfirmAction) => {
+    setSelectedRecord(record);
+    setConfirmAction(action);
+  };
+
+  const closeConfirm = () => {
+    setSelectedRecord(null);
+    setConfirmAction(null);
+  };
+
+  const confirmStatusChange = async () => {
+    if (!selectedRecord || !confirmAction) {
+      return;
+    }
+
+    try {
+      if (confirmAction === 'ACTIVATE') {
+        await activateCallCenterRegistro(selectedRecord.id);
+        showMessage('Registro activado correctamente.', 'success');
+      }
+
+      if (confirmAction === 'DEACTIVATE') {
+        await deactivateCallCenterRegistro(selectedRecord.id);
+        showMessage('Registro inactivado correctamente.', 'success');
+      }
+
+      closeConfirm();
+      load();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible cambiar el estado del registro.';
+      showMessage(message, 'error');
+    }
+  };
+
+  const handlePageChange = (_: unknown, page: number) => {
+    setFilter((current) => ({
+      ...current,
+      page,
+    }));
+  };
+
+  const handleRowsPerPageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setFilter((current) => ({
+      ...current,
+      page: 0,
+      size: Number(event.target.value),
+    }));
+  };
 
   return (
     <Box>
       <Stack spacing={3}>
-        <Box>
-          <Typography variant="h5" sx={{ fontWeight: 800 }}>
-            Call Center
-          </Typography>
-
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ mt: 0.5 }}
-          >
-            Sigue el proceso en orden: ingresar casos, distribuirlos,
-            gestionar llamadas, ejecutar la jornada y supervisar resultados.
-          </Typography>
-        </Box>
-
-        <Alert severity="info">
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-            La llamada es informativa y de confirmación.
-          </Typography>
-
-          <Typography variant="body2">
-            Cuando el ciudadano no contesta, el intento debe quedar
-            registrado. La visita programada continúa y el encuestador debe
-            realizarla en la fecha asignada.
-          </Typography>
-        </Alert>
-
-        <Paper sx={{ p: { xs: 2, md: 3 } }}>
-          <Stack spacing={1}>
-            <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              Flujo de trabajo
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          sx={{ justifyContent: 'space-between' }}
+        >
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>
+              Registros Call Center
             </Typography>
-
             <Typography variant="body2" color="text.secondary">
-              Cada pantalla tiene una responsabilidad concreta. Los botones
-              disponibles dependen del rol del usuario autenticado.
+              Gestión de llamadas, registros manuales y carga desde ventanilla para asignación de encuestas.
             </Typography>
+          </Box>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={load}
+              disabled={loading}
+            >
+              Actualizar
+            </Button>
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<SourceIcon />}
+              onClick={() => router.push('/dashboard/callcenter/registros/cargar-ventanilla')}
+            >
+              Cargar desde Ventanilla
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => router.push('/dashboard/callcenter/registros/nuevo')}
+            >
+              Nuevo registro manual
+            </Button>
           </Stack>
+        </Stack>
 
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                lg: 'repeat(2, minmax(0, 1fr))',
-              },
-              gap: 2,
-              mt: 3,
-            }}
-          >
-            {steps.map((step) => (
-              <Card
-                key={step.number}
-                variant="outlined"
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minHeight: 280,
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Total página
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {records.length}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Desde ventanilla
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {stats.ventanilla}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Manuales
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {stats.manual}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ flex: 1 }}>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Conectadas
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                {stats.connected}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Stack>
+
+        <Paper sx={{ p: 2 }}>
+          <Stack spacing={2}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Buscar"
+                value={filter.q}
+                onChange={(event) => updateFilter('q', event.target.value)}
+                fullWidth
+                size="small"
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  },
                 }}
-              >
-                <CardContent
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    flex: 1,
-                  }}
-                >
-                  <Stack
-                    direction="row"
-                    spacing={1.5}
-                    sx={{
-                      alignItems: 'flex-start',
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 2,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        bgcolor: `${step.color}.main`,
-                        color: `${step.color}.contrastText`,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {step.icon}
-                    </Box>
+              />
 
-                    <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Stack
-                        direction="row"
-                        sx={{
-                          alignItems: 'center',
-                          flexWrap: 'wrap',
-                          gap: 1,
-                        }}
-                      >
+              <TextField
+                label="Encuestador"
+                select
+                value={filter.encuestadorAsignadoId}
+                onChange={(event) => updateFilter('encuestadorAsignadoId', event.target.value)}
+                sx={{ minWidth: 260 }}
+                size="small"
+              >
+                <MenuItem value="">Todos los encuestadores</MenuItem>
+                {encuestadores.map((option) => (
+                  <MenuItem key={option.id} value={option.id}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+
+              <TextField
+                label="Fecha inicio"
+                type="date"
+                value={filter.fechaInicio}
+                onChange={(event) => updateFilter('fechaInicio', event.target.value)}
+                sx={{ minWidth: 180 }}
+                size="small"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+
+              <TextField
+                label="Fecha fin"
+                type="date"
+                value={filter.fechaFin}
+                onChange={(event) => updateFilter('fechaFin', event.target.value)}
+                sx={{ minWidth: 180 }}
+                size="small"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Origen"
+                select
+                value={filter.origenRegistro}
+                onChange={(event) => updateFilter('origenRegistro', event.target.value)}
+                sx={{ minWidth: 180 }}
+                size="small"
+              >
+                <MenuItem value="ALL">Todos</MenuItem>
+                <MenuItem value="VENTANILLA">Ventanilla</MenuItem>
+                <MenuItem value="MANUAL">Manual</MenuItem>
+                <MenuItem value="IMPORTACION">Importación</MenuItem>
+              </TextField>
+
+              <TextField
+                label="Llamada"
+                select
+                value={filter.llamadaConectada}
+                onChange={(event) => updateFilter('llamadaConectada', event.target.value)}
+                sx={{ minWidth: 180 }}
+                size="small"
+              >
+                <MenuItem value="ALL">Todas</MenuItem>
+                <MenuItem value="true">Conectada</MenuItem>
+                <MenuItem value="false">No conectada</MenuItem>
+              </TextField>
+
+              <TextField
+                label="Estado"
+                select
+                value={filter.activo}
+                onChange={(event) => updateFilter('activo', event.target.value)}
+                sx={{ minWidth: 160 }}
+                size="small"
+              >
+                <MenuItem value="true">Activos</MenuItem>
+                <MenuItem value="false">Inactivos</MenuItem>
+                <MenuItem value="ALL">Todos</MenuItem>
+              </TextField>
+
+              <Button
+                variant="outlined"
+                startIcon={<RestartAltIcon />}
+                onClick={() => setFilter(initialFilter)}
+              >
+                Limpiar
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
+
+        {loading ? (
+          <Paper sx={{ p: 3 }}>
+            <Alert severity="info">
+              Cargando registros de Call Center...
+            </Alert>
+          </Paper>
+        ) : records.length === 0 ? (
+          <Paper sx={{ p: 3 }}>
+            <Alert severity="info">
+              Sin registros. No se encontraron registros de Call Center con los filtros actuales.
+            </Alert>
+          </Paper>
+        ) : (
+          <Paper>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Fecha</TableCell>
+                    <TableCell>Origen</TableCell>
+                    <TableCell>Ciudadano</TableCell>
+                    <TableCell>Teléfono</TableCell>
+                    <TableCell>Dirección</TableCell>
+                    <TableCell>Llamada</TableCell>
+                    <TableCell>Encuestador</TableCell>
+                    <TableCell>Visita</TableCell>
+                    <TableCell>Estado</TableCell>
+                    <TableCell align="right">Acciones</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {records.map((record) => (
+                    <TableRow key={record.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {record.fechaLlamada}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {record.horaLlamada?.slice(0, 5) || 'Sin hora'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Stack spacing={0.5}>
+                          <Chip
+                            size="small"
+                            label={record.origenRegistro || 'MANUAL'}
+                            color={origenColor(record.origenRegistro)}
+                          />
+                          {record.ventanillaNumeroVentanilla && (
+                            <Typography variant="caption" color="text.secondary">
+                              Vent. {record.ventanillaNumeroVentanilla}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {record.nombreCompleto}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          C.C. {record.cedulaSolicitante}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{record.telefono || 'Sin dato'}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {record.direccionTexto || 'Sin dirección'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {record.barrioNombre || 'Sin barrio'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
                         <Chip
                           size="small"
-                          color={step.color}
-                          label={`Paso ${step.number}`}
+                          color={record.llamadaConectada ? 'success' : 'warning'}
+                          label={record.llamadaConectada ? 'Conectada' : 'No conectada'}
                         />
-
-                        <Typography
-                          variant="h6"
-                          sx={{ fontWeight: 800 }}
-                        >
-                          {step.title}
-                        </Typography>
-                      </Stack>
-
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ mt: 1 }}
-                      >
-                        {step.description}
-                      </Typography>
-                    </Box>
-                  </Stack>
-
-                  <Divider sx={{ my: 2 }} />
-
-                  <Stack spacing={1}>
-                    <Box>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: 'block' }}
-                      >
-                        Responsable
-                      </Typography>
-
-                      <Typography
-                        variant="body2"
-                        sx={{ fontWeight: 700 }}
-                      >
-                        {step.responsible}
-                      </Typography>
-                    </Box>
-
-                    <Box>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: 'block' }}
-                      >
-                        Resultado esperado
-                      </Typography>
-
-                      <Typography variant="body2">
-                        {step.result}
-                      </Typography>
-                    </Box>
-                  </Stack>
-
-                  {step.actions.length > 0 && (
-                    <Stack
-                      direction={{ xs: 'column', sm: 'row' }}
-                      spacing={1}
-                      sx={{
-                        mt: 'auto',
-                        pt: 2,
-                      }}
-                    >
-                      {step.actions.map((action) => (
-                        <Button
-                          key={action.path}
-                          variant={action.variant}
-                          startIcon={action.icon}
-                          onClick={() => router.push(action.path)}
-                        >
-                          {action.label}
-                        </Button>
-                      ))}
-                    </Stack>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
-        </Paper>
-
-        <Paper sx={{ p: { xs: 2, md: 3 } }}>
-          <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            Diferencia entre las vistas operativas
-          </Typography>
-
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ mt: 0.5 }}
-          >
-            Cada bandeja corresponde a una responsabilidad distinta.
-          </Typography>
-
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                md: 'repeat(3, minmax(0, 1fr))',
-              },
-              gap: 2,
-              mt: 2,
-            }}
-          >
-            {REFERENCE_VIEWS.map((view) => (
-              <Card key={view.path} variant="outlined">
-                <CardContent>
-                  <Typography
-                    variant="subtitle1"
-                    sx={{ fontWeight: 800 }}
-                  >
-                    {view.title}
-                  </Typography>
-
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mt: 1 }}
-                  >
-                    {view.description}
-                  </Typography>
-
-                  {canOpen(view.path) && (
-                    <Button
-                      size="small"
-                      sx={{ mt: 1.5 }}
-                      onClick={() => router.push(view.path)}
-                    >
-                      {view.buttonLabel}
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </Box>
-        </Paper>
-
-        <Alert severity="success" icon={<CheckCircleIcon />}>
-          <Typography variant="body2">
-            Las búsquedas, filtros, edición, activación e inactivación están
-            concentradas en <strong>Control general de casos</strong>.
-          </Typography>
-        </Alert>
+                      </TableCell>
+                      <TableCell>{record.encuestadorAsignadoNombre || record.encuestadorProgramadoNombre || 'Sin asignar'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={record.estadoVisita || 'PENDIENTE'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={record.activo ? 'success' : 'default'}
+                          label={record.activo ? 'Activo' : 'Inactivo'}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Editar">
+                          <IconButton
+                            size="small"
+                            onClick={() => router.push(`/dashboard/callcenter/registros/nuevo?id=${record.id}`)}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        {record.activo ? (
+                          <Tooltip title="Inactivar">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => openConfirm(record, 'DEACTIVATE')}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip title="Activar">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={() => openConfirm(record, 'ACTIVATE')}
+                            >
+                              <CheckCircleIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TablePagination
+                      count={total}
+                      page={filter.page}
+                      rowsPerPage={filter.size}
+                      rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+                      onPageChange={handlePageChange}
+                      onRowsPerPageChange={handleRowsPerPageChange}
+                      labelRowsPerPage="Filas"
+                    />
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </TableContainer>
+          </Paper>
+        )}
       </Stack>
+
+      <Dialog open={Boolean(confirmAction)} onClose={closeConfirm} fullWidth maxWidth="xs">
+        <DialogTitle>
+          {confirmAction === 'ACTIVATE' ? 'Activar registro' : 'Inactivar registro'}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2">
+            Confirma la acción para el registro de{' '}
+            <strong>{selectedRecord?.nombreCompleto}</strong>.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeConfirm}>Cancelar</Button>
+          <Button
+            variant="contained"
+            color={confirmAction === 'ACTIVATE' ? 'success' : 'error'}
+            onClick={confirmStatusChange}
+          >
+            Confirmar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={closeSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity={snackbar.severity} onClose={closeSnackbar} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

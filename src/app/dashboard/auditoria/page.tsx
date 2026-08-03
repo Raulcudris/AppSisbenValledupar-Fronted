@@ -34,6 +34,7 @@ import { ApiClientError } from '@/lib/apiClient';
 import { searchAudit } from '@/services/audit.service';
 import { PageResponse } from '@/types/api.types';
 import { AuditFilter, AuditLogResponse } from '@/types/audit.types';
+import { sanitizeSpreadsheetCell } from '@/lib/spreadsheet';
 
 type AuditOption = {
   label: string;
@@ -42,11 +43,20 @@ type AuditOption = {
 
 const DEFAULT_ACTION_OPTIONS: AuditOption[] = [
   { label: 'LOGIN', value: 'LOGIN' },
-  { label: 'LOGOUT', value: 'LOGOUT' },
+  {
+    label: 'CHANGE_PASSWORD',
+    value: 'CHANGE_PASSWORD',
+  },
   { label: 'CREATE', value: 'CREATE' },
   { label: 'UPDATE', value: 'UPDATE' },
   { label: 'DELETE', value: 'DELETE' },
+  { label: 'ACTIVATE', value: 'ACTIVATE' },
+  {
+    label: 'DEACTIVATE',
+    value: 'DEACTIVATE',
+  },
   { label: 'EXPORT', value: 'EXPORT' },
+  { label: 'VIEW', value: 'VIEW' },
 ];
 
 const DEFAULT_TABLE_OPTIONS: AuditOption[] = [
@@ -146,11 +156,29 @@ function buildExportRows(rows: AuditLogResponse[]) {
   return rows.map((item) => ({
     ID: item.id,
     Fecha: formatDateTime(item.fechaAccion),
-    Usuario: item.username ?? 'N/A',
-    Accion: item.accion ?? 'N/A',
-    Tabla: item.tablaAfectada ?? 'N/A',
-    Registro: item.registroId ?? 'N/A',
-    IP: item.ipOrigen ?? 'N/A',
+
+    Usuario: sanitizeSpreadsheetCell(
+      item.username ?? 'N/A',
+    ),
+
+    Accion: sanitizeSpreadsheetCell(
+      item.accion ?? 'N/A',
+    ),
+
+    Tabla: sanitizeSpreadsheetCell(
+      item.tablaAfectada ?? 'N/A',
+    ),
+
+    Registro: sanitizeSpreadsheetCell(
+      item.registroId === null
+      || item.registroId === undefined
+        ? 'N/A'
+        : String(item.registroId),
+    ),
+
+    IP: sanitizeSpreadsheetCell(
+      item.ipOrigen ?? 'N/A',
+    ),
   }));
 }
 

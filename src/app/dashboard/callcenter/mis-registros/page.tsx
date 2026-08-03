@@ -51,7 +51,7 @@ import { PageResponse } from '@/types/api.types';
 import { CallCenterResponse } from '@/types/callcenter.types';
 
 /**
- * Estado local para mostrar mensajes informativos, exitosos o de error.
+ * Estado local para mostrar mensajes.
  */
 type SnackbarState = {
   open: boolean;
@@ -60,7 +60,7 @@ type SnackbarState = {
 };
 
 /**
- * Color permitido para chips de estado.
+ * Color permitido para chips.
  */
 type ChipColor =
   | 'default'
@@ -72,10 +72,7 @@ type ChipColor =
   | 'warning';
 
 /**
- * Estado local de filtros de la pantalla.
- *
- * Se separan los filtros escritos en pantalla de los filtros aplicados
- * para que la búsqueda se ejecute únicamente al pulsar el botón Buscar.
+ * Estado local de filtros.
  */
 type RegistroFilterState = {
   q: string;
@@ -84,9 +81,6 @@ type RegistroFilterState = {
   condicion: string;
 };
 
-/**
- * Filtros iniciales de la pantalla.
- */
 const initialFilters: RegistroFilterState = {
   q: '',
   estadoCaso: 'TODOS',
@@ -95,23 +89,26 @@ const initialFilters: RegistroFilterState = {
 };
 
 /**
- * Estados formales más usados en el flujo de Call Center.
+ * Estados formales disponibles en el filtro.
  */
 const ESTADOS_CASO_FILTRO = [
   'PENDIENTE_ENRUTAMIENTO',
   'ASIGNADO_CALLCENTER',
   'EN_GESTION_LLAMADA',
   'NO_CONTACTADO',
+  'CONTACTADO_SIN_DISPOSICION',
+  'PENDIENTE_ASIGNAR_ENCUESTADOR',
   'ASIGNADO_ENCUESTADOR',
   'VISITA_PROGRAMADA',
   'VISITA_NO_ATENDIDA',
   'REPROGRAMADO',
+  'VISITA_REALIZADA',
   'CERRADO',
   'CANCELADO',
 ];
 
 /**
- * Tipos de solicitud disponibles para el filtro de Mis registros.
+ * Tipos de solicitud disponibles.
  */
 const TIPOS_SOLICITUD_FILTRO = [
   'NUEVA_ENCUESTA',
@@ -121,23 +118,22 @@ const TIPOS_SOLICITUD_FILTRO = [
 ];
 
 /**
- * Página de casos asignados al funcionario Call Center autenticado.
- *
- * Esta pantalla lista los casos asignados, permite aplicar filtros desde
- * backend y abrir la gestión operativa del caso. El registro de llamadas y
- * la asignación de visita se realizan desde la pantalla de detalle.
+ * Página de casos asignados al funcionario Call Center.
  */
 export default function MisRegistrosCallCenterPage() {
   const router = useRouter();
 
-  const [pageData, setPageData] = useState<PageResponse<CallCenterResponse> | null>(null);
+  const [pageData, setPageData] =
+    useState<PageResponse<CallCenterResponse> | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [searchText, setSearchText] = useState('');
   const [estadoCasoFiltro, setEstadoCasoFiltro] = useState('TODOS');
-  const [tipoSolicitudFiltro, setTipoSolicitudFiltro] = useState('TODOS');
+  const [tipoSolicitudFiltro, setTipoSolicitudFiltro] =
+    useState('TODOS');
   const [condicionFiltro, setCondicionFiltro] = useState('TODOS');
-  const [appliedFilters, setAppliedFilters] = useState<RegistroFilterState>(initialFilters);
+  const [appliedFilters, setAppliedFilters] =
+    useState<RegistroFilterState>(initialFilters);
 
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
@@ -169,15 +165,9 @@ export default function MisRegistrosCallCenterPage() {
     searchText.trim()
     || estadoCasoFiltro !== 'TODOS'
     || tipoSolicitudFiltro !== 'TODOS'
-    || condicionFiltro !== 'TODOS'
+    || condicionFiltro !== 'TODOS',
   );
 
-  /**
-   * Muestra un mensaje de estado al usuario.
-   *
-   * @param message mensaje visible.
-   * @param severity tipo de mensaje.
-   */
   function showMessage(
     message: string,
     severity: SnackbarState['severity'] = 'success',
@@ -189,9 +179,6 @@ export default function MisRegistrosCallCenterPage() {
     });
   }
 
-  /**
-   * Cierra el mensaje emergente.
-   */
   function closeSnackbar() {
     setSnackbar((current) => ({
       ...current,
@@ -199,14 +186,6 @@ export default function MisRegistrosCallCenterPage() {
     }));
   }
 
-  /**
-   * Carga los registros asignados al funcionario Call Center autenticado
-   * aplicando filtros desde backend.
-   *
-   * @param nextPage página solicitada.
-   * @param nextSize tamaño de página.
-   * @param filters filtros aplicados.
-   */
   async function load(
     nextPage = 0,
     nextSize = 20,
@@ -241,9 +220,6 @@ export default function MisRegistrosCallCenterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /**
-   * Ejecuta la búsqueda con los filtros seleccionados contra backend.
-   */
   function handleSearch() {
     const nextFilters: RegistroFilterState = {
       q: searchText,
@@ -256,51 +232,34 @@ export default function MisRegistrosCallCenterPage() {
     load(0, size, nextFilters);
   }
 
-  /**
-   * Limpia los filtros visuales y vuelve a consultar sin filtros.
-   */
   function clearFilters() {
     setSearchText('');
     setEstadoCasoFiltro('TODOS');
     setTipoSolicitudFiltro('TODOS');
     setCondicionFiltro('TODOS');
     setAppliedFilters(initialFilters);
+
     load(0, size, initialFilters);
   }
 
-  /**
-   * Cambia la página de la tabla conservando filtros backend.
-   *
-   * @param _ evento no utilizado.
-   * @param nextPage página siguiente.
-   */
   function handlePageChange(_: unknown, nextPage: number) {
     load(nextPage, size, appliedFilters);
   }
 
-  /**
-   * Cambia el tamaño de página conservando filtros backend.
-   *
-   * @param event evento del selector de tamaño.
-   */
   function handleRowsPerPageChange(
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
-    load(0, Number(event.target.value), appliedFilters);
+    load(
+      0,
+      Number(event.target.value),
+      appliedFilters,
+    );
   }
 
-  /**
-   * Refresca la página actual conservando filtros backend.
-   */
   function refresh() {
     load(page, size, appliedFilters);
   }
 
-  /**
-   * Abre la pantalla de gestión formal del caso.
-   *
-   * @param id identificador del caso Call Center.
-   */
   function openGestionCaso(id: number) {
     router.push(`/dashboard/callcenter/mis-registros/${id}`);
   }
@@ -327,7 +286,13 @@ export default function MisRegistrosCallCenterPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 3,
+        }}
+      >
         <Box
           sx={{
             display: 'flex',
@@ -337,11 +302,19 @@ export default function MisRegistrosCallCenterPage() {
           }}
         >
           <Box>
-            <Typography component="h1" variant="h5" sx={{ fontWeight: 800 }}>
+            <Typography
+              component="h1"
+              variant="h5"
+              sx={{ fontWeight: 800 }}
+            >
               Mis registros Call Center
             </Typography>
 
-            <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+            <Typography
+              component="p"
+              variant="body2"
+              sx={{ color: 'text.secondary' }}
+            >
               Casos asignados a tu cuenta para gestionar llamadas y coordinar visitas.
             </Typography>
           </Box>
@@ -367,22 +340,51 @@ export default function MisRegistrosCallCenterPage() {
             gap: 1.5,
           }}
         >
-          <SummaryCard label="Registros cargados" value={records.length} />
-          <SummaryCard label="Abiertos" value={casosAbiertos} />
-          <SummaryCard label="Cerrados / cancelados" value={casosCerrados} />
-          <SummaryCard label="Con encuestador" value={casosConEncuestador} />
+          <SummaryCard
+            label="Registros en página"
+            value={records.length}
+          />
+
+          <SummaryCard
+            label="Abiertos en página"
+            value={casosAbiertos}
+          />
+
+          <SummaryCard
+            label="Finalizados en página"
+            value={casosCerrados}
+          />
+
+          <SummaryCard
+            label="Con encuestador en página"
+            value={casosConEncuestador}
+          />
         </Box>
 
         <Card variant="outlined">
           <CardContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+              }}
+            >
               <Box>
-                <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+                <Typography
+                  component="h2"
+                  variant="h6"
+                  sx={{ fontWeight: 800 }}
+                >
                   Filtros de búsqueda
                 </Typography>
 
-                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                  Selecciona los filtros y pulsa Buscar. La consulta se realiza directamente en base de datos.
+                <Typography
+                  component="p"
+                  variant="body2"
+                  sx={{ color: 'text.secondary' }}
+                >
+                  Selecciona los filtros y pulsa Buscar. La consulta se realiza en backend.
                 </Typography>
               </Box>
 
@@ -400,7 +402,9 @@ export default function MisRegistrosCallCenterPage() {
                 <TextField
                   label="Buscar"
                   value={searchText}
-                  onChange={(event) => setSearchText(event.target.value)}
+                  onChange={(event) => {
+                    setSearchText(event.target.value);
+                  }}
                   placeholder="Nombre, cédula, teléfono, dirección, barrio o caso"
                   fullWidth
                 />
@@ -411,9 +415,15 @@ export default function MisRegistrosCallCenterPage() {
                   <Select
                     label="Estado caso"
                     value={estadoCasoFiltro}
-                    onChange={(event) => setEstadoCasoFiltro(String(event.target.value))}
+                    onChange={(event) => {
+                      setEstadoCasoFiltro(
+                        String(event.target.value),
+                      );
+                    }}
                   >
-                    <MenuItem value="TODOS">Todos</MenuItem>
+                    <MenuItem value="TODOS">
+                      Todos
+                    </MenuItem>
 
                     {ESTADOS_CASO_FILTRO.map((estado) => (
                       <MenuItem key={estado} value={estado}>
@@ -429,9 +439,15 @@ export default function MisRegistrosCallCenterPage() {
                   <Select
                     label="Tipo solicitud"
                     value={tipoSolicitudFiltro}
-                    onChange={(event) => setTipoSolicitudFiltro(String(event.target.value))}
+                    onChange={(event) => {
+                      setTipoSolicitudFiltro(
+                        String(event.target.value),
+                      );
+                    }}
                   >
-                    <MenuItem value="TODOS">Todas</MenuItem>
+                    <MenuItem value="TODOS">
+                      Todas
+                    </MenuItem>
 
                     {TIPOS_SOLICITUD_FILTRO.map((tipo) => (
                       <MenuItem key={tipo} value={tipo}>
@@ -447,13 +463,31 @@ export default function MisRegistrosCallCenterPage() {
                   <Select
                     label="Condición"
                     value={condicionFiltro}
-                    onChange={(event) => setCondicionFiltro(String(event.target.value))}
+                    onChange={(event) => {
+                      setCondicionFiltro(
+                        String(event.target.value),
+                      );
+                    }}
                   >
-                    <MenuItem value="TODOS">Todas</MenuItem>
-                    <MenuItem value="ABIERTOS">Casos abiertos</MenuItem>
-                    <MenuItem value="CERRADOS">Cerrados / cancelados</MenuItem>
-                    <MenuItem value="CON_ENCUESTADOR">Con encuestador</MenuItem>
-                    <MenuItem value="SIN_ENCUESTADOR">Sin encuestador</MenuItem>
+                    <MenuItem value="TODOS">
+                      Todas
+                    </MenuItem>
+
+                    <MenuItem value="ABIERTOS">
+                      Casos abiertos
+                    </MenuItem>
+
+                    <MenuItem value="CERRADOS">
+                      Cerrados o cancelados
+                    </MenuItem>
+
+                    <MenuItem value="CON_ENCUESTADOR">
+                      Con encuestador
+                    </MenuItem>
+
+                    <MenuItem value="SIN_ENCUESTADOR">
+                      Sin encuestador
+                    </MenuItem>
                   </Select>
                 </FormControl>
               </Box>
@@ -466,13 +500,26 @@ export default function MisRegistrosCallCenterPage() {
                   gap: 1,
                 }}
               >
-                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
+                <Typography
+                  component="p"
+                  variant="body2"
+                  sx={{ color: 'text.secondary' }}
+                >
                   {loading
                     ? 'Actualizando registros...'
                     : `Mostrando ${records.length} de ${total} registro(s).`}
                 </Typography>
 
-                <Box sx={{ display: 'flex', gap: 1, justifyContent: { xs: 'stretch', sm: 'flex-end' } }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 1,
+                    justifyContent: {
+                      xs: 'stretch',
+                      sm: 'flex-end',
+                    },
+                  }}
+                >
                   <Button
                     variant="contained"
                     startIcon={<SearchIcon />}
@@ -497,8 +544,9 @@ export default function MisRegistrosCallCenterPage() {
         </Card>
 
         <Alert severity="info">
-          Desde esta vista solo se consultan tus casos asignados. Para registrar llamadas o asignar una visita,
-          usa el botón <strong>Gestionar</strong>.
+          Desde esta vista solo se consultan tus casos asignados.
+          Para registrar llamadas o asignar una visita, usa el botón{' '}
+          <strong>Gestionar</strong>.
         </Alert>
 
         {records.length === 0 ? (
@@ -520,32 +568,54 @@ export default function MisRegistrosCallCenterPage() {
                     <TableCell>Solicitud</TableCell>
                     <TableCell>Estado</TableCell>
                     <TableCell>Encuestador</TableCell>
-                    <TableCell align="right">Acciones</TableCell>
+                    <TableCell align="right">
+                      Acciones
+                    </TableCell>
                   </TableRow>
                 </TableHead>
 
                 <TableBody>
                   {records.map((record) => {
                     const closed = isRecordClosed(record);
-                    const encuestadorNombre = record.encuestadorAsignadoNombre
+                    const encuestadorNombre =
+                      record.encuestadorAsignadoNombre
                       || record.encuestadorProgramadoNombre
                       || 'Sin asignar';
 
                     return (
                       <TableRow key={record.id} hover>
                         <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Avatar sx={{ width: 34, height: 34 }}>
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1,
+                            }}
+                          >
+                            <Avatar
+                              sx={{
+                                width: 34,
+                                height: 34,
+                              }}
+                            >
                               {getRecordIcon(record)}
                             </Avatar>
 
                             <Box>
-                              <Typography component="p" variant="body2" sx={{ fontWeight: 800 }}>
+                              <Typography
+                                component="p"
+                                variant="body2"
+                                sx={{ fontWeight: 800 }}
+                              >
                                 {`Caso #${record.id}`}
                               </Typography>
 
-                              <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
-                                {record.fechaLlamada || 'Sin fecha'} · {record.horaLlamada?.slice(0, 5) || 'Sin hora'}
+                              <Typography
+                                component="p"
+                                variant="caption"
+                                sx={{ color: 'text.secondary' }}
+                              >
+                                {record.fechaLlamada || 'Sin fecha'}
                               </Typography>
                             </Box>
                           </Box>
@@ -554,24 +624,42 @@ export default function MisRegistrosCallCenterPage() {
                         <TableCell>
                           <InfoCell
                             icon={<PersonIcon fontSize="small" />}
-                            title={record.nombreCompleto || 'Sin nombre'}
-                            subtitle={`C.C. ${record.cedulaSolicitante || 'Sin dato'}`}
+                            title={
+                              record.nombreCompleto
+                              || 'Sin nombre'
+                            }
+                            subtitle={`C.C. ${
+                              record.cedulaSolicitante
+                              || 'Sin dato'
+                            }`}
                           />
                         </TableCell>
 
                         <TableCell>
                           <InfoCell
                             icon={<PhoneIcon fontSize="small" />}
-                            title={record.telefono || 'Sin teléfono'}
-                            subtitle={record.llamadaConectada === true ? 'Llamada conectada' : 'Sin conexión confirmada'}
+                            title={
+                              record.telefono
+                              || 'Sin teléfono'
+                            }
+                            subtitle={getCallConnectionLabel(
+                              record.llamadaConectada,
+                            )}
                           />
                         </TableCell>
 
                         <TableCell>
                           <InfoCell
                             icon={<HomeWorkIcon fontSize="small" />}
-                            title={record.direccionTexto || 'Sin dirección'}
-                            subtitle={`${record.barrioNombre || 'Sin barrio'}${record.comunaNombre ? ` / ${record.comunaNombre}` : ''}`}
+                            title={
+                              record.direccionTexto
+                              || 'Sin dirección'
+                            }
+                            subtitle={`${record.barrioNombre || 'Sin barrio'}${
+                              record.comunaNombre
+                                ? ` / ${record.comunaNombre}`
+                                : ''
+                            }`}
                           />
                         </TableCell>
 
@@ -579,40 +667,67 @@ export default function MisRegistrosCallCenterPage() {
                           <Chip
                             size="small"
                             variant="outlined"
-                            label={formatLabel(record.tipoSolicitudCallcenter || 'NUEVA_ENCUESTA')}
+                            label={formatLabel(
+                              record.tipoSolicitudCallcenter
+                              || 'SIN_DATO',
+                            )}
                           />
                         </TableCell>
 
                         <TableCell>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 0.5,
+                              alignItems: 'flex-start',
+                            }}
+                          >
                             <Chip
                               size="small"
                               color={getStatusColor(record.estadoCaso)}
-                              label={formatLabel(record.estadoCaso || 'ASIGNADO_CALLCENTER')}
+                              label={formatLabel(
+                                record.estadoCaso || 'SIN_ESTADO',
+                              )}
                             />
 
-                            {closed && (
-                              <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+                            {closed ? (
+                              <Typography
+                                component="p"
+                                variant="caption"
+                                sx={{ color: 'text.secondary' }}
+                              >
                                 Solo consulta
                               </Typography>
-                            )}
+                            ) : null}
                           </Box>
                         </TableCell>
 
                         <TableCell>
                           <InfoCell
-                            icon={<AssignmentIndIcon fontSize="small" />}
+                            icon={
+                              <AssignmentIndIcon fontSize="small" />
+                            }
                             title={encuestadorNombre}
-                            subtitle={record.fechaEncuestaProgramada || 'Sin fecha programada'}
+                            subtitle={
+                              record.fechaEncuestaProgramada
+                              || 'Sin fecha programada'
+                            }
                           />
                         </TableCell>
 
                         <TableCell align="right">
                           <Button
                             size="small"
-                            variant={closed ? 'outlined' : 'contained'}
+                            variant={
+                              closed
+                                ? 'outlined'
+                                : 'contained'
+                            }
                             startIcon={<VisibilityIcon />}
-                            onClick={() => openGestionCaso(record.id)}
+                            onClick={() => {
+                              openGestionCaso(record.id);
+                            }}
                           >
                             Gestionar
                           </Button>
@@ -630,9 +745,16 @@ export default function MisRegistrosCallCenterPage() {
                       count={total}
                       page={page}
                       rowsPerPage={size}
-                      rowsPerPageOptions={[10, 20, 50, 100]}
+                      rowsPerPageOptions={[
+                        10,
+                        20,
+                        50,
+                        100,
+                      ]}
                       onPageChange={handlePageChange}
-                      onRowsPerPageChange={handleRowsPerPageChange}
+                      onRowsPerPageChange={
+                        handleRowsPerPageChange
+                      }
                       labelRowsPerPage="Filas"
                     />
                   </TableRow>
@@ -647,7 +769,10 @@ export default function MisRegistrosCallCenterPage() {
         open={snackbar.open}
         autoHideDuration={5000}
         onClose={closeSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
       >
         <Alert
           severity={snackbar.severity}
@@ -661,18 +786,29 @@ export default function MisRegistrosCallCenterPage() {
   );
 }
 
-/**
- * Tarjeta breve para mostrar un indicador de resumen.
- */
-function SummaryCard({ label, value }: { label: string; value: number }) {
+function SummaryCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
   return (
     <Card variant="outlined">
       <CardContent>
-        <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+        <Typography
+          component="p"
+          variant="caption"
+          sx={{ color: 'text.secondary' }}
+        >
           {label}
         </Typography>
 
-        <Typography component="p" variant="h5" sx={{ fontWeight: 900 }}>
+        <Typography
+          component="p"
+          variant="h5"
+          sx={{ fontWeight: 900 }}
+        >
           {value}
         </Typography>
       </CardContent>
@@ -680,9 +816,6 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-/**
- * Celda auxiliar con icono, título y subtítulo.
- */
 function InfoCell({
   icon,
   title,
@@ -693,17 +826,36 @@ function InfoCell({
   subtitle: string;
 }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-      <Box sx={{ color: 'text.secondary', mt: 0.2 }}>
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 1,
+      }}
+    >
+      <Box
+        sx={{
+          color: 'text.secondary',
+          mt: 0.2,
+        }}
+      >
         {icon}
       </Box>
 
       <Box>
-        <Typography component="p" variant="body2" sx={{ fontWeight: 700 }}>
+        <Typography
+          component="p"
+          variant="body2"
+          sx={{ fontWeight: 700 }}
+        >
           {title}
         </Typography>
 
-        <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+        <Typography
+          component="p"
+          variant="caption"
+          sx={{ color: 'text.secondary' }}
+        >
           {subtitle}
         </Typography>
       </Box>
@@ -711,54 +863,50 @@ function InfoCell({
   );
 }
 
-/**
- * Valida si el registro tiene encuestador asociado.
- *
- * @param record registro evaluado.
- * @returns true si tiene encuestador.
- */
-function hasEncuestador(record: CallCenterResponse) {
-  return Boolean(record.encuestadorAsignadoNombre || record.encuestadorProgramadoNombre);
+function getCallConnectionLabel(
+  value?: boolean | null,
+) {
+  if (value === true) {
+    return 'Llamada conectada';
+  }
+
+  if (value === false) {
+    return 'Llamada no conectada';
+  }
+
+  return 'Sin gestión telefónica registrada';
 }
 
-/**
- * Valida si el caso está cerrado o cancelado.
- *
- * @param record registro evaluado.
- * @returns true si el caso está cerrado.
- */
+function hasEncuestador(record: CallCenterResponse) {
+  return Boolean(
+    record.encuestadorAsignadoNombre
+    || record.encuestadorProgramadoNombre,
+  );
+}
+
 function isRecordClosed(record: CallCenterResponse) {
   const estadoCaso = normalizeCode(record.estadoCaso);
-  const estadoVisita = normalizeCode(record.estadoVisita);
 
-  return record.encuestaRealizada === true
-    || estadoCaso === 'CERRADO'
-    || estadoCaso === 'CANCELADO'
-    || estadoVisita === 'REALIZADA'
-    || estadoVisita === 'CANCELADA';
+  return estadoCaso === 'CERRADO'
+    || estadoCaso === 'CANCELADO';
 }
 
-/**
- * Obtiene un icono representativo según el estado del caso.
- *
- * @param record registro evaluado.
- * @returns icono visual.
- */
 function getRecordIcon(record: CallCenterResponse) {
   const estadoCaso = normalizeCode(record.estadoCaso);
 
-  if (isRecordClosed(record)) {
-    return <CheckCircleIcon />;
+  if (estadoCaso === 'CANCELADO') {
+    return <CancelIcon />;
   }
 
-  if (estadoCaso.includes('CANCELADO')) {
-    return <CancelIcon />;
+  if (estadoCaso === 'CERRADO') {
+    return <CheckCircleIcon />;
   }
 
   if (
     estadoCaso.includes('NO_CONTACTADO')
     || estadoCaso.includes('NO_ATENDIDA')
     || estadoCaso.includes('REPROGRAMADO')
+    || estadoCaso.includes('SIN_DISPOSICION')
   ) {
     return <WarningAmberIcon />;
   }
@@ -766,22 +914,14 @@ function getRecordIcon(record: CallCenterResponse) {
   return <AssignmentIndIcon />;
 }
 
-/**
- * Normaliza códigos técnicos para comparaciones internas.
- *
- * @param value valor recibido.
- * @returns código normalizado.
- */
-function normalizeCode(value?: string | number | null) {
-  return String(value ?? '').trim().toUpperCase();
+function normalizeCode(
+  value?: string | number | null,
+) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase();
 }
 
-/**
- * Convierte códigos técnicos en etiquetas legibles.
- *
- * @param value código técnico.
- * @returns etiqueta visible.
- */
 function formatLabel(value?: string | null) {
   return String(value ?? 'Sin dato')
     .split('_')
@@ -790,30 +930,15 @@ function formatLabel(value?: string | null) {
     .replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
-/**
- * Define el color visual de los estados del caso.
- *
- * @param value estado técnico.
- * @returns color del chip.
- */
 function getStatusColor(value?: string | null): ChipColor {
-  const normalized = String(value ?? '').toUpperCase();
+  const normalized = normalizeCode(value);
 
   if (
-    normalized.includes('CERRADO')
-    || normalized.includes('REALIZADA')
-    || normalized.includes('CONTACTADO')
+    normalized.includes('CANCELADO')
+    || normalized.includes('SIN_DISPOSICION')
+    || normalized.includes('NO_ACEPTA')
   ) {
-    return 'success';
-  }
-
-  if (
-    normalized.includes('PENDIENTE')
-    || normalized.includes('ASIGNADO')
-    || normalized.includes('GESTION')
-    || normalized.includes('PROGRAMADA')
-  ) {
-    return 'info';
+    return 'error';
   }
 
   if (
@@ -825,11 +950,20 @@ function getStatusColor(value?: string | null): ChipColor {
   }
 
   if (
-    normalized.includes('CANCELADO')
-    || normalized.includes('SIN_DISPOSICION')
-    || normalized.includes('NO_ACEPTA')
+    normalized.includes('CERRADO')
+    || normalized.includes('REALIZADA')
+    || normalized.includes('CONTACTADO_ACEPTA')
   ) {
-    return 'error';
+    return 'success';
+  }
+
+  if (
+    normalized.includes('PENDIENTE')
+    || normalized.includes('ASIGNADO')
+    || normalized.includes('GESTION')
+    || normalized.includes('PROGRAMADA')
+  ) {
+    return 'info';
   }
 
   return 'default';

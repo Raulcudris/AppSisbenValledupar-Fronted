@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   CardContent,
+  CircularProgress,
   InputAdornment,
   MenuItem,
   Paper,
@@ -17,47 +18,51 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-
 import {
-  createCallCenterRegistro,
+  useRouter,
+  useSearchParams,
+} from 'next/navigation';
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from 'react';
+
+import CallCenterRegistroCompletoForm from '@/components/callcenter/CallCenterRegistroCompletoForm';
+import {
   findVentanillaByCedulaForCallCenter,
   getCallCenterBarriosOptions,
   getCallCenterRegistro,
   searchCallCenter,
   updateCallCenterRegistro,
 } from '@/services/callcenter.service';
-import {
+import type {
   CallCenterOrigenRegistro,
   CallCenterRequest,
   CallCenterResponse,
   CallCenterTipoSolicitud,
   VentanillaCallCenterResponse,
 } from '@/types/callcenter.types';
-import { SelectOption } from '@/types/catalog.types';
+import type { SelectOption } from '@/types/catalog.types';
 
-/**
- * Estado local para mostrar mensajes temporales en pantalla.
- */
 type SnackbarState = {
   open: boolean;
   message: string;
-  severity: 'success' | 'error' | 'warning' | 'info';
+  severity:
+    | 'success'
+    | 'error'
+    | 'warning'
+    | 'info';
 };
 
-/**
- * Estado del formulario administrativo de creación de caso Call Center.
- *
- * Esta pantalla no registra llamadas ni asigna encuestadores. Solo crea
- * o actualiza datos básicos del caso maestro.
- */
 type FormState = {
   id?: number;
   fechaLlamada: string;
   origenRegistro: CallCenterOrigenRegistro;
   ventanillaRegistroId: string;
-  tipoSolicitudCallcenter: CallCenterTipoSolicitud | string;
+  tipoSolicitudCallcenter:
+    | CallCenterTipoSolicitud
+    | string;
   estadoCaso: string;
   cedulaSolicitante: string;
   nombreCompleto: string;
@@ -68,141 +73,271 @@ type FormState = {
   activo: boolean;
 };
 
-const ESTADO_PENDIENTE_ENRUTAMIENTO = 'PENDIENTE_ENRUTAMIENTO';
-const TIPO_SOLICITUD_NUEVA_ENCUESTA = 'NUEVA_ENCUESTA';
-
-/**
- * Obtiene la fecha actual en formato yyyy-MM-dd.
- *
- * @returns fecha actual.
- */
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-const initialForm: FormState = {
-  fechaLlamada: today(),
-  origenRegistro: 'MANUAL',
-  ventanillaRegistroId: '',
-  tipoSolicitudCallcenter: TIPO_SOLICITUD_NUEVA_ENCUESTA,
-  estadoCaso: ESTADO_PENDIENTE_ENRUTAMIENTO,
-  cedulaSolicitante: '',
-  nombreCompleto: '',
-  telefono: '',
-  direccionTexto: '',
-  barrioId: '',
-  observacion: '',
-  activo: true,
+type EditFormProps = {
+  editId: string;
 };
 
-/**
- * Normaliza un texto eliminando espacios iniciales y finales.
- *
- * @param value texto recibido.
- * @returns texto normalizado.
- */
-function normalizeText(value?: string | null) {
+const ESTADO_PENDIENTE_ENRUTAMIENTO =
+  'PENDIENTE_ENRUTAMIENTO';
+
+const TIPO_SOLICITUD_NUEVA_ENCUESTA =
+  'NUEVA_ENCUESTA';
+
+function getLocalDateISO(
+  date = new Date(),
+) {
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, '0');
+
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function today() {
+  return getLocalDateISO();
+}
+
+function buildInitialForm(): FormState {
+  return {
+    fechaLlamada:
+      today(),
+
+    origenRegistro:
+      'MANUAL',
+
+    ventanillaRegistroId:
+      '',
+
+    tipoSolicitudCallcenter:
+      TIPO_SOLICITUD_NUEVA_ENCUESTA,
+
+    estadoCaso:
+      ESTADO_PENDIENTE_ENRUTAMIENTO,
+
+    cedulaSolicitante:
+      '',
+
+    nombreCompleto:
+      '',
+
+    telefono:
+      '',
+
+    direccionTexto:
+      '',
+
+    barrioId:
+      '',
+
+    observacion:
+      '',
+
+    activo:
+      true,
+  };
+}
+
+function normalizeText(
+  value?: string | null,
+) {
   return value?.trim() ?? '';
 }
 
-/**
- * Convierte un valor string a number o null.
- *
- * @param value valor del formulario.
- * @returns número o null.
- */
-function toOptionalNumber(value: string) {
-  return value ? Number(value) : null;
+function toOptionalNumber(
+  value: string,
+) {
+  return value
+    ? Number(value)
+    : null;
 }
 
-/**
- * Extrae el contenido de una respuesta paginada.
- *
- * @param page respuesta paginada.
- * @returns contenido encontrado.
- */
-function getPageContent<T>(page: unknown): T[] {
+function getPageContent<T>(
+  page: unknown,
+): T[] {
   const data = page as {
     content?: T[];
     items?: T[];
     data?: T[];
   };
 
-  return data?.content ?? data?.items ?? data?.data ?? [];
+  return (
+    data?.content
+    ?? data?.items
+    ?? data?.data
+    ?? []
+  );
 }
 
-/**
- * Determina si un caso Call Center está abierto.
- *
- * @param record caso Call Center.
- * @returns true si el caso no está cerrado ni cancelado.
- */
-function isOpenCallCenterCase(record: CallCenterResponse) {
-  const estadoCaso = String(record.estadoCaso ?? '').trim().toUpperCase();
+function isOpenCallCenterCase(
+  record: CallCenterResponse,
+) {
+  const estadoCaso =
+    String(
+      record.estadoCaso ?? '',
+    )
+      .trim()
+      .toUpperCase();
 
-  if (record.activo === false) {
+  if (
+    record.activo === false
+  ) {
     return false;
   }
 
-  return estadoCaso !== 'CERRADO' && estadoCaso !== 'CANCELADO';
+  return (
+    estadoCaso !== 'CERRADO'
+    && estadoCaso !== 'CANCELADO'
+  );
 }
 
-/**
- * Convierte una respuesta Call Center en estado de formulario.
- *
- * @param record caso recibido desde backend.
- * @returns estado de formulario.
- */
-function recordToForm(record: CallCenterResponse): FormState {
+function normalizeOrigenRegistro(
+  value: CallCenterResponse['origenRegistro'],
+): CallCenterOrigenRegistro {
+  const normalized = String(value ?? '')
+    .trim()
+    .toUpperCase();
+
+  if (normalized === 'VENTANILLA') {
+    return 'VENTANILLA';
+  }
+
+  if (normalized === 'IMPORTACION') {
+    return 'IMPORTACION';
+  }
+
+  return 'MANUAL';
+}
+
+function recordToForm(
+  record: CallCenterResponse,
+): FormState {
   return {
     id: record.id,
-    fechaLlamada: record.fechaLlamada ?? today(),
-    origenRegistro: (record.origenRegistro as CallCenterOrigenRegistro) ?? 'MANUAL',
-    ventanillaRegistroId: record.ventanillaRegistroId ? String(record.ventanillaRegistroId) : '',
-    tipoSolicitudCallcenter: record.tipoSolicitudCallcenter ?? TIPO_SOLICITUD_NUEVA_ENCUESTA,
-    estadoCaso: record.estadoCaso ?? ESTADO_PENDIENTE_ENRUTAMIENTO,
-    cedulaSolicitante: record.cedulaSolicitante ?? '',
-    nombreCompleto: record.nombreCompleto ?? '',
-    telefono: record.telefono ?? '',
-    direccionTexto: record.direccionTexto ?? '',
-    barrioId: record.barrioId ? String(record.barrioId) : '',
-    observacion: record.observacion ?? '',
-    activo: record.activo !== false,
+
+    fechaLlamada:
+      record.fechaLlamada || today(),
+
+    origenRegistro:
+      normalizeOrigenRegistro(
+        record.origenRegistro,
+      ),
+
+    ventanillaRegistroId:
+      record.ventanillaRegistroId == null
+        ? ''
+        : String(record.ventanillaRegistroId),
+
+    tipoSolicitudCallcenter:
+      record.tipoSolicitudCallcenter
+      || TIPO_SOLICITUD_NUEVA_ENCUESTA,
+
+    estadoCaso:
+      record.estadoCaso
+      || ESTADO_PENDIENTE_ENRUTAMIENTO,
+
+    cedulaSolicitante:
+      record.cedulaSolicitante || '',
+
+    nombreCompleto:
+      record.nombreCompleto || '',
+
+    telefono:
+      record.telefono || '',
+
+    direccionTexto:
+      record.direccionTexto || '',
+
+    barrioId:
+      record.barrioId == null
+        ? ''
+        : String(record.barrioId),
+
+    observacion:
+      record.observacion || '',
+
+    activo:
+      record.activo !== false,
   };
 }
 
-/**
- * Aplica datos de Ventanilla al formulario manual.
- *
- * @param record registro de Ventanilla.
- * @param current estado actual del formulario.
- * @returns formulario actualizado.
- */
 function ventanillaToForm(
   record: VentanillaCallCenterResponse,
   current: FormState,
 ): FormState {
   return {
     ...current,
-    origenRegistro: 'VENTANILLA',
-    ventanillaRegistroId: String(record.id),
-    tipoSolicitudCallcenter: TIPO_SOLICITUD_NUEVA_ENCUESTA,
-    estadoCaso: ESTADO_PENDIENTE_ENRUTAMIENTO,
-    cedulaSolicitante: record.cedulaUsuario ?? current.cedulaSolicitante,
-    nombreCompleto: record.nombreUsuario ?? current.nombreCompleto,
-    telefono: record.telefono ?? current.telefono,
-    direccionTexto: record.direccion ?? current.direccionTexto,
-    barrioId: record.barrioId ? String(record.barrioId) : current.barrioId,
+
+    origenRegistro:
+      'VENTANILLA',
+
+    ventanillaRegistroId:
+      String(record.id),
+
+    tipoSolicitudCallcenter:
+      TIPO_SOLICITUD_NUEVA_ENCUESTA,
+
+    cedulaSolicitante:
+      record.cedulaUsuario
+      ?? current.cedulaSolicitante,
+
+    nombreCompleto:
+      record.nombreUsuario
+      ?? current.nombreCompleto,
+
+    telefono:
+      record.telefono
+      ?? current.telefono,
+
+    direccionTexto:
+      record.direccion
+      ?? current.direccionTexto,
+
+    barrioId:
+      record.barrioId
+        ? String(record.barrioId)
+        : current.barrioId,
+
     observacion: [
       current.observacion,
-      'Datos cargados desde Ventanilla para crear caso Call Center',
-      record.numeroVentanilla ? `Ventanilla: ${record.numeroVentanilla}` : '',
-      record.fecha ? `Fecha ventanilla: ${record.fecha}` : '',
-      record.solicitudNombre ? `Solicitud: ${record.solicitudNombre}` : '',
-      record.estadoSolicitudNombre ? `Estado: ${record.estadoSolicitudNombre}` : '',
-      record.barrioNombre ? `Barrio: ${record.barrioNombre}` : '',
-      record.comunaNombre ? `Comuna: ${record.comunaNombre}` : '',
-      record.observacion ? `Observación ventanilla: ${record.observacion}` : '',
+
+      'Datos cargados desde Ventanilla para actualizar el caso Call Center',
+
+      record.numeroVentanilla
+        ? `Ventanilla: ${record.numeroVentanilla}`
+        : '',
+
+      record.fecha
+        ? `Fecha ventanilla: ${record.fecha}`
+        : '',
+
+      record.solicitudNombre
+        ? `Solicitud: ${record.solicitudNombre}`
+        : '',
+
+      record.estadoSolicitudNombre
+        ? `Estado: ${record.estadoSolicitudNombre}`
+        : '',
+
+      record.barrioNombre
+        ? `Barrio: ${record.barrioNombre}`
+        : '',
+
+      record.comunaNombre
+        ? `Comuna: ${record.comunaNombre}`
+        : '',
+
+      record.observacion
+        ? `Observación ventanilla: ${record.observacion}`
+        : '',
     ]
       .filter(Boolean)
       .join(' | '),
@@ -210,40 +345,103 @@ function ventanillaToForm(
 }
 
 /**
- * Página administrativa para crear o editar casos Call Center manuales.
+ * Entrada principal de la ruta.
  *
- * Esta pantalla deja el caso pendiente de enrutamiento. No asigna encuestador,
- * no registra llamada y no programa visita.
+ * Sin ID muestra el formulario transaccional completo.
+ * Con ID conserva la edición administrativa existente.
  */
 export default function NuevoRegistroCallCenterPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const editId = searchParams.get('id');
+  const searchParams =
+    useSearchParams();
 
-  const [form, setForm] = useState<FormState>(initialForm);
-  const [originalRecord, setOriginalRecord] = useState<CallCenterResponse | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [searchingCedula, setSearchingCedula] = useState(false);
-  const [checkingCase, setCheckingCase] = useState(false);
-  const [existingOpenCase, setExistingOpenCase] = useState<CallCenterResponse | null>(null);
+  const editId =
+    searchParams.get('id');
 
-  const [barrios, setBarrios] = useState<SelectOption[]>([]);
+  if (!editId) {
+    return (
+      <CallCenterRegistroCompletoForm />
+    );
+  }
 
-  const [snackbar, setSnackbar] = useState<SnackbarState>({
+  return (
+    <EditarRegistroCallCenterPage
+      editId={editId}
+    />
+  );
+}
+
+/**
+ * Edición administrativa de un caso existente.
+ *
+ * No registra llamadas, no asigna visitas y no altera
+ * directamente los estados operativos.
+ */
+function EditarRegistroCallCenterPage({
+  editId,
+}: EditFormProps) {
+  const router =
+    useRouter();
+
+  const [
+    form,
+    setForm,
+  ] = useState<FormState>(
+    buildInitialForm,
+  );
+
+  const [
+    originalRecord,
+    setOriginalRecord,
+  ] = useState<
+    CallCenterResponse | null
+  >(null);
+
+  const [
+    loadingRecord,
+    setLoadingRecord,
+  ] = useState(true);
+
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
+
+  const [
+    searchingCedula,
+    setSearchingCedula,
+  ] = useState(false);
+
+  const [
+    checkingCase,
+    setCheckingCase,
+  ] = useState(false);
+
+  const [
+    existingOpenCase,
+    setExistingOpenCase,
+  ] = useState<
+    CallCenterResponse | null
+  >(null);
+
+  const [
+    barrios,
+    setBarrios,
+  ] = useState<SelectOption[]>([]);
+
+  const [
+    snackbar,
+    setSnackbar,
+  ] = useState<SnackbarState>({
     open: false,
     message: '',
     severity: 'success',
   });
 
-  /**
-   * Muestra un mensaje temporal.
-   *
-   * @param message mensaje visible.
-   * @param severity severidad del mensaje.
-   */
   function showMessage(
     message: string,
-    severity: SnackbarState['severity'] = 'success',
+    severity:
+      SnackbarState['severity'] =
+      'success',
   ) {
     setSnackbar({
       open: true,
@@ -252,23 +450,19 @@ export default function NuevoRegistroCallCenterPage() {
     });
   }
 
-  /**
-   * Cierra el mensaje temporal.
-   */
   function closeSnackbar() {
-    setSnackbar((current) => ({
-      ...current,
-      open: false,
-    }));
+    setSnackbar(
+      (current) => ({
+        ...current,
+        open: false,
+      }),
+    );
   }
 
-  /**
-   * Actualiza un campo del formulario.
-   *
-   * @param field campo a modificar.
-   * @param value valor nuevo.
-   */
-  function updateForm(field: keyof FormState, value: string | boolean) {
+  function updateForm(
+    field: keyof FormState,
+    value: string | boolean,
+  ) {
     if (
       field === 'cedulaSolicitante'
       || field === 'ventanillaRegistroId'
@@ -277,253 +471,492 @@ export default function NuevoRegistroCallCenterPage() {
       setExistingOpenCase(null);
     }
 
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setForm(
+      (current) => ({
+        ...current,
+        [field]: value,
+      }),
+    );
   }
 
-  /**
-   * Carga catálogos necesarios para el formulario.
-   */
-  const loadCatalogs = useCallback(async () => {
-    try {
-      const barriosData = await getCallCenterBarriosOptions();
-      setBarrios(barriosData);
-    } catch {
-      showMessage('No fue posible cargar el catálogo de barrios.', 'warning');
-    }
-  }, []);
+  const loadCatalogs =
+    useCallback(async () => {
+      try {
+        const barriosData =
+          await getCallCenterBarriosOptions();
 
-  /**
-   * Busca un caso abierto existente por Ventanilla o cédula.
-   *
-   * @param candidate formulario a validar.
-   * @param showWarning indica si debe mostrar alerta.
-   * @returns caso abierto encontrado o null.
-   */
-  const checkExistingOpenCase = useCallback(async (
-    candidate: FormState,
-    showWarning = true,
-  ) => {
-    const cedula = normalizeText(candidate.cedulaSolicitante);
-    const ventanillaRegistroId = toOptionalNumber(candidate.ventanillaRegistroId);
+        setBarrios(
+          barriosData,
+        );
+      } catch {
+        showMessage(
+          'No fue posible cargar el catálogo de barrios.',
+          'warning',
+        );
+      }
+    }, []);
 
-    if (!cedula && !ventanillaRegistroId) {
-      setExistingOpenCase(null);
-      return null;
-    }
+  const checkExistingOpenCase =
+    useCallback(
+      async (
+        candidate: FormState,
+        showWarning = true,
+      ) => {
+        const cedula =
+          normalizeText(
+            candidate.cedulaSolicitante,
+          );
 
-    setCheckingCase(true);
+        const ventanillaRegistroId =
+          toOptionalNumber(
+            candidate.ventanillaRegistroId,
+          );
 
-    try {
-      if (ventanillaRegistroId) {
-        const byVentanilla = await searchCallCenter({
-          page: 0,
-          size: 5,
-          ventanillaRegistroId,
-          activo: true,
-        });
+        if (
+          !cedula
+          && !ventanillaRegistroId
+        ) {
+          setExistingOpenCase(null);
+          return null;
+        }
 
-        const foundByVentanilla = getPageContent<CallCenterResponse>(byVentanilla)
-          .find((record) => record.id !== candidate.id && isOpenCallCenterCase(record));
+        setCheckingCase(true);
 
-        if (foundByVentanilla) {
-          setExistingOpenCase(foundByVentanilla);
+        try {
+          if (
+            ventanillaRegistroId
+          ) {
+            const byVentanilla =
+              await searchCallCenter({
+                page: 0,
+                size: 5,
+                ventanillaRegistroId,
+                activo: true,
+              });
 
-          if (showWarning) {
-            showMessage('Ya existe un caso Call Center abierto para este registro de Ventanilla.', 'warning');
+            const foundByVentanilla =
+              getPageContent<
+                CallCenterResponse
+              >(byVentanilla)
+                .find(
+                  (record) =>
+                    record.id
+                      !== candidate.id
+                    && isOpenCallCenterCase(
+                      record,
+                    ),
+                );
+
+            if (
+              foundByVentanilla
+            ) {
+              setExistingOpenCase(
+                foundByVentanilla,
+              );
+
+              if (showWarning) {
+                showMessage(
+                  'Ya existe otro caso Call Center abierto para este registro de Ventanilla.',
+                  'warning',
+                );
+              }
+
+              return foundByVentanilla;
+            }
           }
 
-          return foundByVentanilla;
+          if (cedula) {
+            const byCedula =
+              await searchCallCenter({
+                page: 0,
+                size: 5,
+                cedulaSolicitante:
+                  cedula,
+
+                tipoSolicitudCallcenter:
+                  candidate
+                    .tipoSolicitudCallcenter,
+
+                activo:
+                  true,
+              });
+
+            const foundByCedula =
+              getPageContent<
+                CallCenterResponse
+              >(byCedula)
+                .find(
+                  (record) =>
+                    record.id
+                      !== candidate.id
+                    && isOpenCallCenterCase(
+                      record,
+                    ),
+                );
+
+            setExistingOpenCase(
+              foundByCedula
+              ?? null,
+            );
+
+            if (
+              foundByCedula
+              && showWarning
+            ) {
+              showMessage(
+                'Ya existe otro caso Call Center abierto para esta cédula.',
+                'warning',
+              );
+            }
+
+            return (
+              foundByCedula
+              ?? null
+            );
+          }
+
+          setExistingOpenCase(null);
+          return null;
+        } finally {
+          setCheckingCase(false);
         }
+      },
+      [],
+    );
+
+  const loadEditRecord =
+    useCallback(async () => {
+      setLoadingRecord(true);
+
+      try {
+        const record =
+          await getCallCenterRegistro(
+            Number(editId),
+          );
+
+        const nextForm =
+          recordToForm(record);
+
+        setOriginalRecord(
+          record,
+        );
+
+        setForm(
+          nextForm,
+        );
+
+        await checkExistingOpenCase(
+          nextForm,
+          false,
+        );
+      } catch {
+        showMessage(
+          'No fue posible cargar el registro para editar.',
+          'error',
+        );
+      } finally {
+        setLoadingRecord(false);
       }
-
-      if (cedula) {
-        const byCedula = await searchCallCenter({
-          page: 0,
-          size: 5,
-          cedulaSolicitante: cedula,
-          tipoSolicitudCallcenter: candidate.tipoSolicitudCallcenter,
-          activo: true,
-        });
-
-        const foundByCedula = getPageContent<CallCenterResponse>(byCedula)
-          .find((record) => record.id !== candidate.id && isOpenCallCenterCase(record));
-
-        setExistingOpenCase(foundByCedula ?? null);
-
-        if (foundByCedula && showWarning) {
-          showMessage('Ya existe un caso Call Center abierto para esta cédula.', 'warning');
-        }
-
-        return foundByCedula ?? null;
-      }
-
-      setExistingOpenCase(null);
-      return null;
-    } finally {
-      setCheckingCase(false);
-    }
-  }, []);
-
-  /**
-   * Carga el caso cuando la pantalla está en modo edición.
-   */
-  const loadEditRecord = useCallback(async () => {
-    if (!editId) {
-      return;
-    }
-
-    try {
-      const record = await getCallCenterRegistro(Number(editId));
-      const nextForm = recordToForm(record);
-
-      setOriginalRecord(record);
-      setForm(nextForm);
-      await checkExistingOpenCase(nextForm, false);
-    } catch {
-      showMessage('No fue posible cargar el registro para editar.', 'error');
-    }
-  }, [editId, checkExistingOpenCase]);
+    }, [
+      editId,
+      checkExistingOpenCase,
+    ]);
 
   useEffect(() => {
-    loadCatalogs();
-    loadEditRecord();
-  }, [loadCatalogs, loadEditRecord]);
+    void Promise.all([
+      loadCatalogs(),
+      loadEditRecord(),
+    ]);
+  }, [
+    loadCatalogs,
+    loadEditRecord,
+  ]);
 
-  /**
-   * Busca la cédula en Ventanilla para precargar datos.
-   */
   async function searchPersonByCedula() {
-    const cedula = normalizeText(form.cedulaSolicitante);
+    const cedula =
+      normalizeText(
+        form.cedulaSolicitante,
+      );
 
     if (!cedula) {
-      showMessage('Digita una cédula para buscar en Ventanilla.', 'warning');
+      showMessage(
+        'Digita una cédula para buscar en Ventanilla.',
+        'warning',
+      );
+
       return;
     }
 
     setSearchingCedula(true);
 
     try {
-      const record = await findVentanillaByCedulaForCallCenter(cedula);
+      const record =
+        await findVentanillaByCedulaForCallCenter(
+          cedula,
+        );
 
       if (!record) {
-        showMessage('No se encontró esta cédula en Ventanilla. Puedes continuar el registro manual.', 'info');
-        await checkExistingOpenCase(form, true);
+        showMessage(
+          'No se encontró esta cédula en Ventanilla.',
+          'info',
+        );
+
+        await checkExistingOpenCase(
+          form,
+          true,
+        );
+
         return;
       }
 
-      const nextForm = ventanillaToForm(record, form);
+      const nextForm =
+        ventanillaToForm(
+          record,
+          form,
+        );
 
       setForm(nextForm);
-      await checkExistingOpenCase(nextForm, true);
 
-      showMessage('Datos cargados desde Ventanilla.', 'success');
+      await checkExistingOpenCase(
+        nextForm,
+        true,
+      );
+
+      showMessage(
+        'Datos cargados desde Ventanilla.',
+        'success',
+      );
     } catch {
-      showMessage('No fue posible consultar la cédula en Ventanilla.', 'error');
+      showMessage(
+        'No fue posible consultar la cédula en Ventanilla.',
+        'error',
+      );
     } finally {
       setSearchingCedula(false);
     }
   }
 
   /**
-   * Construye el request enviado al backend.
-   *
-   * En registros nuevos se crea un caso pendiente de enrutamiento sin llamada
-   * y sin encuestador. En edición se preservan datos legacy que ya existan
-   * para evitar borrarlos desde esta pantalla administrativa.
-   *
-   * @returns request para crear o actualizar.
+   * Construye el request preservando los campos
+   * operativos protegidos.
    */
-  function buildRequest(): CallCenterRequest {
-    const isNewRecord = !form.id;
-
+  function buildRequest():
+    CallCenterRequest {
     return {
-      marcaTemporal: originalRecord?.marcaTemporal ?? null,
-      fechaLlamada: form.fechaLlamada,
-      horaLlamada: isNewRecord ? null : originalRecord?.horaLlamada ?? null,
-      tipoRegistro: originalRecord?.tipoRegistro ?? 'LLAMADA',
-      origenRegistro: form.origenRegistro,
-      ventanillaRegistroId: toOptionalNumber(form.ventanillaRegistroId),
-      cedulaSolicitante: normalizeText(form.cedulaSolicitante),
-      nombreCompleto: normalizeText(form.nombreCompleto),
-      telefono: normalizeText(form.telefono) || null,
+      marcaTemporal:
+        originalRecord
+          ?.marcaTemporal
+        ?? null,
 
-      /**
-       * Esta vista no registra llamada. La llamada real se gestiona desde:
-       * /dashboard/callcenter/mis-registros/[id]
-       */
-      llamadaConectada: isNewRecord
-        ? null as unknown as boolean
-        : originalRecord?.llamadaConectada ?? null as unknown as boolean,
+      fechaLlamada:
+        originalRecord
+          ?.fechaLlamada
+        ?? form.fechaLlamada,
 
-      motivoNoContactoId: isNewRecord ? null : originalRecord?.motivoNoContactoId ?? null,
-      motivoNoContactoTexto: isNewRecord ? null : originalRecord?.motivoNoContactoTexto ?? null,
-      encuestadorProgramadoId: isNewRecord ? null : originalRecord?.encuestadorProgramadoId ?? null,
-      fechaEncuestaProgramada: isNewRecord ? null : originalRecord?.fechaEncuestaProgramada ?? null,
-      solicitoNuevaEncuesta: form.tipoSolicitudCallcenter === TIPO_SOLICITUD_NUEVA_ENCUESTA,
-      direccionTexto: normalizeText(form.direccionTexto) || null,
-      barrioId: toOptionalNumber(form.barrioId),
-      fechaAplicacionInformada: isNewRecord ? null : originalRecord?.fechaAplicacionInformada ?? null,
-      disposicionRecibirEncuesta: isNewRecord ? null : originalRecord?.disposicionRecibirEncuesta ?? null,
-      motivoNoDisposicionId: isNewRecord ? null : originalRecord?.motivoNoDisposicionId ?? null,
-      motivoNoDisposicionTexto: isNewRecord ? null : originalRecord?.motivoNoDisposicionTexto ?? null,
-      encuestadorAsignadoId: isNewRecord ? null : originalRecord?.encuestadorAsignadoId ?? null,
-      explicoInformanteCalificado: isNewRecord ? null : originalRecord?.explicoInformanteCalificado ?? null,
-      verificado: isNewRecord ? null : originalRecord?.verificado ?? null,
-      estadoCaso: form.estadoCaso || ESTADO_PENDIENTE_ENRUTAMIENTO,
-      tipoSolicitudCallcenter: form.tipoSolicitudCallcenter || TIPO_SOLICITUD_NUEVA_ENCUESTA,
-      observacion: normalizeText(form.observacion) || null,
-      activo: form.activo,
+      horaLlamada:
+        originalRecord
+          ?.horaLlamada
+        ?? null,
+
+      tipoRegistro:
+        originalRecord
+          ?.tipoRegistro
+        ?? 'LLAMADA',
+
+      origenRegistro:
+        form.origenRegistro,
+
+      ventanillaRegistroId:
+        toOptionalNumber(
+          form.ventanillaRegistroId,
+        ),
+
+      cedulaSolicitante:
+        normalizeText(
+          form.cedulaSolicitante,
+        ),
+
+      nombreCompleto:
+        normalizeText(
+          form.nombreCompleto,
+        ),
+
+      telefono:
+        normalizeText(
+          form.telefono,
+        )
+        || null,
+
+      llamadaConectada:
+        originalRecord
+          ?.llamadaConectada
+        ?? (
+          null as unknown as boolean
+        ),
+
+      motivoNoContactoId:
+        originalRecord
+          ?.motivoNoContactoId
+        ?? null,
+
+      motivoNoContactoTexto:
+        originalRecord
+          ?.motivoNoContactoTexto
+        ?? null,
+
+      encuestadorProgramadoId:
+        originalRecord
+          ?.encuestadorProgramadoId
+        ?? null,
+
+      fechaEncuestaProgramada:
+        originalRecord
+          ?.fechaEncuestaProgramada
+        ?? null,
+
+      solicitoNuevaEncuesta:
+        originalRecord
+          ?.solicitoNuevaEncuesta
+        ?? (
+          form.tipoSolicitudCallcenter
+          ===
+          TIPO_SOLICITUD_NUEVA_ENCUESTA
+        ),
+
+      direccionTexto:
+        normalizeText(
+          form.direccionTexto,
+        )
+        || null,
+
+      barrioId:
+        toOptionalNumber(
+          form.barrioId,
+        ),
+
+      fechaAplicacionInformada:
+        originalRecord
+          ?.fechaAplicacionInformada
+        ?? null,
+
+      disposicionRecibirEncuesta:
+        originalRecord
+          ?.disposicionRecibirEncuesta
+        ?? null,
+
+      motivoNoDisposicionId:
+        originalRecord
+          ?.motivoNoDisposicionId
+        ?? null,
+
+      motivoNoDisposicionTexto:
+        originalRecord
+          ?.motivoNoDisposicionTexto
+        ?? null,
+
+      encuestadorAsignadoId:
+        originalRecord
+          ?.encuestadorAsignadoId
+        ?? null,
+
+      explicoInformanteCalificado:
+        originalRecord
+          ?.explicoInformanteCalificado
+        ?? null,
+
+      verificado:
+        originalRecord
+          ?.verificado
+        ?? null,
+
+      estadoCaso:
+        originalRecord
+          ?.estadoCaso
+        ?? ESTADO_PENDIENTE_ENRUTAMIENTO,
+
+      tipoSolicitudCallcenter:
+        form.tipoSolicitudCallcenter
+        || TIPO_SOLICITUD_NUEVA_ENCUESTA,
+
+      observacion:
+        originalRecord
+          ?.observacion
+        ?? null,
+
+      activo:
+        originalRecord
+          ?.activo
+        !== false,
     };
   }
 
-  /**
-   * Valida los datos mínimos para guardar el caso.
-   *
-   * @returns mensaje de validación o vacío.
-   */
   function validateForm() {
-    if (!form.fechaLlamada) {
-      return 'La fecha del caso es obligatoria.';
-    }
-
-    if (!normalizeText(form.cedulaSolicitante)) {
+    if (
+      !normalizeText(
+        form.cedulaSolicitante,
+      )
+    ) {
       return 'La cédula del solicitante es obligatoria.';
     }
 
-    if (!normalizeText(form.nombreCompleto)) {
+    if (
+      !normalizeText(
+        form.nombreCompleto,
+      )
+    ) {
       return 'El nombre completo es obligatorio.';
     }
 
-    if (!normalizeText(form.tipoSolicitudCallcenter)) {
+    if (
+      !normalizeText(
+        form.tipoSolicitudCallcenter,
+      )
+    ) {
       return 'Selecciona el tipo de solicitud.';
     }
 
-    if (!normalizeText(form.estadoCaso)) {
-      return 'Selecciona el estado del caso.';
+    if (
+      form.origenRegistro
+        === 'VENTANILLA'
+      && !form.ventanillaRegistroId
+    ) {
+      return 'Debe relacionarse un registro de Ventanilla para utilizar este origen.';
     }
 
     if (existingOpenCase) {
-      return 'Ya existe un caso Call Center abierto para este ciudadano o registro de Ventanilla.';
+      return 'Ya existe otro caso Call Center abierto para este ciudadano o registro de Ventanilla.';
     }
 
     return '';
   }
 
-  /**
-   * Guarda el caso.
-   */
   async function save() {
-    const validationMessage = validateForm();
+    if (!form.id) {
+      showMessage(
+        'No fue posible identificar el caso que será actualizado.',
+        'error',
+      );
 
-    if (validationMessage) {
-      showMessage(validationMessage, 'warning');
       return;
     }
 
-    const existing = await checkExistingOpenCase(form, true);
+    const validationMessage =
+      validateForm();
+
+    if (validationMessage) {
+      showMessage(
+        validationMessage,
+        'warning',
+      );
+
+      return;
+    }
+
+    const existing =
+      await checkExistingOpenCase(
+        form,
+        true,
+      );
 
     if (existing) {
       return;
@@ -532,131 +965,253 @@ export default function NuevoRegistroCallCenterPage() {
     setSaving(true);
 
     try {
-      if (form.id) {
-        await updateCallCenterRegistro(form.id, buildRequest());
-        showMessage('Caso Call Center actualizado correctamente.', 'success');
-      } else {
-        await createCallCenterRegistro(buildRequest());
-        showMessage('Caso Call Center creado para enrutamiento correctamente.', 'success');
-      }
+      const updated =
+        await updateCallCenterRegistro(
+          form.id,
+          buildRequest(),
+        );
 
-      router.push('/dashboard/callcenter/asignar-funcionarios');
+      showMessage(
+        'Caso Call Center actualizado correctamente.',
+        'success',
+      );
+
+      router.push(
+        `/dashboard/callcenter/mis-registros/${updated.id}`,
+      );
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : 'No fue posible guardar el caso Call Center.';
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No fue posible actualizar el caso Call Center.';
 
-      showMessage(message, 'error');
+      showMessage(
+        message,
+        'error',
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  /**
-   * Reinicia el formulario.
-   */
   function resetForm() {
     setExistingOpenCase(null);
-    setOriginalRecord(null);
-    setForm({
-      ...initialForm,
-      fechaLlamada: today(),
-    });
+
+    if (originalRecord) {
+      setForm(
+        recordToForm(
+          originalRecord,
+        ),
+      );
+    }
+  }
+
+  if (loadingRecord) {
+    return (
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 4,
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <CircularProgress />
+
+          <Typography>
+            Cargando caso Call Center...
+          </Typography>
+        </Box>
+      </Paper>
+    );
   }
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 3,
+        }}
+      >
         <Box
           sx={{
             display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
+            flexDirection: {
+              xs: 'column',
+              md: 'row',
+            },
             gap: 2,
-            justifyContent: 'space-between',
+            justifyContent:
+              'space-between',
           }}
         >
           <Box>
-            <Typography component="h1" variant="h5" sx={{ fontWeight: 800 }}>
-              {form.id ? 'Editar caso Call Center' : 'Nuevo caso manual'}
+            <Typography
+              component="h1"
+              variant="h5"
+              sx={{
+                fontWeight: 800,
+              }}
+            >
+              Editar datos administrativos del caso
             </Typography>
 
-            <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-              Crea un caso pendiente de enrutamiento. La llamada y la visita se gestionan después por el funcionario Call Center.
+            <Typography
+              component="p"
+              variant="body2"
+              sx={{
+                color:
+                  'text.secondary',
+              }}
+            >
+              Actualiza únicamente los datos generales.
+              Las llamadas, visitas y estados se gestionan
+              mediante sus operaciones formales.
             </Typography>
           </Box>
 
           <Box
             sx={{
               display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
+              flexDirection: {
+                xs: 'column',
+                sm: 'row',
+              },
               gap: 1,
             }}
           >
             <Button
               variant="outlined"
-              startIcon={<ArrowBackIcon />}
-              onClick={() => router.push('/dashboard/callcenter/registros')}
+              startIcon={
+                <ArrowBackIcon />
+              }
+              onClick={() =>
+                router.push(
+                  '/dashboard/callcenter/registros',
+                )
+              }
             >
               Volver
             </Button>
 
             <Button
               variant="outlined"
-              startIcon={<RestartAltIcon />}
-              onClick={resetForm}
+              startIcon={
+                <RestartAltIcon />
+              }
+              onClick={
+                resetForm
+              }
               disabled={saving}
             >
-              Limpiar
+              Restablecer
             </Button>
 
             <Button
               variant="contained"
-              startIcon={<SaveIcon />}
-              onClick={save}
-              disabled={saving || checkingCase || Boolean(existingOpenCase)}
+              startIcon={
+                <SaveIcon />
+              }
+              onClick={() =>
+                void save()
+              }
+              disabled={
+                saving
+                || checkingCase
+                || Boolean(
+                  existingOpenCase,
+                )
+              }
             >
-              {saving ? 'Guardando...' : 'Guardar caso'}
+              {saving
+                ? 'Guardando...'
+                : 'Guardar cambios'}
             </Button>
           </Box>
         </Box>
 
         <Alert severity="info">
-          Esta pantalla solo crea o edita el caso maestro. No asigna encuestador, no registra llamada
-          y no programa visita. El caso queda disponible para el Coordinador / Enrutador.
+          Esta pantalla solo actualiza datos administrativos.
+          No registra llamadas, no asigna encuestadores,
+          no programa visitas y no cambia directamente
+          el estado operativo.
+        </Alert>
+
+        <Alert severity="warning">
+          Se preservan la fecha original, el estado del caso,
+          los resultados telefónicos, las asignaciones,
+          las visitas y las observaciones operativas.
         </Alert>
 
         {existingOpenCase && (
           <Alert severity="warning">
-            Ya existe un caso Call Center abierto para este ciudadano o registro de Ventanilla.
-            Debes cerrar o cancelar el caso existente antes de crear otro.
+            Ya existe otro caso Call Center abierto para
+            este ciudadano o registro de Ventanilla.
           </Alert>
         )}
 
         <Card>
           <CardContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 3,
+              }}
+            >
               <Box>
-                <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
+                <Typography
+                  component="h2"
+                  variant="h6"
+                  sx={{
+                    fontWeight: 800,
+                  }}
+                >
                   1. Identificación del ciudadano
                 </Typography>
 
-                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                  Puedes digitar la información manualmente o buscar la cédula en Ventanilla para precargar datos.
+                <Typography
+                  component="p"
+                  variant="body2"
+                  sx={{
+                    color:
+                      'text.secondary',
+                  }}
+                >
+                  Actualiza los datos generales o consulta
+                  nuevamente la información de Ventanilla.
                 </Typography>
               </Box>
 
               <Box
                 sx={{
                   display: 'flex',
-                  flexDirection: { xs: 'column', md: 'row' },
+                  flexDirection: {
+                    xs: 'column',
+                    md: 'row',
+                  },
                   gap: 2,
                 }}
               >
                 <TextField
                   label="Cédula solicitante"
-                  value={form.cedulaSolicitante}
-                  onChange={(event) => updateForm('cedulaSolicitante', event.target.value)}
-                  onBlur={searchPersonByCedula}
+                  value={
+                    form.cedulaSolicitante
+                  }
+                  onChange={(event) =>
+                    updateForm(
+                      'cedulaSolicitante',
+                      event.target.value,
+                    )
+                  }
                   fullWidth
                   required
                   slotProps={{
@@ -672,18 +1227,33 @@ export default function NuevoRegistroCallCenterPage() {
 
                 <Button
                   variant="outlined"
-                  startIcon={<SearchIcon />}
-                  onClick={searchPersonByCedula}
-                  disabled={searchingCedula || checkingCase}
-                  sx={{ minWidth: 220 }}
+                  startIcon={
+                    <SearchIcon />
+                  }
+                  onClick={() =>
+                    void searchPersonByCedula()
+                  }
+                  disabled={
+                    searchingCedula
+                    || checkingCase
+                  }
+                  sx={{
+                    minWidth: 220,
+                  }}
                 >
-                  {searchingCedula || checkingCase ? 'Buscando...' : 'Buscar en Ventanilla'}
+                  {searchingCedula
+                    || checkingCase
+                    ? 'Buscando...'
+                    : 'Buscar en Ventanilla'}
                 </Button>
               </Box>
 
               {form.ventanillaRegistroId && (
                 <Alert severity="success">
-                  Datos relacionados con Ventanilla ID: <strong>{form.ventanillaRegistroId}</strong>.
+                  Registro relacionado con Ventanilla ID:{' '}
+                  <strong>
+                    {form.ventanillaRegistroId}
+                  </strong>
                 </Alert>
               )}
 
@@ -692,49 +1262,86 @@ export default function NuevoRegistroCallCenterPage() {
                   display: 'grid',
                   gridTemplateColumns: {
                     xs: '1fr',
-                    md: '1fr 1fr',
+                    md: 'repeat(2, minmax(0, 1fr))',
                   },
                   gap: 2,
                 }}
               >
                 <TextField
                   label="Nombre completo"
-                  value={form.nombreCompleto}
-                  onChange={(event) => updateForm('nombreCompleto', event.target.value)}
+                  value={
+                    form.nombreCompleto
+                  }
+                  onChange={(event) =>
+                    updateForm(
+                      'nombreCompleto',
+                      event.target.value,
+                    )
+                  }
                   fullWidth
                   required
                 />
 
                 <TextField
                   label="Teléfono"
-                  value={form.telefono}
-                  onChange={(event) => updateForm('telefono', event.target.value)}
+                  value={
+                    form.telefono
+                  }
+                  onChange={(event) =>
+                    updateForm(
+                      'telefono',
+                      event.target.value,
+                    )
+                  }
                   fullWidth
                 />
 
                 <TextField
                   label="Dirección"
-                  value={form.direccionTexto}
-                  onChange={(event) => updateForm('direccionTexto', event.target.value)}
+                  value={
+                    form.direccionTexto
+                  }
+                  onChange={(event) =>
+                    updateForm(
+                      'direccionTexto',
+                      event.target.value,
+                    )
+                  }
                   fullWidth
                 />
 
                 <TextField
                   label="Barrio"
                   select
-                  value={form.barrioId}
-                  onChange={(event) => updateForm('barrioId', event.target.value)}
+                  value={
+                    form.barrioId
+                  }
+                  onChange={(event) =>
+                    updateForm(
+                      'barrioId',
+                      event.target.value,
+                    )
+                  }
                   fullWidth
                 >
                   <MenuItem value="">
                     Sin seleccionar
                   </MenuItem>
 
-                  {barrios.map((option) => (
-                    <MenuItem key={option.id} value={option.id}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
+                  {barrios.map(
+                    (option) => (
+                      <MenuItem
+                        key={option.id}
+                        value={
+                          String(
+                            option.id,
+                          )
+                        }
+                      >
+                        {option.label}
+                      </MenuItem>
+                    ),
+                  )}
                 </TextField>
               </Box>
             </Box>
@@ -743,14 +1350,34 @@ export default function NuevoRegistroCallCenterPage() {
 
         <Card>
           <CardContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 3,
+              }}
+            >
               <Box>
-                <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
-                  2. Datos del caso
+                <Typography
+                  component="h2"
+                  variant="h6"
+                  sx={{
+                    fontWeight: 800,
+                  }}
+                >
+                  2. Datos administrativos del caso
                 </Typography>
 
-                <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                  Define el origen, tipo de solicitud y estado inicial del caso.
+                <Typography
+                  component="p"
+                  variant="body2"
+                  sx={{
+                    color:
+                      'text.secondary',
+                  }}
+                >
+                  Actualiza el origen y el tipo de solicitud.
+                  El estado operativo no se modifica aquí.
                 </Typography>
               </Box>
 
@@ -759,7 +1386,7 @@ export default function NuevoRegistroCallCenterPage() {
                   display: 'grid',
                   gridTemplateColumns: {
                     xs: '1fr',
-                    md: '1fr 1fr 1fr',
+                    md: 'repeat(3, minmax(0, 1fr))',
                   },
                   gap: 2,
                 }}
@@ -767,18 +1394,31 @@ export default function NuevoRegistroCallCenterPage() {
                 <TextField
                   label="Fecha del caso"
                   type="date"
-                  value={form.fechaLlamada}
-                  onChange={(event) => updateForm('fechaLlamada', event.target.value)}
+                  value={
+                    form.fechaLlamada
+                  }
                   fullWidth
-                  required
-                  slotProps={{ inputLabel: { shrink: true } }}
+                  disabled
+                  helperText="La fecha original no puede modificarse desde la edición administrativa."
+                  slotProps={{
+                    inputLabel: {
+                      shrink: true,
+                    },
+                  }}
                 />
 
                 <TextField
                   label="Origen"
                   select
-                  value={form.origenRegistro}
-                  onChange={(event) => updateForm('origenRegistro', event.target.value)}
+                  value={
+                    form.origenRegistro
+                  }
+                  onChange={(event) =>
+                    updateForm(
+                      'origenRegistro',
+                      event.target.value,
+                    )
+                  }
                   fullWidth
                 >
                   <MenuItem value="MANUAL">
@@ -797,8 +1437,15 @@ export default function NuevoRegistroCallCenterPage() {
                 <TextField
                   label="Tipo de solicitud"
                   select
-                  value={form.tipoSolicitudCallcenter}
-                  onChange={(event) => updateForm('tipoSolicitudCallcenter', event.target.value)}
+                  value={
+                    form.tipoSolicitudCallcenter
+                  }
+                  onChange={(event) =>
+                    updateForm(
+                      'tipoSolicitudCallcenter',
+                      event.target.value,
+                    )
+                  }
                   fullWidth
                   required
                 >
@@ -821,117 +1468,161 @@ export default function NuevoRegistroCallCenterPage() {
 
                 <TextField
                   label="Estado del caso"
-                  select
-                  value={form.estadoCaso}
-                  onChange={(event) => updateForm('estadoCaso', event.target.value)}
+                  value={
+                    formatLabel(
+                      form.estadoCaso,
+                    )
+                  }
                   fullWidth
-                  required
-                >
-                  <MenuItem value="PENDIENTE_ENRUTAMIENTO">
-                    Pendiente de enrutamiento
-                  </MenuItem>
-
-                  {form.id && (
-                    <MenuItem value="ASIGNADO_CALLCENTER">
-                      Asignado a funcionario Call Center
-                    </MenuItem>
-                  )}
-
-                  {form.id && (
-                    <MenuItem value="EN_GESTION_LLAMADA">
-                      En gestión de llamada
-                    </MenuItem>
-                  )}
-
-                  {form.id && (
-                    <MenuItem value="CERRADO">
-                      Cerrado
-                    </MenuItem>
-                  )}
-
-                  {form.id && (
-                    <MenuItem value="CANCELADO">
-                      Cancelado
-                    </MenuItem>
-                  )}
-                </TextField>
+                  disabled
+                  helperText="El estado cambia mediante las operaciones formales del flujo."
+                />
 
                 <TextField
                   label="Ventanilla ID"
-                  value={form.ventanillaRegistroId}
-                  onChange={(event) => updateForm('ventanillaRegistroId', event.target.value)}
+                  value={
+                    form.ventanillaRegistroId
+                  }
+                  onChange={(event) =>
+                    updateForm(
+                      'ventanillaRegistroId',
+                      event.target.value,
+                    )
+                  }
                   fullWidth
-                  disabled={form.origenRegistro !== 'VENTANILLA'}
+                  disabled={
+                    form.origenRegistro
+                    !== 'VENTANILLA'
+                  }
                 />
 
                 <TextField
                   label="Estado lógico"
-                  select
-                  value={String(form.activo)}
-                  onChange={(event) => updateForm('activo', event.target.value === 'true')}
+                  value={
+                    form.activo
+                      ? 'Activo'
+                      : 'Inactivo'
+                  }
                   fullWidth
-                >
-                  <MenuItem value="true">
-                    Activo
-                  </MenuItem>
-
-                  <MenuItem value="false">
-                    Inactivo
-                  </MenuItem>
-                </TextField>
+                  disabled
+                  helperText="La activación e inactivación se gestiona desde el listado."
+                />
               </Box>
 
               <TextField
-                label="Observación"
-                value={form.observacion}
-                onChange={(event) => updateForm('observacion', event.target.value)}
+                label="Observación operativa"
+                value={
+                  form.observacion
+                }
                 fullWidth
                 multiline
                 minRows={3}
+                disabled
+                helperText="La observación operativa no se modifica desde la edición administrativa."
               />
             </Box>
           </CardContent>
         </Card>
 
-        <Paper sx={{ p: 2 }}>
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2,
+          }}
+        >
           <Box
             sx={{
               display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
+              flexDirection: {
+                xs: 'column',
+                sm: 'row',
+              },
               gap: 1,
-              justifyContent: 'flex-end',
+              justifyContent:
+                'flex-end',
             }}
           >
             <Button
               variant="outlined"
-              startIcon={<ArrowBackIcon />}
-              onClick={() => router.push('/dashboard/callcenter/registros')}
+              startIcon={
+                <ArrowBackIcon />
+              }
+              onClick={() =>
+                router.push(
+                  '/dashboard/callcenter/registros',
+                )
+              }
             >
               Cancelar
             </Button>
 
             <Button
               variant="contained"
-              startIcon={<SaveIcon />}
-              onClick={save}
-              disabled={saving || checkingCase || Boolean(existingOpenCase)}
+              startIcon={
+                <SaveIcon />
+              }
+              onClick={() =>
+                void save()
+              }
+              disabled={
+                saving
+                || checkingCase
+                || Boolean(
+                  existingOpenCase,
+                )
+              }
             >
-              {saving ? 'Guardando...' : 'Guardar caso'}
+              {saving
+                ? 'Guardando...'
+                : 'Guardar cambios'}
             </Button>
           </Box>
         </Paper>
       </Box>
 
       <Snackbar
-        open={snackbar.open}
+        open={
+          snackbar.open
+        }
         autoHideDuration={5000}
-        onClose={closeSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        onClose={
+          closeSnackbar
+        }
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
       >
-        <Alert severity={snackbar.severity} onClose={closeSnackbar} sx={{ width: '100%' }}>
+        <Alert
+          severity={
+            snackbar.severity
+          }
+          onClose={
+            closeSnackbar
+          }
+          sx={{
+            width: '100%',
+          }}
+        >
           {snackbar.message}
         </Alert>
       </Snackbar>
     </Box>
   );
+}
+
+function formatLabel(
+  value?: string | null,
+) {
+  return String(
+    value ?? 'Sin dato',
+  )
+    .split('_')
+    .join(' ')
+    .toLowerCase()
+    .replace(
+      /^\w/,
+      (letter) =>
+        letter.toUpperCase(),
+    );
 }

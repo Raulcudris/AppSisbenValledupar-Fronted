@@ -12,7 +12,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
   InputAdornment,
   MenuItem,
@@ -40,9 +39,15 @@ import {
   getMotivosNoDisposicionOptions,
   searchCallCenter,
 } from '@/services/callcenter.service';
-import { createCallCenterRegistroCompleto } from '@/services/callcenter-registro-completo.service';
-import { getCallCenterResultadosLlamada } from '@/services/callcenter-workflow.service';
-import type { CallCenterRegistroCompletoRequest } from '@/types/callcenter-registro-completo.types';
+import {
+  createCallCenterRegistroCompleto,
+} from '@/services/callcenter-registro-completo.service';
+import {
+  getCallCenterResultadosLlamada,
+} from '@/services/callcenter-workflow.service';
+import type {
+  CallCenterRegistroCompletoRequest,
+} from '@/types/callcenter-registro-completo.types';
 import type {
   CallCenterOrigenRegistro,
   CallCenterResponse,
@@ -52,7 +57,9 @@ import type {
 import type {
   CallCenterResultadoLlamadaResponse,
 } from '@/types/callcenter-workflow.types';
-import type { SelectOption } from '@/types/catalog.types';
+import type {
+  SelectOption,
+} from '@/types/catalog.types';
 
 type YesNoValue =
   | ''
@@ -130,6 +137,14 @@ const TIPOS_SOLICITUD = [
     value: 'OTRO',
     label: 'Otro',
   },
+];
+
+const VENTANILLA_OBSERVATION_PREFIXES = [
+  'Ventanilla:',
+  'Fecha Ventanilla:',
+  'Solicitud:',
+  'Estado:',
+  'Observación Ventanilla:',
 ];
 
 function getLocalDateISO(
@@ -263,6 +278,29 @@ function normalizeCode(
     .toUpperCase();
 }
 
+function removeVentanillaObservationParts(
+  value?: string | null,
+) {
+  return String(value ?? '')
+    .split('|')
+    .map(
+      (part) =>
+        part.trim(),
+    )
+    .filter(Boolean)
+    .filter(
+      (part) =>
+        !VENTANILLA_OBSERVATION_PREFIXES
+          .some(
+            (prefix) =>
+              part.startsWith(
+                prefix,
+              ),
+          ),
+    )
+    .join(' | ');
+}
+
 function toOptionalNumber(
   value: string,
 ) {
@@ -317,6 +355,11 @@ function ventanillaToForm(
   record: VentanillaCallCenterResponse,
   current: FormState,
 ): FormState {
+  const manualObservation =
+    removeVentanillaObservationParts(
+      current.observacionCaso,
+    );
+
   return {
     ...current,
 
@@ -327,28 +370,33 @@ function ventanillaToForm(
       String(record.id),
 
     cedulaSolicitante:
-      record.cedulaUsuario
-      ?? current.cedulaSolicitante,
+      normalizeText(
+        record.cedulaUsuario,
+      )
+      || current.cedulaSolicitante,
 
     nombreCompleto:
-      record.nombreUsuario
-      ?? current.nombreCompleto,
+      normalizeText(
+        record.nombreUsuario,
+      ),
 
     telefono:
-      record.telefono
-      ?? current.telefono,
+      normalizeText(
+        record.telefono,
+      ),
 
     direccionTexto:
-      record.direccion
-      ?? current.direccionTexto,
+      normalizeText(
+        record.direccion,
+      ),
 
     barrioId:
       record.barrioId
         ? String(record.barrioId)
-        : current.barrioId,
+        : '',
 
     observacionCaso: [
-      current.observacionCaso,
+      manualObservation,
 
       record.numeroVentanilla
         ? `Ventanilla: ${record.numeroVentanilla}`
@@ -641,29 +689,41 @@ export default function CallCenterRegistroCompletoForm() {
     }
 
     setForm((current) => {
-      const next = {
+      const next: FormState = {
         ...current,
         [field]: value,
-      } as FormState;
+      };
 
       if (
         field === 'cedulaSolicitante'
         && current.ventanillaRegistroId
-        && value !== current.cedulaSolicitante
+        && normalizeText(value)
+          !== normalizeText(
+            current.cedulaSolicitante,
+          )
       ) {
-        next.ventanillaRegistroId =
-          '';
-
         next.origenRegistro =
           'MANUAL';
-      }
 
-      if (
-        field === 'origenRegistro'
-        && value !== 'VENTANILLA'
-      ) {
         next.ventanillaRegistroId =
           '';
+
+        next.nombreCompleto =
+          '';
+
+        next.telefono =
+          '';
+
+        next.direccionTexto =
+          '';
+
+        next.barrioId =
+          '';
+
+        next.observacionCaso =
+          removeVentanillaObservationParts(
+            current.observacionCaso,
+          );
       }
 
       if (
@@ -706,6 +766,10 @@ export default function CallCenterRegistroCompletoForm() {
   }
 
   async function searchPersonByCedula() {
+    if (searchingVentanilla) {
+      return;
+    }
+
     const cedula =
       normalizeText(
         form.cedulaSolicitante,
@@ -713,7 +777,7 @@ export default function CallCenterRegistroCompletoForm() {
 
     if (!cedula) {
       showMessage(
-        'Digita una cédula para consultar en Ventanilla.',
+        'Digita una cédula y presiona Enter.',
         'warning',
       );
 
@@ -721,6 +785,7 @@ export default function CallCenterRegistroCompletoForm() {
     }
 
     setSearchingVentanilla(true);
+    setValidationMessage(null);
 
     try {
       const record =
@@ -729,20 +794,55 @@ export default function CallCenterRegistroCompletoForm() {
         );
 
       if (!record) {
+        const hadVentanillaData =
+          Boolean(
+            form.ventanillaRegistroId,
+          )
+          || form.origenRegistro
+            === 'VENTANILLA';
+
         const nextForm: FormState = {
           ...form,
+
+          cedulaSolicitante:
+            cedula,
+
           origenRegistro:
-            form.origenRegistro === 'VENTANILLA'
-              ? 'MANUAL'
-              : form.origenRegistro,
+            'MANUAL',
+
           ventanillaRegistroId:
             '',
+
+          nombreCompleto:
+            hadVentanillaData
+              ? ''
+              : form.nombreCompleto,
+
+          telefono:
+            hadVentanillaData
+              ? ''
+              : form.telefono,
+
+          direccionTexto:
+            hadVentanillaData
+              ? ''
+              : form.direccionTexto,
+
+          barrioId:
+            hadVentanillaData
+              ? ''
+              : form.barrioId,
+
+          observacionCaso:
+            removeVentanillaObservationParts(
+              form.observacionCaso,
+            ),
         };
 
         setForm(nextForm);
 
         showMessage(
-          'No se encontró la cédula en Ventanilla. Puedes continuar como registro manual.',
+          'La cédula no está registrada en Ventanilla. Completa los datos para continuar como registro manual.',
           'info',
         );
 
@@ -763,7 +863,7 @@ export default function CallCenterRegistroCompletoForm() {
       setForm(nextForm);
 
       showMessage(
-        'Datos cargados desde Ventanilla.',
+        'Ciudadano encontrado. Los datos fueron cargados desde Ventanilla.',
         'success',
       );
 
@@ -899,11 +999,6 @@ export default function CallCenterRegistroCompletoForm() {
       setExistingOpenCase(null);
       return null;
     } catch {
-      /*
-       * La validación frontend es únicamente preventiva.
-       * El backend debe ejecutar la validación definitiva
-       * dentro de la transacción.
-       */
       showMessage(
         'No fue posible ejecutar la validación preventiva de duplicidad. El backend volverá a validarla al guardar.',
         'info',
@@ -955,7 +1050,7 @@ export default function CallCenterRegistroCompletoForm() {
         form.origenRegistro === 'VENTANILLA'
         && !form.ventanillaRegistroId
       ) {
-        return 'Busca y selecciona un registro de Ventanilla antes de continuar.';
+        return 'La cédula debe estar vinculada a un registro válido de Ventanilla.';
       }
 
       if (existingOpenCase) {
@@ -1757,10 +1852,15 @@ type StepCommonProps = {
 type StepCiudadanoProps =
   StepCommonProps & {
     barrios: SelectOption[];
+
     existingOpenCase:
       CallCenterResponse | null;
+
     searching: boolean;
-    onSearch: () => void;
+
+    onSearch:
+      () => Promise<void> | void;
+
     onOpenExistingCase:
       (id: number) => void;
   };
@@ -1774,6 +1874,11 @@ function StepCiudadano({
   onSearch,
   onOpenExistingCase,
 }: StepCiudadanoProps) {
+  const linkedToVentanilla =
+    Boolean(
+      form.ventanillaRegistroId,
+    );
+
   return (
     <Box
       sx={{
@@ -1798,70 +1903,79 @@ function StepCiudadano({
           variant="body2"
           color="text.secondary"
         >
-          Busca al ciudadano en Ventanilla o registra
-          manualmente sus datos.
+          Digita la cédula y presiona Enter. Si el ciudadano
+          existe en Ventanilla, sus datos se completarán
+          automáticamente. Si no existe, podrás continuar
+          como registro manual.
         </Typography>
       </Box>
 
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: {
-            xs: '1fr',
-            md: 'minmax(0, 1fr) auto',
-          },
-          gap: 1.5,
-          alignItems: 'start',
+      <TextField
+        label="Cédula del solicitante"
+        value={
+          form.cedulaSolicitante
+        }
+        onChange={(event) => {
+          onChange(
+            'cedulaSolicitante',
+            event.target.value,
+          );
         }}
-      >
-        <TextField
-          label="Cédula del solicitante"
-          value={
-            form.cedulaSolicitante
-          }
-          onChange={(event) =>
-            onChange(
-              'cedulaSolicitante',
-              event.target.value,
-            )
-          }
-          required
-          fullWidth
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-            },
-          }}
-        />
+        onKeyDown={(event) => {
+          if (
+            event.key === 'Enter'
+          ) {
+            event.preventDefault();
 
-        <Button
-          variant="outlined"
-          startIcon={
-            <SearchIcon />
+            if (!searching) {
+              void onSearch();
+            }
           }
-          onClick={onSearch}
-          disabled={searching}
-          sx={{
-            minWidth: 220,
-            minHeight: 56,
-          }}
-        >
-          {searching
-            ? 'Consultando...'
-            : 'Buscar en Ventanilla'}
-        </Button>
-      </Box>
+        }}
+        required
+        fullWidth
+        disabled={searching}
+        helperText={
+          searching
+            ? 'Consultando la cédula...'
+            : 'Presiona Enter para consultar automáticamente en Ventanilla.'
+        }
+        slotProps={{
+          input: {
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
 
-      {form.ventanillaRegistroId && (
+            endAdornment:
+              searching
+                ? (
+                  <InputAdornment position="end">
+                    <CircularProgress
+                      size={20}
+                    />
+                  </InputAdornment>
+                )
+                : undefined,
+          },
+        }}
+      />
+
+      {linkedToVentanilla ? (
         <Alert severity="success">
-          Registro relacionado con Ventanilla ID:{' '}
+          Ciudadano encontrado en Ventanilla. Registro
+          relacionado con el ID{' '}
           <strong>
             {form.ventanillaRegistroId}
           </strong>
+          .
+        </Alert>
+      ) : (
+        <Alert severity="info">
+          Cuando la cédula no exista en Ventanilla, el origen
+          será manual y podrás diligenciar los datos del
+          ciudadano.
         </Alert>
       )}
 
@@ -1872,11 +1986,11 @@ function StepCiudadano({
             <Button
               color="inherit"
               size="small"
-              onClick={() =>
+              onClick={() => {
                 onOpenExistingCase(
                   existingOpenCase.id,
-                )
-              }
+                );
+              }}
             >
               Abrir caso
             </Button>
@@ -1890,10 +2004,12 @@ function StepCiudadano({
       <Box
         sx={{
           display: 'grid',
+
           gridTemplateColumns: {
             xs: '1fr',
             md: 'repeat(2, minmax(0, 1fr))',
           },
+
           gap: 2,
         }}
       >
@@ -1902,12 +2018,12 @@ function StepCiudadano({
           value={
             form.nombreCompleto
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'nombreCompleto',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
         />
@@ -1918,12 +2034,12 @@ function StepCiudadano({
           value={
             form.telefono
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'telefono',
               event.target.value,
-            )
-          }
+            );
+          }}
           fullWidth
         />
 
@@ -1932,12 +2048,12 @@ function StepCiudadano({
           value={
             form.direccionTexto
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'direccionTexto',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
         />
@@ -1948,12 +2064,12 @@ function StepCiudadano({
           value={
             form.barrioId
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'barrioId',
               event.target.value,
-            )
-          }
+            );
+          }}
           fullWidth
         >
           <MenuItem value="">
@@ -1975,48 +2091,19 @@ function StepCiudadano({
         </TextField>
 
         <TextField
-          label="Origen"
-          select
+          label="Origen del registro"
           value={
-            form.origenRegistro
+            linkedToVentanilla
+              ? 'Ventanilla'
+              : 'Manual'
           }
-          onChange={(event) =>
-            onChange(
-              'origenRegistro',
-              event.target.value,
-            )
-          }
+          disabled
           fullWidth
-        >
-          <MenuItem value="MANUAL">
-            Manual
-          </MenuItem>
-
-          <MenuItem value="VENTANILLA">
-            Ventanilla
-          </MenuItem>
-
-          <MenuItem value="IMPORTACION">
-            Importación
-          </MenuItem>
-        </TextField>
-
-        <TextField
-          label="Ventanilla ID"
-          value={
-            form.ventanillaRegistroId
+          helperText={
+            linkedToVentanilla
+              ? 'Origen determinado automáticamente mediante la cédula.'
+              : 'Se guardará como registro manual.'
           }
-          disabled={
-            form.origenRegistro
-              !== 'VENTANILLA'
-          }
-          fullWidth
-          slotProps={{
-            htmlInput: {
-              readOnly: true,
-            },
-          }}
-          helperText="Se completa mediante la búsqueda por cédula."
         />
 
         <TextField
@@ -2025,12 +2112,12 @@ function StepCiudadano({
           value={
             form.tipoSolicitudCallcenter
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'tipoSolicitudCallcenter',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
         >
@@ -2052,12 +2139,12 @@ function StepCiudadano({
         value={
           form.observacionCaso
         }
-        onChange={(event) =>
+        onChange={(event) => {
           onChange(
             'observacionCaso',
             event.target.value,
-          )
-        }
+          );
+        }}
         multiline
         minRows={3}
         fullWidth

@@ -7,7 +7,6 @@ import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SearchIcon from '@mui/icons-material/Search';
-import SourceIcon from '@mui/icons-material/Source';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 
 import {
@@ -41,7 +40,7 @@ import {
 } from '@mui/material';
 
 import {
-  ChangeEvent,
+  type ChangeEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -59,21 +58,32 @@ import {
   activateCallCenterRegistro,
   deactivateCallCenterRegistro,
   getCallCenterEncuestadoresOptions,
+  getFuncionariosCallCenterOptions,
   searchCallCenter,
 } from '@/services/callcenter.service';
 
-import {
+import type {
+  CallCenterUserOptionResponse,
+} from '@/types/callcenter-assignment.types';
+
+import type {
   CallCenterFilter,
   CallCenterOrigenRegistro,
   CallCenterResponse,
 } from '@/types/callcenter.types';
 
-import { SelectOption } from '@/types/catalog.types';
+import type {
+  SelectOption,
+} from '@/types/catalog.types';
 
 type SnackbarState = {
   open: boolean;
   message: string;
-  severity: 'success' | 'error' | 'warning' | 'info';
+  severity:
+    | 'success'
+    | 'error'
+    | 'warning'
+    | 'info';
 };
 
 type ConfirmAction =
@@ -90,12 +100,23 @@ type FilterState = {
   q: string;
   fechaInicio: string;
   fechaFin: string;
-  encuestadorAsignadoId: string;
+
+  funcionarioCallcenterAsignadoId:
+    string;
+
+  encuestadorAsignadoId:
+    string;
+
   origenRegistro:
     | 'ALL'
     | CallCenterOrigenRegistro;
-  llamadaConectada: BooleanFilterValue;
-  activo: BooleanFilterValue;
+
+  llamadaConectada:
+    BooleanFilterValue;
+
+  activo:
+    BooleanFilterValue;
+
   page: number;
   size: number;
 };
@@ -113,13 +134,63 @@ const initialFilter: FilterState = {
   q: '',
   fechaInicio: '',
   fechaFin: '',
-  encuestadorAsignadoId: '',
-  origenRegistro: 'ALL',
-  llamadaConectada: 'ALL',
-  activo: 'true',
-  page: 0,
-  size: 20,
+
+  funcionarioCallcenterAsignadoId:
+    '',
+
+  encuestadorAsignadoId:
+    '',
+
+  origenRegistro:
+    'ALL',
+
+  llamadaConectada:
+    'ALL',
+
+  activo:
+    'true',
+
+  page:
+    0,
+
+  size:
+    20,
 };
+
+function getLocalDateISO(
+  date = new Date(),
+): string {
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, '0');
+
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function buildFuncionarioInitialFilter():
+  FilterState {
+  const today =
+    getLocalDateISO();
+
+  return {
+    ...initialFilter,
+
+    fechaInicio:
+      today,
+
+    fechaFin:
+      today,
+  };
+}
 
 function toBoolean(
   value: BooleanFilterValue,
@@ -211,62 +282,147 @@ function origenColor(
   return 'default' as const;
 }
 
-function formatLabel(
-  value?: string | null,
-): string {
-  const normalized = String(
-    value ?? 'Sin dato',
-  )
-    .replaceAll('_', ' ')
-    .toLowerCase();
-
-  return normalized.replace(
-    /^\w/,
-    (letter) => letter.toUpperCase(),
-  );
-}
-
 function getLlamadaStatus(
   value?: boolean | null,
 ) {
   if (value === true) {
     return {
-      label: 'Conectada',
-      color: 'success' as const,
+      label:
+        'Conectada',
+
+      color:
+        'success' as const,
     };
   }
 
   if (value === false) {
     return {
-      label: 'No conectada',
-      color: 'warning' as const,
+      label:
+        'No conectada',
+
+      color:
+        'warning' as const,
     };
   }
 
   return {
-    label: 'Sin registrar',
-    color: 'default' as const,
+    label:
+      'Sin registrar',
+
+    color:
+      'default' as const,
   };
+}
+
+function getVisitaStatus(
+  value?: string | null,
+) {
+  const estado =
+    String(
+      value ?? 'PENDIENTE',
+    )
+      .trim()
+      .toUpperCase();
+
+  if (estado === 'REALIZADA') {
+    return {
+      label:
+        'Visitada',
+
+      color:
+        'success' as const,
+    };
+  }
+
+  if (estado === 'PROGRAMADA') {
+    return {
+      label:
+        'Programada',
+
+      color:
+        'info' as const,
+    };
+  }
+
+  if (estado === 'REPROGRAMADA') {
+    return {
+      label:
+        'Reprogramada',
+
+      color:
+        'warning' as const,
+    };
+  }
+
+  if (estado === 'NO_ATENDIDA') {
+    return {
+      label:
+        'No atendida',
+
+      color:
+        'warning' as const,
+    };
+  }
+
+  if (estado === 'CANCELADA') {
+    return {
+      label:
+        'Cancelada',
+
+      color:
+        'error' as const,
+    };
+  }
+
+  return {
+    label:
+      'Pendiente',
+
+    color:
+      'default' as const,
+  };
+}
+
+function getFuncionarioLabel(
+  funcionario:
+    CallCenterUserOptionResponse,
+): string {
+  const nombreCompleto =
+    funcionario
+      .nombreCompleto
+      ?.trim();
+
+  if (nombreCompleto) {
+    return `${nombreCompleto} (${funcionario.username})`;
+  }
+
+  return funcionario.username;
 }
 
 function buildFilter(
   filter: FilterState,
 ): CallCenterFilter {
-  const llamadaConectada = toBoolean(
-    filter.llamadaConectada,
-  );
+  const llamadaConectada =
+    toBoolean(
+      filter.llamadaConectada,
+    );
 
-  const activo = toBoolean(
-    filter.activo,
-  );
+  const activo =
+    toBoolean(
+      filter.activo,
+    );
 
   return {
-    page: filter.page,
-    size: filter.size,
+    page:
+      filter.page,
+
+    size:
+      filter.size,
 
     q:
-      normalizeText(filter.q)
-      || undefined,
+      normalizeText(
+        filter.q,
+      ) || undefined,
 
     fechaInicio:
       filter.fechaInicio
@@ -274,6 +430,11 @@ function buildFilter(
 
     fechaFin:
       filter.fechaFin
+      || undefined,
+
+    funcionarioCallcenterAsignadoId:
+      filter
+        .funcionarioCallcenterAsignadoId
       || undefined,
 
     encuestadorAsignadoId:
@@ -296,32 +457,62 @@ function buildFilter(
 }
 
 export default function CallCenterRegistrosPage() {
-  const router = useRouter();
+  const router =
+    useRouter();
 
-  const [role, setRole] =
-    useState<AppRole | ''>('');
+  const [
+    role,
+    setRole,
+  ] = useState<AppRole | ''>('');
 
-  const [records, setRecords] =
-    useState<CallCenterResponse[]>([]);
+  const [
+    initialized,
+    setInitialized,
+  ] = useState(false);
 
-  const [total, setTotal] =
-    useState(0);
+  const [
+    records,
+    setRecords,
+  ] = useState<CallCenterResponse[]>([]);
 
-  const [filter, setFilter] =
-    useState<FilterState>(
-      initialFilter,
-    );
+  const [
+    total,
+    setTotal,
+  ] = useState(0);
 
-  const [searchText, setSearchText] =
-    useState('');
+  const [
+    filter,
+    setFilter,
+  ] = useState<FilterState>(
+    initialFilter,
+  );
 
-  const [loading, setLoading] =
-    useState(false);
+  const [
+    searchText,
+    setSearchText,
+  ] = useState('');
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  const [
+    loadingCatalogs,
+    setLoadingCatalogs,
+  ] = useState(false);
 
   const [
     encuestadores,
     setEncuestadores,
   ] = useState<SelectOption[]>([]);
+
+  const [
+    funcionarios,
+    setFuncionarios,
+  ] = useState<
+    CallCenterUserOptionResponse[]
+  >([]);
 
   const [
     confirmAction,
@@ -335,12 +526,19 @@ export default function CallCenterRegistrosPage() {
     null,
   );
 
-  const [snackbar, setSnackbar] =
-    useState<SnackbarState>({
-      open: false,
-      message: '',
-      severity: 'success',
-    });
+  const [
+    snackbar,
+    setSnackbar,
+  ] = useState<SnackbarState>({
+    open:
+      false,
+
+    message:
+      '',
+
+    severity:
+      'success',
+  });
 
   const isAdministrativeRole =
     role === 'ADMIN'
@@ -358,149 +556,260 @@ export default function CallCenterRegistrosPage() {
     role === 'ADMIN'
     || role === 'FUNCIONARIO_CALLCENTER';
 
-  const showMessage = useCallback(
-    (
-      message: string,
-      severity: SnackbarState['severity'] = 'success',
-    ) => {
-      setSnackbar({
-        open: true,
-        message,
-        severity,
-      });
-    },
-    [],
-  );
+  const showMessage =
+    useCallback(
+      (
+        message: string,
+
+        severity:
+          SnackbarState['severity'] =
+            'success',
+      ) => {
+        setSnackbar({
+          open:
+            true,
+
+          message,
+
+          severity,
+        });
+      },
+      [],
+    );
 
   const closeSnackbar = () => {
-    setSnackbar((current) => ({
-      ...current,
-      open: false,
-    }));
+    setSnackbar(
+      (current) => ({
+        ...current,
+
+        open:
+          false,
+      }),
+    );
   };
 
-  const load = useCallback(
-    async () => {
-      setLoading(true);
+  const load =
+    useCallback(
+      async () => {
+        setLoading(true);
 
-      try {
-        const page =
-          await searchCallCenter(
-            buildFilter(filter),
+        try {
+          const page =
+            await searchCallCenter(
+              buildFilter(
+                filter,
+              ),
+            );
+
+          const content =
+            getPageContent<
+              CallCenterResponse
+            >(
+              page,
+            );
+
+          setRecords(
+            content,
           );
 
-        const content =
-          getPageContent<CallCenterResponse>(
-            page,
+          setTotal(
+            getTotalElements(
+              page,
+              content.length,
+            ),
           );
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'No fue posible cargar los registros de Call Center.';
 
-        setRecords(content);
-
-        setTotal(
-          getTotalElements(
-            page,
-            content.length,
-          ),
-        );
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'No fue posible cargar los registros de Call Center.';
-
-        showMessage(
-          message,
-          'error',
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      filter,
-      showMessage,
-    ],
-  );
+          showMessage(
+            message,
+            'error',
+          );
+        } finally {
+          setLoading(false);
+        }
+      },
+      [
+        filter,
+        showMessage,
+      ],
+    );
 
   useEffect(() => {
+    const detectedRole =
+      currentRole();
+
     setRole(
-      currentRole(),
+      detectedRole,
     );
+
+    if (
+      detectedRole
+      === 'FUNCIONARIO_CALLCENTER'
+    ) {
+      setFilter(
+        buildFuncionarioInitialFilter(),
+      );
+    } else {
+      setFilter(
+        initialFilter,
+      );
+    }
+
+    setInitialized(true);
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!initialized) {
+      return;
+    }
+
+    void load();
+  }, [
+    initialized,
+    load,
+  ]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(
-      () => {
-        const normalized =
-          normalizeText(searchText);
+    const timeoutId =
+      window.setTimeout(
+        () => {
+          const normalized =
+            normalizeText(
+              searchText,
+            );
 
-        setFilter((current) => {
-          if (current.q === normalized) {
-            return current;
-          }
+          setFilter(
+            (current) => {
+              if (
+                current.q
+                === normalized
+              ) {
+                return current;
+              }
 
-          return {
-            ...current,
-            q: normalized,
-            page: 0,
-          };
-        });
-      },
-      SEARCH_DEBOUNCE_MS,
-    );
+              return {
+                ...current,
+
+                q:
+                  normalized,
+
+                page:
+                  0,
+              };
+            },
+          );
+        },
+        SEARCH_DEBOUNCE_MS,
+      );
 
     return () => {
       window.clearTimeout(
         timeoutId,
       );
     };
-  }, [searchText]);
+  }, [
+    searchText,
+  ]);
 
   useEffect(() => {
-    getCallCenterEncuestadoresOptions()
-      .then((options) => {
-        setEncuestadores(options);
-      })
-      .catch(() => {
+    let active =
+      true;
+
+    async function loadCatalogs() {
+      setLoadingCatalogs(true);
+
+      try {
+        const [
+          encuestadoresData,
+          funcionariosData,
+        ] = await Promise.all([
+          getCallCenterEncuestadoresOptions(),
+          getFuncionariosCallCenterOptions(),
+        ]);
+
+        if (!active) {
+          return;
+        }
+
+        setEncuestadores(
+          encuestadoresData,
+        );
+
+        setFuncionarios(
+          funcionariosData.filter(
+            (item) =>
+              item.activo !== false,
+          ),
+        );
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'No fue posible cargar los catálogos de filtros.';
+
         showMessage(
-          'No fue posible cargar el catálogo de encuestadores.',
+          message,
           'warning',
         );
-      });
-  }, [showMessage]);
+      } finally {
+        if (active) {
+          setLoadingCatalogs(false);
+        }
+      }
+    }
 
-  const stats = useMemo(() => {
-    const ventanilla =
-      records.filter(
-        (item) =>
-          item.origenRegistro
-          === 'VENTANILLA',
-      ).length;
+    void loadCatalogs();
 
-    const manual =
-      records.filter(
-        (item) =>
-          item.origenRegistro
-          === 'MANUAL',
-      ).length;
-
-    const connected =
-      records.filter(
-        (item) =>
-          item.llamadaConectada
-          === true,
-      ).length;
-
-    return {
-      ventanilla,
-      manual,
-      connected,
+    return () => {
+      active =
+        false;
     };
-  }, [records]);
+  }, [
+    showMessage,
+  ]);
+
+  const stats =
+    useMemo(
+      () => {
+        const ventanilla =
+          records.filter(
+            (item) =>
+              item.origenRegistro
+              === 'VENTANILLA',
+          ).length;
+
+        const manual =
+          records.filter(
+            (item) =>
+              item.origenRegistro
+              === 'MANUAL',
+          ).length;
+
+        const connected =
+          records.filter(
+            (item) =>
+              item.llamadaConectada
+              === true,
+          ).length;
+
+        return {
+          ventanilla,
+          manual,
+          connected,
+        };
+      },
+      [
+        records,
+      ],
+    );
 
   function updateFilter<
     K extends keyof FilterState
@@ -508,24 +817,81 @@ export default function CallCenterRegistrosPage() {
     field: K,
     value: FilterState[K],
   ) {
-    setFilter((current) => ({
-      ...current,
-      [field]: value,
-      page:
-        field === 'page'
-          ? Number(value)
-          : 0,
-    }));
+    setFilter(
+      (current) => ({
+        ...current,
+
+        [field]:
+          value,
+
+        page:
+          field === 'page'
+            ? Number(value)
+            : 0,
+      }),
+    );
   }
 
-  const handleOrigenRegistroChange = (
-    event: ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement
-    >,
-  ) => {
-    const value = event.target.value;
+  function handleExactDateChange(
+    value: string,
+  ) {
+    setFilter(
+      (current) => ({
+        ...current,
 
-    if (!isOrigenRegistroFilter(value)) {
+        fechaInicio:
+          value,
+
+        fechaFin:
+          value,
+
+        page:
+          0,
+      }),
+    );
+  }
+
+  const handleFuncionarioChange = (
+    event:
+      ChangeEvent<
+        HTMLInputElement
+        | HTMLTextAreaElement
+      >,
+  ) => {
+    updateFilter(
+      'funcionarioCallcenterAsignadoId',
+      event.target.value,
+    );
+  };
+
+  const handleEncuestadorChange = (
+    event:
+      ChangeEvent<
+        HTMLInputElement
+        | HTMLTextAreaElement
+      >,
+  ) => {
+    updateFilter(
+      'encuestadorAsignadoId',
+      event.target.value,
+    );
+  };
+
+  const handleOrigenRegistroChange = (
+    event:
+      ChangeEvent<
+        HTMLInputElement
+        | HTMLTextAreaElement
+      >,
+  ) => {
+    const value =
+      event.target.value;
+
+    if (
+      !isOrigenRegistroFilter(
+        value,
+      )
+    ) {
       return;
     }
 
@@ -536,13 +902,20 @@ export default function CallCenterRegistrosPage() {
   };
 
   const handleLlamadaConectadaChange = (
-    event: ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement
-    >,
+    event:
+      ChangeEvent<
+        HTMLInputElement
+        | HTMLTextAreaElement
+      >,
   ) => {
-    const value = event.target.value;
+    const value =
+      event.target.value;
 
-    if (!isBooleanFilterValue(value)) {
+    if (
+      !isBooleanFilterValue(
+        value,
+      )
+    ) {
       return;
     }
 
@@ -553,13 +926,20 @@ export default function CallCenterRegistrosPage() {
   };
 
   const handleActivoChange = (
-    event: ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement
-    >,
+    event:
+      ChangeEvent<
+        HTMLInputElement
+        | HTMLTextAreaElement
+      >,
   ) => {
-    const value = event.target.value;
+    const value =
+      event.target.value;
 
-    if (!isBooleanFilterValue(value)) {
+    if (
+      !isBooleanFilterValue(
+        value,
+      )
+    ) {
       return;
     }
 
@@ -569,41 +949,64 @@ export default function CallCenterRegistrosPage() {
     );
   };
 
-  const handleEncuestadorChange = (
-    event: ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement
-    >,
-  ) => {
-    updateFilter(
-      'encuestadorAsignadoId',
-      event.target.value,
+  const clearFilters = () => {
+    setSearchText('');
+
+    if (
+      isFuncionarioCallCenter
+    ) {
+      setFilter(
+        buildFuncionarioInitialFilter(),
+      );
+
+      return;
+    }
+
+    setFilter(
+      initialFilter,
     );
   };
 
-  const clearFilters = () => {
-    setSearchText('');
-    setFilter(initialFilter);
-  };
-
   const applySearchImmediately = () => {
-    setFilter((current) => ({
-      ...current,
-      q: normalizeText(searchText),
-      page: 0,
-    }));
+    setFilter(
+      (current) => ({
+        ...current,
+
+        q:
+          normalizeText(
+            searchText,
+          ),
+
+        page:
+          0,
+      }),
+    );
   };
 
   const openConfirm = (
-    record: CallCenterResponse,
-    action: ConfirmAction,
+    record:
+      CallCenterResponse,
+
+    action:
+      ConfirmAction,
   ) => {
-    setSelectedRecord(record);
-    setConfirmAction(action);
+    setSelectedRecord(
+      record,
+    );
+
+    setConfirmAction(
+      action,
+    );
   };
 
   const closeConfirm = () => {
-    setSelectedRecord(null);
-    setConfirmAction(null);
+    setSelectedRecord(
+      null,
+    );
+
+    setConfirmAction(
+      null,
+    );
   };
 
   const confirmStatusChange =
@@ -664,47 +1067,86 @@ export default function CallCenterRegistrosPage() {
     _: unknown,
     page: number,
   ) => {
-    setFilter((current) => ({
-      ...current,
-      page,
-    }));
+    setFilter(
+      (current) => ({
+        ...current,
+
+        page,
+      }),
+    );
   };
 
   const handleRowsPerPageChange = (
-    event: ChangeEvent<HTMLInputElement>,
+    event:
+      ChangeEvent<HTMLInputElement>,
   ) => {
-    setFilter((current) => ({
-      ...current,
-      page: 0,
-      size: Number(
-        event.target.value,
-      ),
-    }));
+    setFilter(
+      (current) => ({
+        ...current,
+
+        page:
+          0,
+
+        size:
+          Number(
+            event.target.value,
+          ),
+      }),
+    );
   };
+
+  if (!initialized) {
+    return (
+      <Paper
+        sx={{
+          p:
+            3,
+        }}
+      >
+        <Alert severity="info">
+          Cargando vista de registros Call Center...
+        </Alert>
+      </Paper>
+    );
+  }
 
   return (
     <Box>
       <Stack spacing={3}>
         <Box
           sx={{
-            display: 'flex',
+            display:
+              'flex',
+
             flexDirection: {
-              xs: 'column',
-              md: 'row',
+              xs:
+                'column',
+
+              md:
+                'row',
             },
-            justifyContent: 'space-between',
+
+            justifyContent:
+              'space-between',
+
             alignItems: {
-              xs: 'stretch',
-              md: 'flex-start',
+              xs:
+                'stretch',
+
+              md:
+                'flex-start',
             },
-            gap: 2,
+
+            gap:
+              2,
           }}
         >
           <Box>
             <Typography
               variant="h5"
               sx={{
-                fontWeight: 800,
+                fontWeight:
+                  800,
               }}
             >
               Registros Call Center
@@ -721,12 +1163,19 @@ export default function CallCenterRegistrosPage() {
 
           <Box
             sx={{
-              display: 'flex',
+              display:
+                'flex',
+
               flexDirection: {
-                xs: 'column',
-                sm: 'row',
+                xs:
+                  'column',
+
+                sm:
+                  'row',
               },
-              gap: 1,
+
+              gap:
+                1,
             }}
           >
             <Button
@@ -734,28 +1183,15 @@ export default function CallCenterRegistrosPage() {
               startIcon={
                 <RefreshIcon />
               }
-              onClick={load}
-              disabled={loading}
+              onClick={() => {
+                void load();
+              }}
+              disabled={
+                loading
+              }
             >
               Actualizar
             </Button>
-
-            {isAdministrativeRole ? (
-              <Button
-                variant="outlined"
-                color="secondary"
-                startIcon={
-                  <SourceIcon />
-                }
-                onClick={() => {
-                  router.push(
-                    '/dashboard/callcenter/registros/cargar-ventanilla',
-                  );
-                }}
-              >
-                Cargar desde Ventanilla
-              </Button>
-            ) : null}
 
             {canCreateCompleteRecord ? (
               <Button
@@ -777,384 +1213,812 @@ export default function CallCenterRegistrosPage() {
 
         {isFuncionarioCallCenter ? (
           <Alert severity="info">
-            Esta vista muestra únicamente los registros
-            asociados a tu usuario Call Center.
+            Consulta los registros de todos los funcionarios
+            Call Center correspondientes a la fecha
+            seleccionada. También puedes filtrar por
+            funcionario responsable y encuestador.
           </Alert>
         ) : null}
 
-        <Box
+        {!isFuncionarioCallCenter ? (
+          <Box
+            sx={{
+              display:
+                'grid',
+
+              gridTemplateColumns: {
+                xs:
+                  '1fr',
+
+                sm:
+                  'repeat(2, 1fr)',
+
+                md:
+                  'repeat(4, 1fr)',
+              },
+
+              gap:
+                2,
+            }}
+          >
+            <Card>
+              <CardContent>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                >
+                  Total página
+                </Typography>
+
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight:
+                      800,
+                  }}
+                >
+                  {records.length}
+                </Typography>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                >
+                  Desde Ventanilla
+                </Typography>
+
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight:
+                      800,
+                  }}
+                >
+                  {stats.ventanilla}
+                </Typography>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                >
+                  Manuales
+                </Typography>
+
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight:
+                      800,
+                  }}
+                >
+                  {stats.manual}
+                </Typography>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                >
+                  Llamadas conectadas
+                </Typography>
+
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight:
+                      800,
+                  }}
+                >
+                  {stats.connected}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Box>
+        ) : null}
+
+        <Paper
           sx={{
-            display: 'grid',
-            gridTemplateColumns: {
-              xs: '1fr',
-              sm: 'repeat(2, 1fr)',
-              md: 'repeat(4, 1fr)',
+            p: {
+              xs:
+                2,
+
+              md:
+                2.5,
             },
-            gap: 2,
           }}
         >
-          <Card>
-            <CardContent>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-              >
-                Total página
-              </Typography>
-
-              <Typography
-                variant="h5"
-                sx={{
-                  fontWeight: 800,
-                }}
-              >
-                {records.length}
-              </Typography>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-              >
-                Desde Ventanilla
-              </Typography>
-
-              <Typography
-                variant="h5"
-                sx={{
-                  fontWeight: 800,
-                }}
-              >
-                {stats.ventanilla}
-              </Typography>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-              >
-                Manuales
-              </Typography>
-
-              <Typography
-                variant="h5"
-                sx={{
-                  fontWeight: 800,
-                }}
-              >
-                {stats.manual}
-              </Typography>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-              >
-                Llamadas conectadas
-              </Typography>
-
-              <Typography
-                variant="h5"
-                sx={{
-                  fontWeight: 800,
-                }}
-              >
-                {stats.connected}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Box>
-
-        <Paper sx={{ p: 2 }}>
-          <Stack spacing={2}>
+          {isFuncionarioCallCenter ? (
             <Box
               sx={{
-                display: 'flex',
-                flexDirection: {
-                  xs: 'column',
-                  md: 'row',
-                },
-                alignItems: {
-                  xs: 'stretch',
-                  md: 'center',
-                },
-                flexWrap: {
-                  xs: 'nowrap',
-                  md: 'wrap',
-                },
-                gap: 2,
+                display:
+                  'flex',
+
+                flexDirection:
+                  'column',
+
+                gap:
+                  2,
               }}
             >
-              <TextField
-                label="Buscar ciudadano o caso"
-                placeholder="Nombre, cédula, teléfono, dirección, observación o estado"
-                value={searchText}
-                onChange={(event) => {
-                  setSearchText(
-                    event.target.value,
-                  );
+              <Box>
+                <Typography
+                  variant="subtitle1"
+                  sx={{
+                    fontWeight:
+                      800,
+                  }}
+                >
+                  Consultar registros diarios
+                </Typography>
+
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                >
+                  Selecciona la fecha, el funcionario Call
+                  Center o el encuestador para consultar los
+                  registros.
+                </Typography>
+              </Box>
+
+              <Box
+                sx={{
+                  display:
+                    'grid',
+
+                  gridTemplateColumns: {
+                    xs:
+                      '1fr',
+
+                    md:
+                      'repeat(2, minmax(0, 1fr))',
+
+                    xl:
+                      'minmax(260px, 1.4fr) '
+                      + 'minmax(210px, 0.8fr) '
+                      + 'minmax(220px, 0.9fr) '
+                      + 'minmax(220px, 0.9fr) '
+                      + 'auto',
+                  },
+
+                  alignItems:
+                    'start',
+
+                  gap:
+                    2,
                 }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    applySearchImmediately();
+              >
+                <TextField
+                  label="Buscar ciudadano o caso"
+                  placeholder={
+                    'Nombre, cédula, teléfono, dirección u observación'
                   }
-                }}
-                fullWidth
-                size="small"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon fontSize="small" />
-                      </InputAdornment>
+                  value={
+                    searchText
+                  }
+                  onChange={(event) => {
+                    setSearchText(
+                      event.target.value,
+                    );
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key
+                      === 'Enter'
+                    ) {
+                      applySearchImmediately();
+                    }
+                  }}
+                  fullWidth
+                  size="medium"
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                  sx={{
+                    '& .MuiInputBase-root': {
+                      minHeight:
+                        56,
+                    },
+                  }}
+                />
+
+                <TextField
+                  label="Fecha del registro"
+                  type="date"
+                  value={
+                    filter.fechaInicio
+                  }
+                  onChange={(event) => {
+                    handleExactDateChange(
+                      event.target.value,
+                    );
+                  }}
+                  fullWidth
+                  size="medium"
+                  slotProps={{
+                    inputLabel: {
+                      shrink:
+                        true,
+                    },
+
+                    htmlInput: {
+                      max:
+                        getLocalDateISO(),
+                    },
+                  }}
+                  sx={{
+                    '& .MuiInputBase-root': {
+                      minHeight:
+                        56,
+                    },
+
+                    '& input': {
+                      fontSize:
+                        '1rem',
+
+                      fontWeight:
+                        700,
+
+                      cursor:
+                        'pointer',
+                    },
+                  }}
+                />
+
+                <TextField
+                  label="Funcionario Call Center"
+                  select
+                  value={
+                    filter
+                      .funcionarioCallcenterAsignadoId
+                  }
+                  onChange={
+                    handleFuncionarioChange
+                  }
+                  fullWidth
+                  size="medium"
+                  disabled={
+                    loadingCatalogs
+                  }
+                  sx={{
+                    '& .MuiInputBase-root': {
+                      minHeight:
+                        56,
+                    },
+                  }}
+                >
+                  <MenuItem value="">
+                    Todos los funcionarios
+                  </MenuItem>
+
+                  {funcionarios.map(
+                    (funcionario) => (
+                      <MenuItem
+                        key={
+                          funcionario.id
+                        }
+                        value={
+                          String(
+                            funcionario.id,
+                          )
+                        }
+                      >
+                        {
+                          getFuncionarioLabel(
+                            funcionario,
+                          )
+                        }
+                      </MenuItem>
                     ),
-                  },
-                }}
-                sx={{
-                  minWidth: {
-                    xs: '100%',
-                    md: 280,
-                  },
-                  flex: {
-                    md: 1,
-                  },
-                }}
-              />
+                  )}
+                </TextField>
 
-              <TextField
-                label="Encuestador asignado"
-                select
-                value={
-                  filter.encuestadorAsignadoId
-                }
-                onChange={
-                  handleEncuestadorChange
-                }
-                size="small"
+                <TextField
+                  label="Encuestador"
+                  select
+                  value={
+                    filter
+                      .encuestadorAsignadoId
+                  }
+                  onChange={
+                    handleEncuestadorChange
+                  }
+                  fullWidth
+                  size="medium"
+                  disabled={
+                    loadingCatalogs
+                  }
+                  sx={{
+                    '& .MuiInputBase-root': {
+                      minHeight:
+                        56,
+                    },
+                  }}
+                >
+                  <MenuItem value="">
+                    Todos los encuestadores
+                  </MenuItem>
+
+                  {encuestadores.map(
+                    (encuestador) => (
+                      <MenuItem
+                        key={
+                          encuestador.id
+                        }
+                        value={
+                          String(
+                            encuestador.id,
+                          )
+                        }
+                      >
+                        {encuestador.label}
+                      </MenuItem>
+                    ),
+                  )}
+                </TextField>
+
+                <Button
+                  variant="outlined"
+                  startIcon={
+                    <RestartAltIcon />
+                  }
+                  onClick={
+                    clearFilters
+                  }
+                  sx={{
+                    minWidth:
+                      160,
+
+                    minHeight:
+                      56,
+
+                    width: {
+                      xs:
+                        '100%',
+
+                      xl:
+                        'auto',
+                    },
+                  }}
+                >
+                  Restablecer
+                </Button>
+              </Box>
+            </Box>
+          ) : isAdministrativeRole ? (
+            <Stack spacing={2}>
+              <Box
                 sx={{
-                  width: {
-                    xs: '100%',
-                    md: 250,
+                  display:
+                    'flex',
+
+                  flexDirection: {
+                    xs:
+                      'column',
+
+                    md:
+                      'row',
                   },
-                  flexShrink: 0,
+
+                  alignItems: {
+                    xs:
+                      'stretch',
+
+                    md:
+                      'center',
+                  },
+
+                  flexWrap: {
+                    xs:
+                      'nowrap',
+
+                    md:
+                      'wrap',
+                  },
+
+                  gap:
+                    2,
                 }}
               >
-                <MenuItem value="">
-                  Todos los encuestadores
-                </MenuItem>
+                <TextField
+                  label="Buscar ciudadano o caso"
+                  placeholder={
+                    'Nombre, cédula, teléfono, dirección, observación o estado'
+                  }
+                  value={
+                    searchText
+                  }
+                  onChange={(event) => {
+                    setSearchText(
+                      event.target.value,
+                    );
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key
+                      === 'Enter'
+                    ) {
+                      applySearchImmediately();
+                    }
+                  }}
+                  fullWidth
+                  size="small"
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                  sx={{
+                    minWidth: {
+                      xs:
+                        '100%',
 
-                {encuestadores.map(
-                  (option) => (
-                    <MenuItem
-                      key={option.id}
-                      value={option.id}
-                    >
-                      {option.label}
-                    </MenuItem>
-                  ),
-                )}
-              </TextField>
+                      md:
+                        280,
+                    },
 
-              <TextField
-                label="Fecha llamada desde"
-                type="date"
-                value={filter.fechaInicio}
-                onChange={(event) => {
-                  updateFilter(
-                    'fechaInicio',
-                    event.target.value,
-                  );
-                }}
-                size="small"
+                    flex: {
+                      md:
+                        1,
+                    },
+                  }}
+                />
+
+                <TextField
+                  label="Encuestador asignado"
+                  select
+                  value={
+                    filter
+                      .encuestadorAsignadoId
+                  }
+                  onChange={
+                    handleEncuestadorChange
+                  }
+                  size="small"
+                  sx={{
+                    width: {
+                      xs:
+                        '100%',
+
+                      md:
+                        250,
+                    },
+
+                    flexShrink:
+                      0,
+                  }}
+                >
+                  <MenuItem value="">
+                    Todos los encuestadores
+                  </MenuItem>
+
+                  {encuestadores.map(
+                    (option) => (
+                      <MenuItem
+                        key={
+                          option.id
+                        }
+                        value={
+                          String(
+                            option.id,
+                          )
+                        }
+                      >
+                        {option.label}
+                      </MenuItem>
+                    ),
+                  )}
+                </TextField>
+
+                <TextField
+                  label="Fecha llamada desde"
+                  type="date"
+                  value={
+                    filter.fechaInicio
+                  }
+                  onChange={(event) => {
+                    updateFilter(
+                      'fechaInicio',
+                      event.target.value,
+                    );
+                  }}
+                  size="small"
+                  sx={{
+                    width: {
+                      xs:
+                        '100%',
+
+                      md:
+                        190,
+                    },
+
+                    flexShrink:
+                      0,
+                  }}
+                  slotProps={{
+                    inputLabel: {
+                      shrink:
+                        true,
+                    },
+                  }}
+                />
+
+                <TextField
+                  label="Fecha llamada hasta"
+                  type="date"
+                  value={
+                    filter.fechaFin
+                  }
+                  onChange={(event) => {
+                    updateFilter(
+                      'fechaFin',
+                      event.target.value,
+                    );
+                  }}
+                  size="small"
+                  sx={{
+                    width: {
+                      xs:
+                        '100%',
+
+                      md:
+                        190,
+                    },
+
+                    flexShrink:
+                      0,
+                  }}
+                  slotProps={{
+                    inputLabel: {
+                      shrink:
+                        true,
+                    },
+                  }}
+                />
+              </Box>
+
+              <Box
                 sx={{
-                  width: {
-                    xs: '100%',
-                    md: 190,
-                  },
-                  flexShrink: 0,
-                }}
-                slotProps={{
-                  inputLabel: {
-                    shrink: true,
-                  },
-                }}
-              />
+                  display:
+                    'flex',
 
-              <TextField
-                label="Fecha llamada hasta"
-                type="date"
-                value={filter.fechaFin}
-                onChange={(event) => {
-                  updateFilter(
-                    'fechaFin',
-                    event.target.value,
-                  );
-                }}
-                size="small"
-                sx={{
-                  width: {
-                    xs: '100%',
-                    md: 190,
-                  },
-                  flexShrink: 0,
-                }}
-                slotProps={{
-                  inputLabel: {
-                    shrink: true,
-                  },
-                }}
-              />
-            </Box>
+                  flexDirection: {
+                    xs:
+                      'column',
 
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: {
-                  xs: 'column',
-                  md: 'row',
-                },
-                alignItems: {
-                  xs: 'stretch',
-                  md: 'center',
-                },
-                flexWrap: {
-                  xs: 'nowrap',
-                  md: 'wrap',
-                },
-                gap: 2,
+                    md:
+                      'row',
+                  },
+
+                  alignItems: {
+                    xs:
+                      'stretch',
+
+                    md:
+                      'center',
+                  },
+
+                  flexWrap: {
+                    xs:
+                      'nowrap',
+
+                    md:
+                      'wrap',
+                  },
+
+                  gap:
+                    2,
+                }}
+              >
+                <TextField
+                  label="Origen"
+                  select
+                  value={
+                    filter.origenRegistro
+                  }
+                  onChange={
+                    handleOrigenRegistroChange
+                  }
+                  size="small"
+                  sx={{
+                    width: {
+                      xs:
+                        '100%',
+
+                      md:
+                        180,
+                    },
+
+                    flexShrink:
+                      0,
+                  }}
+                >
+                  <MenuItem value="ALL">
+                    Todos
+                  </MenuItem>
+
+                  <MenuItem value="VENTANILLA">
+                    Ventanilla
+                  </MenuItem>
+
+                  <MenuItem value="MANUAL">
+                    Manual
+                  </MenuItem>
+
+                  <MenuItem value="IMPORTACION">
+                    Importación
+                  </MenuItem>
+                </TextField>
+
+                <TextField
+                  label="Resultado llamada"
+                  select
+                  value={
+                    filter
+                      .llamadaConectada
+                  }
+                  onChange={
+                    handleLlamadaConectadaChange
+                  }
+                  size="small"
+                  sx={{
+                    width: {
+                      xs:
+                        '100%',
+
+                      md:
+                        190,
+                    },
+
+                    flexShrink:
+                      0,
+                  }}
+                >
+                  <MenuItem value="ALL">
+                    Todas
+                  </MenuItem>
+
+                  <MenuItem value="true">
+                    Conectada
+                  </MenuItem>
+
+                  <MenuItem value="false">
+                    No conectada
+                  </MenuItem>
+                </TextField>
+
+                <TextField
+                  label="Estado lógico"
+                  select
+                  value={
+                    filter.activo
+                  }
+                  onChange={
+                    handleActivoChange
+                  }
+                  size="small"
+                  sx={{
+                    width: {
+                      xs:
+                        '100%',
+
+                      md:
+                        170,
+                    },
+
+                    flexShrink:
+                      0,
+                  }}
+                >
+                  <MenuItem value="true">
+                    Activos
+                  </MenuItem>
+
+                  <MenuItem value="false">
+                    Inactivos
+                  </MenuItem>
+
+                  <MenuItem value="ALL">
+                    Todos
+                  </MenuItem>
+                </TextField>
+
+                <Button
+                  variant="outlined"
+                  startIcon={
+                    <RestartAltIcon />
+                  }
+                  onClick={
+                    clearFilters
+                  }
+                  sx={{
+                    minWidth:
+                      170,
+
+                    width: {
+                      xs:
+                        '100%',
+
+                      md:
+                        'auto',
+                    },
+
+                    flexShrink:
+                      0,
+                  }}
+                >
+                  Limpiar filtros
+                </Button>
+              </Box>
+            </Stack>
+          ) : (
+            <TextField
+              label="Buscar ciudadano o caso"
+              placeholder={
+                'Nombre, cédula, teléfono, dirección u observación'
+              }
+              value={
+                searchText
+              }
+              onChange={(event) => {
+                setSearchText(
+                  event.target.value,
+                );
               }}
-            >
-              <TextField
-                label="Origen"
-                select
-                value={filter.origenRegistro}
-                onChange={
-                  handleOrigenRegistroChange
-                }
-                size="small"
-                sx={{
-                  width: {
-                    xs: '100%',
-                    md: 180,
-                  },
-                  flexShrink: 0,
-                }}
-              >
-                <MenuItem value="ALL">
-                  Todos
-                </MenuItem>
-
-                <MenuItem value="VENTANILLA">
-                  Ventanilla
-                </MenuItem>
-
-                <MenuItem value="MANUAL">
-                  Manual
-                </MenuItem>
-
-                <MenuItem value="IMPORTACION">
-                  Importación
-                </MenuItem>
-              </TextField>
-
-              <TextField
-                label="Resultado llamada"
-                select
-                value={
-                  filter.llamadaConectada
-                }
-                onChange={
-                  handleLlamadaConectadaChange
-                }
-                size="small"
-                sx={{
-                  width: {
-                    xs: '100%',
-                    md: 190,
-                  },
-                  flexShrink: 0,
-                }}
-              >
-                <MenuItem value="ALL">
-                  Todas
-                </MenuItem>
-
-                <MenuItem value="true">
-                  Conectada
-                </MenuItem>
-
-                <MenuItem value="false">
-                  No conectada
-                </MenuItem>
-              </TextField>
-
-              <TextField
-                label="Estado lógico"
-                select
-                value={filter.activo}
-                onChange={
-                  handleActivoChange
-                }
-                size="small"
-                sx={{
-                  width: {
-                    xs: '100%',
-                    md: 170,
-                  },
-                  flexShrink: 0,
-                }}
-              >
-                <MenuItem value="true">
-                  Activos
-                </MenuItem>
-
-                <MenuItem value="false">
-                  Inactivos
-                </MenuItem>
-
-                <MenuItem value="ALL">
-                  Todos
-                </MenuItem>
-              </TextField>
-
-              <Button
-                variant="outlined"
-                startIcon={
-                  <RestartAltIcon />
-                }
-                onClick={clearFilters}
-                sx={{
-                  minWidth: 170,
-                  width: {
-                    xs: '100%',
-                    md: 'auto',
-                  },
-                  flexShrink: 0,
-                }}
-              >
-                Limpiar filtros
-              </Button>
-            </Box>
-          </Stack>
+              fullWidth
+              size="small"
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+          )}
         </Paper>
 
         {loading ? (
-          <Paper sx={{ p: 3 }}>
+          <Paper
+            sx={{
+              p:
+                3,
+            }}
+          >
             <Alert severity="info">
               Cargando registros de Call Center...
             </Alert>
           </Paper>
         ) : records.length === 0 ? (
-          <Paper sx={{ p: 3 }}>
+          <Paper
+            sx={{
+              p:
+                3,
+            }}
+          >
             <Alert severity="info">
               No se encontraron registros de Call Center
               con los filtros actuales.
@@ -1191,15 +2055,15 @@ export default function CallCenterRegistrosPage() {
                     </TableCell>
 
                     <TableCell>
+                      Funcionario Call Center
+                    </TableCell>
+
+                    <TableCell>
                       Encuestador
                     </TableCell>
 
                     <TableCell>
                       Visita
-                    </TableCell>
-
-                    <TableCell>
-                      Estado
                     </TableCell>
 
                     <TableCell align="right">
@@ -1213,19 +2077,36 @@ export default function CallCenterRegistrosPage() {
                     (record) => {
                       const llamada =
                         getLlamadaStatus(
-                          record.llamadaConectada,
+                          record
+                            .llamadaConectada,
                         );
+
+                      const visita =
+                        getVisitaStatus(
+                          record
+                            .estadoVisita,
+                        );
+
+                      const funcionarioCallCenter =
+                        record
+                          .funcionarioCallcenterAsignadoNombre
+                        || record
+                          .funcionarioCallcenterAsignadoUsername
+                        || 'Sin funcionario';
 
                       return (
                         <TableRow
-                          key={record.id}
+                          key={
+                            record.id
+                          }
                           hover
                         >
                           <TableCell>
                             <Typography
                               variant="body2"
                               sx={{
-                                fontWeight: 700,
+                                fontWeight:
+                                  700,
                               }}
                             >
                               {
@@ -1239,8 +2120,12 @@ export default function CallCenterRegistrosPage() {
                               color="text.secondary"
                             >
                               {
-                                record.horaLlamada
-                                  ?.slice(0, 5)
+                                record
+                                  .horaLlamada
+                                  ?.slice(
+                                    0,
+                                    5,
+                                  )
                                 || 'Sin hora'
                               }
                             </Typography>
@@ -1251,12 +2136,14 @@ export default function CallCenterRegistrosPage() {
                               <Chip
                                 size="small"
                                 label={
-                                  record.origenRegistro
+                                  record
+                                    .origenRegistro
                                   || 'MANUAL'
                                 }
                                 color={
                                   origenColor(
-                                    record.origenRegistro,
+                                    record
+                                      .origenRegistro,
                                   )
                                 }
                               />
@@ -1285,11 +2172,13 @@ export default function CallCenterRegistrosPage() {
                             <Typography
                               variant="body2"
                               sx={{
-                                fontWeight: 700,
+                                fontWeight:
+                                  700,
                               }}
                             >
                               {
-                                record.nombreCompleto
+                                record
+                                  .nombreCompleto
                                 || 'Sin nombre'
                               }
                             </Typography>
@@ -1300,7 +2189,8 @@ export default function CallCenterRegistrosPage() {
                             >
                               C.C.{' '}
                               {
-                                record.cedulaSolicitante
+                                record
+                                  .cedulaSolicitante
                                 || 'Sin dato'
                               }
                             </Typography>
@@ -1316,7 +2206,8 @@ export default function CallCenterRegistrosPage() {
                           <TableCell>
                             <Typography variant="body2">
                               {
-                                record.direccionTexto
+                                record
+                                  .direccionTexto
                                 || 'Sin dirección'
                               }
                             </Typography>
@@ -1326,7 +2217,8 @@ export default function CallCenterRegistrosPage() {
                               color="text.secondary"
                             >
                               {
-                                record.barrioNombre
+                                record
+                                  .barrioNombre
                                 || 'Sin barrio'
                               }
                             </Typography>
@@ -1335,9 +2227,47 @@ export default function CallCenterRegistrosPage() {
                           <TableCell>
                             <Chip
                               size="small"
-                              color={llamada.color}
-                              label={llamada.label}
+                              color={
+                                llamada.color
+                              }
+                              label={
+                                llamada.label
+                              }
                             />
+                          </TableCell>
+
+                          <TableCell>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight:
+                                  700,
+
+                                minWidth:
+                                  150,
+                              }}
+                            >
+                              {funcionarioCallCenter}
+                            </Typography>
+
+                            {
+                              record
+                                .funcionarioCallcenterAsignadoUsername
+                              && record
+                                .funcionarioCallcenterAsignadoNombre
+                              ? (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {
+                                    record
+                                      .funcionarioCallcenterAsignadoUsername
+                                  }
+                                </Typography>
+                              )
+                              : null
+                            }
                           </TableCell>
 
                           <TableCell>
@@ -1354,62 +2284,32 @@ export default function CallCenterRegistrosPage() {
                             <Chip
                               size="small"
                               variant="outlined"
+                              color={
+                                visita.color
+                              }
                               label={
-                                formatLabel(
-                                  record.estadoVisita
-                                  || 'PENDIENTE',
-                                )
+                                visita.label
                               }
                             />
-                          </TableCell>
-
-                          <TableCell>
-                            <Stack
-                              spacing={0.5}
-                              sx={{
-                                alignItems:
-                                  'flex-start',
-                              }}
-                            >
-                              <Chip
-                                size="small"
-                                color="info"
-                                label={
-                                  formatLabel(
-                                    record.estadoCaso
-                                    || 'SIN ESTADO',
-                                  )
-                                }
-                              />
-
-                              <Chip
-                                size="small"
-                                variant="outlined"
-                                color={
-                                  record.activo
-                                    ? 'success'
-                                    : 'default'
-                                }
-                                label={
-                                  record.activo
-                                    ? 'Activo'
-                                    : 'Inactivo'
-                                }
-                              />
-                            </Stack>
                           </TableCell>
 
                           <TableCell align="right">
                             <Box
                               sx={{
-                                display: 'flex',
+                                display:
+                                  'flex',
+
                                 justifyContent:
                                   'flex-end',
+
                                 alignItems:
                                   'center',
+
                                 flexWrap:
                                   'wrap',
-                                gap: 0.5,
+
+                                gap:
+                                  0.5,
                               }}
                             >
                               {
@@ -1507,8 +2407,12 @@ export default function CallCenterRegistrosPage() {
                   <TableRow>
                     <TablePagination
                       colSpan={10}
-                      count={total}
-                      page={filter.page}
+                      count={
+                        total
+                      }
+                      page={
+                        filter.page
+                      }
                       rowsPerPage={
                         filter.size
                       }
@@ -1543,10 +2447,14 @@ export default function CallCenterRegistrosPage() {
       </Stack>
 
       <Dialog
-        open={Boolean(
-          confirmAction,
-        )}
-        onClose={closeConfirm}
+        open={
+          Boolean(
+            confirmAction,
+          )
+        }
+        onClose={
+          closeConfirm
+        }
         fullWidth
         maxWidth="xs"
       >
@@ -1574,7 +2482,9 @@ export default function CallCenterRegistrosPage() {
 
         <DialogActions>
           <Button
-            onClick={closeConfirm}
+            onClick={
+              closeConfirm
+            }
           >
             Cancelar
           </Button>
@@ -1587,9 +2497,9 @@ export default function CallCenterRegistrosPage() {
                 ? 'success'
                 : 'error'
             }
-            onClick={
-              confirmStatusChange
-            }
+            onClick={() => {
+              void confirmStatusChange();
+            }}
           >
             Confirmar
           </Button>
@@ -1597,19 +2507,31 @@ export default function CallCenterRegistrosPage() {
       </Dialog>
 
       <Snackbar
-        open={snackbar.open}
+        open={
+          snackbar.open
+        }
         autoHideDuration={5000}
-        onClose={closeSnackbar}
+        onClose={
+          closeSnackbar
+        }
         anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right',
+          vertical:
+            'bottom',
+
+          horizontal:
+            'right',
         }}
       >
         <Alert
-          severity={snackbar.severity}
-          onClose={closeSnackbar}
+          severity={
+            snackbar.severity
+          }
+          onClose={
+            closeSnackbar
+          }
           sx={{
-            width: '100%',
+            width:
+              '100%',
           }}
         >
           {snackbar.message}

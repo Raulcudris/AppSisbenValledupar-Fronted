@@ -25,9 +25,11 @@ import {
 } from '@mui/material';
 import { useRouter } from 'next/navigation';
 import {
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -427,6 +429,9 @@ export default function CallCenterRegistroCompletoForm() {
   const router =
     useRouter();
 
+  const cedulaInputRef =
+    useRef<HTMLInputElement>(null);
+
   const [
     activeStep,
     setActiveStep,
@@ -671,6 +676,21 @@ export default function CallCenterRegistroCompletoForm() {
         ...current,
         open: false,
       }),
+    );
+  }
+
+  function focusCedulaAndScrollTop() {
+    window.requestAnimationFrame(
+      () => {
+        window.scrollTo({
+          top: 0,
+          behavior: 'smooth',
+        });
+
+        cedulaInputRef
+          .current
+          ?.focus();
+      },
     );
   }
 
@@ -1446,14 +1466,14 @@ export default function CallCenterRegistroCompletoForm() {
           buildRequest(),
         );
 
+      resetForm();
+
       showMessage(
-        'Caso, llamada y visita registrados correctamente.',
+        `Caso #${created.registro.id} registrado correctamente. El formulario está listo para registrar otro ciudadano.`,
         'success',
       );
 
-      router.push(
-        `/dashboard/callcenter/mis-registros/${created.registro.id}`,
-      );
+      focusCedulaAndScrollTop();
     } catch (error) {
       const message =
         error instanceof Error
@@ -1481,6 +1501,11 @@ export default function CallCenterRegistroCompletoForm() {
     setActiveStep(0);
     setExistingOpenCase(null);
     setValidationMessage(null);
+  }
+
+  function handleResetForm() {
+    resetForm();
+    focusCedulaAndScrollTop();
   }
 
   if (loadingCatalogs) {
@@ -1525,6 +1550,10 @@ export default function CallCenterRegistroCompletoForm() {
             md: 'row',
           },
           justifyContent: 'space-between',
+          alignItems: {
+            xs: 'stretch',
+            md: 'flex-start',
+          },
           gap: 2,
         }}
       >
@@ -1564,14 +1593,14 @@ export default function CallCenterRegistroCompletoForm() {
             startIcon={
               <ArrowBackIcon />
             }
-            onClick={() =>
+            onClick={() => {
               router.push(
-                '/dashboard/callcenter/mis-registros',
-              )
-            }
+                '/dashboard/callcenter/registros',
+              );
+            }}
             disabled={saving}
           >
-            Volver
+            Volver a registros
           </Button>
 
           <Button
@@ -1579,10 +1608,12 @@ export default function CallCenterRegistroCompletoForm() {
             startIcon={
               <RestartAltIcon />
             }
-            onClick={resetForm}
+            onClick={
+              handleResetForm
+            }
             disabled={saving}
           >
-            Reiniciar
+            Limpiar formulario
           </Button>
         </Box>
       </Box>
@@ -1631,6 +1662,13 @@ export default function CallCenterRegistroCompletoForm() {
               xs: 2,
               md: 3,
             },
+
+            '&:last-child': {
+              pb: {
+                xs: 2,
+                md: 3,
+              },
+            },
           }}
         >
           {activeStep === 0 && (
@@ -1643,6 +1681,9 @@ export default function CallCenterRegistroCompletoForm() {
               searching={
                 searchingVentanilla
                 || checkingDuplicate
+              }
+              cedulaInputRef={
+                cedulaInputRef
               }
               onChange={updateForm}
               onSearch={
@@ -1819,7 +1860,7 @@ export default function CallCenterRegistroCompletoForm() {
 
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={5000}
+        autoHideDuration={6000}
         onClose={closeSnackbar}
         anchorOrigin={{
           vertical: 'bottom',
@@ -1842,6 +1883,7 @@ export default function CallCenterRegistroCompletoForm() {
 
 type StepCommonProps = {
   form: FormState;
+
   onChange:
     (
       field: keyof FormState,
@@ -1858,6 +1900,9 @@ type StepCiudadanoProps =
 
     searching: boolean;
 
+    cedulaInputRef:
+      RefObject<HTMLInputElement | null>;
+
     onSearch:
       () => Promise<void> | void;
 
@@ -1870,6 +1915,7 @@ function StepCiudadano({
   barrios,
   existingOpenCase,
   searching,
+  cedulaInputRef,
   onChange,
   onSearch,
   onOpenExistingCase,
@@ -1884,7 +1930,7 @@ function StepCiudadano({
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 3,
+        gap: 2.5,
       }}
     >
       <Box>
@@ -1910,97 +1956,6 @@ function StepCiudadano({
         </Typography>
       </Box>
 
-      <TextField
-        label="Cédula del solicitante"
-        value={
-          form.cedulaSolicitante
-        }
-        onChange={(event) => {
-          onChange(
-            'cedulaSolicitante',
-            event.target.value,
-          );
-        }}
-        onKeyDown={(event) => {
-          if (
-            event.key === 'Enter'
-          ) {
-            event.preventDefault();
-
-            if (!searching) {
-              void onSearch();
-            }
-          }
-        }}
-        required
-        fullWidth
-        disabled={searching}
-        helperText={
-          searching
-            ? 'Consultando la cédula...'
-            : 'Presiona Enter para consultar automáticamente en Ventanilla.'
-        }
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-
-            endAdornment:
-              searching
-                ? (
-                  <InputAdornment position="end">
-                    <CircularProgress
-                      size={20}
-                    />
-                  </InputAdornment>
-                )
-                : undefined,
-          },
-        }}
-      />
-
-      {linkedToVentanilla ? (
-        <Alert severity="success">
-          Ciudadano encontrado en Ventanilla. Registro
-          relacionado con el ID{' '}
-          <strong>
-            {form.ventanillaRegistroId}
-          </strong>
-          .
-        </Alert>
-      ) : (
-        <Alert severity="info">
-          Cuando la cédula no exista en Ventanilla, el origen
-          será manual y podrás diligenciar los datos del
-          ciudadano.
-        </Alert>
-      )}
-
-      {existingOpenCase && (
-        <Alert
-          severity="warning"
-          action={
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => {
-                onOpenExistingCase(
-                  existingOpenCase.id,
-                );
-              }}
-            >
-              Abrir caso
-            </Button>
-          }
-        >
-          Ya existe una nueva encuesta activa y pendiente:
-          caso #{existingOpenCase.id}.
-        </Alert>
-      )}
-
       <Box
         sx={{
           display: 'grid',
@@ -2013,6 +1968,88 @@ function StepCiudadano({
           gap: 2,
         }}
       >
+        <TextField
+          inputRef={
+            cedulaInputRef
+          }
+          label="Cédula del solicitante"
+          value={
+            form.cedulaSolicitante
+          }
+          onChange={(event) => {
+            onChange(
+              'cedulaSolicitante',
+              event.target.value,
+            );
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === 'Enter'
+            ) {
+              event.preventDefault();
+
+              if (!searching) {
+                void onSearch();
+              }
+            }
+          }}
+          required
+          fullWidth
+          disabled={searching}
+          helperText={
+            searching
+              ? 'Consultando la cédula...'
+              : 'Presiona Enter para consultar en Ventanilla.'
+          }
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+
+              endAdornment:
+                searching
+                  ? (
+                    <InputAdornment position="end">
+                      <CircularProgress
+                        size={20}
+                      />
+                    </InputAdornment>
+                  )
+                  : undefined,
+            },
+          }}
+        />
+
+        <TextField
+          label="Tipo de solicitud"
+          select
+          value={
+            form.tipoSolicitudCallcenter
+          }
+          onChange={(event) => {
+            onChange(
+              'tipoSolicitudCallcenter',
+              event.target.value,
+            );
+          }}
+          required
+          fullWidth
+        >
+          {TIPOS_SOLICITUD.map(
+            (option) => (
+              <MenuItem
+                key={option.value}
+                value={option.value}
+              >
+                {option.label}
+              </MenuItem>
+            ),
+          )}
+        </TextField>
+
         <TextField
           label="Nombre completo"
           value={
@@ -2089,50 +2126,46 @@ function StepCiudadano({
             ),
           )}
         </TextField>
-
-        <TextField
-          label="Origen del registro"
-          value={
-            linkedToVentanilla
-              ? 'Ventanilla'
-              : 'Manual'
-          }
-          disabled
-          fullWidth
-          helperText={
-            linkedToVentanilla
-              ? 'Origen determinado automáticamente mediante la cédula.'
-              : 'Se guardará como registro manual.'
-          }
-        />
-
-        <TextField
-          label="Tipo de solicitud"
-          select
-          value={
-            form.tipoSolicitudCallcenter
-          }
-          onChange={(event) => {
-            onChange(
-              'tipoSolicitudCallcenter',
-              event.target.value,
-            );
-          }}
-          required
-          fullWidth
-        >
-          {TIPOS_SOLICITUD.map(
-            (option) => (
-              <MenuItem
-                key={option.value}
-                value={option.value}
-              >
-                {option.label}
-              </MenuItem>
-            ),
-          )}
-        </TextField>
       </Box>
+
+      {linkedToVentanilla ? (
+        <Alert severity="success">
+          Ciudadano encontrado en Ventanilla. El registro
+          quedará relacionado con el ID{' '}
+          <strong>
+            {form.ventanillaRegistroId}
+          </strong>
+          .
+        </Alert>
+      ) : (
+        <Alert severity="info">
+          Cuando la cédula no exista en Ventanilla, el origen
+          será manual y podrás diligenciar los datos del
+          ciudadano.
+        </Alert>
+      )}
+
+      {existingOpenCase && (
+        <Alert
+          severity="warning"
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => {
+                onOpenExistingCase(
+                  existingOpenCase.id,
+                );
+              }}
+            >
+              Abrir caso
+            </Button>
+          }
+        >
+          Ya existe una nueva encuesta activa y pendiente:
+          caso #{existingOpenCase.id}.
+        </Alert>
+      )}
 
       <TextField
         label="Observación general del caso"
@@ -2157,10 +2190,13 @@ type StepLlamadaProps =
   StepCommonProps & {
     resultados:
       CallCenterResultadoLlamadaResponse[];
+
     motivosNoContacto:
       SelectOption[];
+
     motivosNoDisposicion:
       SelectOption[];
+
     isConnected: boolean;
     isNotConnected: boolean;
     requiresNoDisposition: boolean;
@@ -2214,10 +2250,12 @@ function StepLlamada({
       <Box
         sx={{
           display: 'grid',
+
           gridTemplateColumns: {
             xs: '1fr',
             md: 'repeat(2, minmax(0, 1fr))',
           },
+
           gap: 2,
         }}
       >
@@ -2468,6 +2506,7 @@ type StepProgramacionProps =
   StepCommonProps & {
     encuestadores:
       SelectOption[];
+
     isNotConnected: boolean;
   };
 
@@ -2516,10 +2555,12 @@ function StepProgramacion({
       <Box
         sx={{
           display: 'grid',
+
           gridTemplateColumns: {
             xs: '1fr',
             md: 'repeat(3, minmax(0, 1fr))',
           },
+
           gap: 2,
         }}
       >
@@ -2622,6 +2663,7 @@ type StepConfirmacionesProps =
   StepCommonProps & {
     motivosNoDisposicion:
       SelectOption[];
+
     isConnected: boolean;
   };
 
@@ -2690,10 +2732,12 @@ function StepConfirmaciones({
       <Box
         sx={{
           display: 'grid',
+
           gridTemplateColumns: {
             xs: '1fr',
             md: 'repeat(2, minmax(0, 1fr))',
           },
+
           gap: 2,
         }}
       >
@@ -2896,10 +2940,12 @@ function StepResumen({
       <Box
         sx={{
           display: 'grid',
+
           gridTemplateColumns: {
             xs: '1fr',
             lg: 'repeat(2, minmax(0, 1fr))',
           },
+
           gap: 2,
         }}
       >
@@ -3072,6 +3118,7 @@ function StepResumen({
 
 type SummarySectionProps = {
   title: string;
+
   items: Array<{
     label: string;
     value: string;

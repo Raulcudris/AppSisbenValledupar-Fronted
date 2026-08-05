@@ -6,6 +6,7 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SaveIcon from '@mui/icons-material/Save';
 import SearchIcon from '@mui/icons-material/Search';
+
 import {
   Alert,
   Box,
@@ -23,7 +24,9 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+
 import { useRouter } from 'next/navigation';
+
 import {
   type RefObject,
   useCallback,
@@ -34,6 +37,12 @@ import {
 } from 'react';
 
 import {
+  createCallCenterRegistroCompleto,
+  getCallCenterRegistroCompleto,
+  updateCallCenterRegistroCompleto,
+} from '@/services/callcenter-registro-completo.service';
+
+import {
   findVentanillaByCedulaForCallCenter,
   getCallCenterBarriosOptions,
   getCallCenterEncuestadoresOptions,
@@ -41,24 +50,27 @@ import {
   getMotivosNoDisposicionOptions,
   searchCallCenter,
 } from '@/services/callcenter.service';
-import {
-  createCallCenterRegistroCompleto,
-} from '@/services/callcenter-registro-completo.service';
+
 import {
   getCallCenterResultadosLlamada,
 } from '@/services/callcenter-workflow.service';
+
 import type {
   CallCenterRegistroCompletoRequest,
+  CallCenterRegistroCompletoResponse,
 } from '@/types/callcenter-registro-completo.types';
+
 import type {
   CallCenterOrigenRegistro,
   CallCenterResponse,
   CallCenterTipoSolicitud,
   VentanillaCallCenterResponse,
 } from '@/types/callcenter.types';
+
 import type {
   CallCenterResultadoLlamadaResponse,
 } from '@/types/callcenter-workflow.types';
+
 import type {
   SelectOption,
 } from '@/types/catalog.types';
@@ -71,6 +83,7 @@ type YesNoValue =
 type SnackbarState = {
   open: boolean;
   message: string;
+
   severity:
     | 'success'
     | 'error'
@@ -112,6 +125,10 @@ type FormState = {
   fechaAplicacionInformada: string;
   disposicionRecibirEncuesta: YesNoValue;
   explicoInformanteCalificado: YesNoValue;
+};
+
+type CallCenterRegistroCompletoFormProps = {
+  registroId?: number;
 };
 
 const STEPS = [
@@ -272,12 +289,48 @@ function normalizeText(
   return value?.trim() ?? '';
 }
 
+/**
+ * Convierte nombres de personas a mayúsculas.
+ *
+ * No elimina espacios mientras el usuario escribe.
+ */
+function toUppercasePersonName(
+  value?: string | null,
+) {
+  return String(
+    value ?? '',
+  ).toLocaleUpperCase(
+    'es-CO',
+  );
+}
+
 function normalizeCode(
   value?: string | null,
 ) {
   return String(value ?? '')
     .trim()
     .toUpperCase();
+}
+
+function normalizeOrigenRegistro(
+  value?: string | null,
+): CallCenterOrigenRegistro {
+  const normalized =
+    normalizeCode(value);
+
+  if (
+    normalized === 'VENTANILLA'
+  ) {
+    return 'VENTANILLA';
+  }
+
+  if (
+    normalized === 'IMPORTACION'
+  ) {
+    return 'IMPORTACION';
+  }
+
+  return 'MANUAL';
 }
 
 function removeVentanillaObservationParts(
@@ -306,8 +359,15 @@ function removeVentanillaObservationParts(
 function toOptionalNumber(
   value: string,
 ) {
-  return value
-    ? Number(value)
+  if (!value) {
+    return null;
+  }
+
+  const number =
+    Number(value);
+
+  return Number.isFinite(number)
+    ? number
     : null;
 }
 
@@ -323,6 +383,20 @@ function toNullableBoolean(
   }
 
   return null;
+}
+
+function toYesNoValue(
+  value?: boolean | null,
+): YesNoValue {
+  if (value === true) {
+    return 'SI';
+  }
+
+  if (value === false) {
+    return 'NO';
+  }
+
+  return '';
 }
 
 function getPageContent<T>(
@@ -353,6 +427,21 @@ function isPendingNewSurvey(
   );
 }
 
+function isEditableRecord(
+  record: CallCenterResponse,
+) {
+  const estadoCaso =
+    normalizeCode(
+      record.estadoCaso,
+    );
+
+  return (
+    record.activo !== false
+    && estadoCaso !== 'CERRADO'
+    && estadoCaso !== 'CANCELADO'
+  );
+}
+
 function ventanillaToForm(
   record: VentanillaCallCenterResponse,
   current: FormState,
@@ -378,8 +467,10 @@ function ventanillaToForm(
       || current.cedulaSolicitante,
 
     nombreCompleto:
-      normalizeText(
-        record.nombreUsuario,
+      toUppercasePersonName(
+        normalizeText(
+          record.nombreUsuario,
+        ),
       ),
 
     telefono:
@@ -425,9 +516,151 @@ function ventanillaToForm(
   };
 }
 
-export default function CallCenterRegistroCompletoForm() {
+function registroCompletoToForm(
+  data: CallCenterRegistroCompletoResponse,
+): FormState {
+  const {
+    registro,
+    llamada,
+    visita,
+  } = data;
+
+  return {
+    fechaLlamada:
+      llamada.fechaLlamada
+      || registro.fechaLlamada
+      || '',
+
+    horaLlamada:
+      llamada.horaLlamada
+      || registro.horaLlamada
+      || '',
+
+    origenRegistro:
+      normalizeOrigenRegistro(
+        registro.origenRegistro,
+      ),
+
+    ventanillaRegistroId:
+      registro.ventanillaRegistroId == null
+        ? ''
+        : String(
+          registro.ventanillaRegistroId,
+        ),
+
+    tipoSolicitudCallcenter:
+      registro.tipoSolicitudCallcenter
+      || 'NUEVA_ENCUESTA',
+
+    cedulaSolicitante:
+      registro.cedulaSolicitante
+      || '',
+
+    nombreCompleto:
+      toUppercasePersonName(
+        registro.nombreCompleto,
+      ),
+
+    telefono:
+      registro.telefono
+      || '',
+
+    direccionTexto:
+      registro.direccionTexto
+      || '',
+
+    barrioId:
+      registro.barrioId == null
+        ? ''
+        : String(
+          registro.barrioId,
+        ),
+
+    observacionCaso:
+      registro.observacion
+      || '',
+
+    llamadaConectada:
+      toYesNoValue(
+        llamada.llamadaConectada,
+      ),
+
+    resultadoLlamada:
+      llamada.resultadoLlamada
+      || '',
+
+    motivoNoContactoId:
+      llamada.motivoNoContactoId == null
+        ? ''
+        : String(
+          llamada.motivoNoContactoId,
+        ),
+
+    motivoNoDisposicionId:
+      llamada.motivoNoDisposicionId == null
+        ? ''
+        : String(
+          llamada.motivoNoDisposicionId,
+        ),
+
+    fechaReprogramacionLlamada:
+      llamada.fechaReprogramacionLlamada
+      || '',
+
+    horaReprogramacionLlamada:
+      llamada.horaReprogramacionLlamada
+      || '',
+
+    observacionLlamada:
+      llamada.observacion
+      || '',
+
+    encuestadorId:
+      visita.encuestadorId == null
+        ? ''
+        : String(
+          visita.encuestadorId,
+        ),
+
+    fechaProgramada:
+      visita.fechaProgramada
+      || registro.fechaEncuestaProgramada
+      || '',
+
+    horaProgramada:
+      visita.horaProgramada
+      || '',
+
+    observacionVisita:
+      visita.observacionEncuestador
+      || '',
+
+    fechaAplicacionInformada:
+      registro.fechaAplicacionInformada
+      || '',
+
+    disposicionRecibirEncuesta:
+      toYesNoValue(
+        registro.disposicionRecibirEncuesta,
+      ),
+
+    explicoInformanteCalificado:
+      toYesNoValue(
+        registro.explicoInformanteCalificado,
+      ),
+  };
+}
+
+export default function CallCenterRegistroCompletoForm({
+  registroId,
+}: CallCenterRegistroCompletoFormProps) {
   const router =
     useRouter();
+
+  const isEditMode =
+    typeof registroId === 'number'
+    && Number.isSafeInteger(registroId)
+    && registroId > 0;
 
   const cedulaInputRef =
     useRef<HTMLInputElement>(null);
@@ -442,6 +675,13 @@ export default function CallCenterRegistroCompletoForm() {
     setForm,
   ] = useState<FormState>(
     buildInitialForm,
+  );
+
+  const [
+    originalForm,
+    setOriginalForm,
+  ] = useState<FormState | null>(
+    null,
   );
 
   const [
@@ -475,6 +715,20 @@ export default function CallCenterRegistroCompletoForm() {
     loadingCatalogs,
     setLoadingCatalogs,
   ] = useState(true);
+
+  const [
+    loadingRecord,
+    setLoadingRecord,
+  ] = useState(
+    isEditMode,
+  );
+
+  const [
+    recordLoadError,
+    setRecordLoadError,
+  ] = useState<string | null>(
+    null,
+  );
 
   const [
     searchingVentanilla,
@@ -658,9 +912,112 @@ export default function CallCenterRegistroCompletoForm() {
     void loadCatalogs();
   }, [loadCatalogs]);
 
+  useEffect(() => {
+    if (
+      !isEditMode
+      || typeof registroId !== 'number'
+    ) {
+      setLoadingRecord(false);
+      setRecordLoadError(null);
+      return;
+    }
+
+    const currentRegistroId =
+      registroId;
+
+    let cancelled =
+      false;
+
+    async function loadRecord() {
+      setLoadingRecord(true);
+      setRecordLoadError(null);
+      setValidationMessage(null);
+
+      try {
+        const data =
+          await getCallCenterRegistroCompleto(
+            currentRegistroId,
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        if (
+          !data?.registro
+          || !data?.llamada
+          || !data?.visita
+        ) {
+          throw new Error(
+            'El registro no contiene el caso, la llamada y la visita requeridos para la edición completa.',
+          );
+        }
+
+        if (
+          !isEditableRecord(
+            data.registro,
+          )
+        ) {
+          throw new Error(
+            'El caso está cerrado, cancelado o inactivo y permanece disponible únicamente para consulta.',
+          );
+        }
+
+        const nextForm =
+          registroCompletoToForm(
+            data,
+          );
+
+        setForm(
+          nextForm,
+        );
+
+        setOriginalForm({
+          ...nextForm,
+        });
+
+        setExistingOpenCase(
+          null,
+        );
+
+        setActiveStep(
+          0,
+        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'No fue posible cargar el registro completo.';
+
+        setRecordLoadError(
+          message,
+        );
+      } finally {
+        if (!cancelled) {
+          setLoadingRecord(false);
+        }
+      }
+    }
+
+    void loadRecord();
+
+    return () => {
+      cancelled =
+        true;
+    };
+  }, [
+    isEditMode,
+    registroId,
+  ]);
+
   function showMessage(
     message: string,
-    severity: SnackbarState['severity'] =
+    severity:
+      SnackbarState['severity'] =
       'success',
   ) {
     setSnackbar({
@@ -676,6 +1033,23 @@ export default function CallCenterRegistroCompletoForm() {
         ...current,
         open: false,
       }),
+    );
+  }
+
+  function goBack() {
+    if (
+      isEditMode
+      && registroId
+    ) {
+      router.push(
+        `/dashboard/callcenter/mis-registros/${registroId}`,
+      );
+
+      return;
+    }
+
+    router.push(
+      '/dashboard/callcenter/registros',
     );
   }
 
@@ -944,7 +1318,7 @@ export default function CallCenterRegistroCompletoForm() {
         const response =
           await searchCallCenter({
             page: 0,
-            size: 5,
+            size: 20,
             ventanillaRegistroId,
             solicitoNuevaEncuesta:
               true,
@@ -958,7 +1332,11 @@ export default function CallCenterRegistroCompletoForm() {
           getPageContent<CallCenterResponse>(
             response,
           ).find(
-            isPendingNewSurvey,
+            (record) =>
+              record.id !== registroId
+              && isPendingNewSurvey(
+                record,
+              ),
           );
 
         if (found) {
@@ -968,7 +1346,7 @@ export default function CallCenterRegistroCompletoForm() {
 
           if (showWarning) {
             showMessage(
-              'Ya existe una nueva encuesta activa y pendiente para este registro de Ventanilla.',
+              `Ya existe otra nueva encuesta activa y pendiente para este registro de Ventanilla: caso #${found.id}.`,
               'warning',
             );
           }
@@ -981,13 +1359,17 @@ export default function CallCenterRegistroCompletoForm() {
         const response =
           await searchCallCenter({
             page: 0,
-            size: 5,
+            size: 20,
+
             cedulaSolicitante:
               cedula,
+
             solicitoNuevaEncuesta:
               true,
+
             encuestaRealizada:
               false,
+
             activo:
               true,
           });
@@ -996,7 +1378,11 @@ export default function CallCenterRegistroCompletoForm() {
           getPageContent<CallCenterResponse>(
             response,
           ).find(
-            isPendingNewSurvey,
+            (record) =>
+              record.id !== registroId
+              && isPendingNewSurvey(
+                record,
+              ),
           );
 
         setExistingOpenCase(
@@ -1008,7 +1394,7 @@ export default function CallCenterRegistroCompletoForm() {
           && showWarning
         ) {
           showMessage(
-            'Ya existe una nueva encuesta activa y pendiente para esta cédula.',
+            `Ya existe otra nueva encuesta activa y pendiente para esta cédula: caso #${found.id}.`,
             'warning',
           );
         }
@@ -1074,7 +1460,7 @@ export default function CallCenterRegistroCompletoForm() {
       }
 
       if (existingOpenCase) {
-        return 'Ya existe una nueva encuesta activa y pendiente para este ciudadano.';
+        return 'Ya existe otra nueva encuesta activa y pendiente para este ciudadano.';
       }
 
       return '';
@@ -1107,7 +1493,7 @@ export default function CallCenterRegistroCompletoForm() {
         suggestedState === 'CERRADO'
         || suggestedState === 'CANCELADO'
       ) {
-        return 'El resultado seleccionado finaliza el caso y no permite programar una visita.';
+        return 'El resultado seleccionado finaliza el caso y no permite conservar una visita programada.';
       }
 
       if (
@@ -1123,6 +1509,20 @@ export default function CallCenterRegistroCompletoForm() {
         && !form.motivoNoDisposicionId
       ) {
         return 'Selecciona el motivo de no disposición.';
+      }
+
+      if (
+        requiresCallReprogramming
+        && !form.fechaReprogramacionLlamada
+      ) {
+        return 'Selecciona la fecha del próximo intento de llamada.';
+      }
+
+      if (
+        requiresCallReprogramming
+        && !form.horaReprogramacionLlamada
+      ) {
+        return 'Selecciona la hora del próximo intento de llamada.';
       }
 
       return '';
@@ -1212,7 +1612,7 @@ export default function CallCenterRegistroCompletoForm() {
 
       if (existing) {
         setValidationMessage(
-          'No es posible continuar porque existe una nueva encuesta activa y pendiente.',
+          'No es posible continuar porque existe otra nueva encuesta activa y pendiente.',
         );
 
         return;
@@ -1227,6 +1627,7 @@ export default function CallCenterRegistroCompletoForm() {
       setForm(
         (current) => ({
           ...current,
+
           fechaAplicacionInformada:
             current.fechaProgramada,
         }),
@@ -1300,8 +1701,10 @@ export default function CallCenterRegistroCompletoForm() {
           ),
 
         nombreCompleto:
-          normalizeText(
-            form.nombreCompleto,
+          toUppercasePersonName(
+            normalizeText(
+              form.nombreCompleto,
+            ),
           ),
 
         telefono:
@@ -1451,7 +1854,7 @@ export default function CallCenterRegistroCompletoForm() {
       setActiveStep(0);
 
       setValidationMessage(
-        'No es posible guardar porque existe una nueva encuesta activa y pendiente.',
+        'No es posible guardar porque existe otra nueva encuesta activa y pendiente.',
       );
 
       return;
@@ -1461,9 +1864,34 @@ export default function CallCenterRegistroCompletoForm() {
     setValidationMessage(null);
 
     try {
+      const request =
+        buildRequest();
+
+      if (
+        isEditMode
+        && typeof registroId === 'number'
+      ) {
+        const updated =
+          await updateCallCenterRegistroCompleto(
+            registroId,
+            request,
+          );
+
+        showMessage(
+          `Caso #${updated.registro.id}, llamada y visita actualizados correctamente.`,
+          'success',
+        );
+
+        router.push(
+          `/dashboard/callcenter/mis-registros/${updated.registro.id}`,
+        );
+
+        return;
+      }
+
       const created =
         await createCallCenterRegistroCompleto(
-          buildRequest(),
+          request,
         );
 
       resetForm();
@@ -1478,7 +1906,9 @@ export default function CallCenterRegistroCompletoForm() {
       const message =
         error instanceof Error
           ? error.message
-          : 'No fue posible registrar el caso completo.';
+          : isEditMode
+            ? 'No fue posible actualizar el registro completo.'
+            : 'No fue posible registrar el caso completo.';
 
       setValidationMessage(
         message,
@@ -1494,6 +1924,21 @@ export default function CallCenterRegistroCompletoForm() {
   }
 
   function resetForm() {
+    if (
+      isEditMode
+      && originalForm
+    ) {
+      setForm({
+        ...originalForm,
+      });
+
+      setActiveStep(0);
+      setExistingOpenCase(null);
+      setValidationMessage(null);
+
+      return;
+    }
+
     setForm(
       buildInitialForm(),
     );
@@ -1505,10 +1950,16 @@ export default function CallCenterRegistroCompletoForm() {
 
   function handleResetForm() {
     resetForm();
-    focusCedulaAndScrollTop();
+
+    if (!isEditMode) {
+      focusCedulaAndScrollTop();
+    }
   }
 
-  if (loadingCatalogs) {
+  if (
+    loadingCatalogs
+    || loadingRecord
+  ) {
     return (
       <Paper
         variant="outlined"
@@ -1527,8 +1978,51 @@ export default function CallCenterRegistroCompletoForm() {
           <CircularProgress />
 
           <Typography>
-            Cargando formulario Call Center...
+            {isEditMode
+              ? 'Cargando registro completo...'
+              : 'Cargando formulario Call Center...'}
           </Typography>
+        </Box>
+      </Paper>
+    );
+  }
+
+  if (
+    isEditMode
+    && recordLoadError
+  ) {
+    return (
+      <Paper
+        variant="outlined"
+        sx={{
+          p: {
+            xs: 2,
+            md: 4,
+          },
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
+          <Alert severity="error">
+            {recordLoadError}
+          </Alert>
+
+          <Box>
+            <Button
+              variant="outlined"
+              startIcon={
+                <ArrowBackIcon />
+              }
+              onClick={goBack}
+            >
+              Volver al caso
+            </Button>
+          </Box>
         </Box>
       </Paper>
     );
@@ -1545,15 +2039,20 @@ export default function CallCenterRegistroCompletoForm() {
       <Box
         sx={{
           display: 'flex',
+
           flexDirection: {
             xs: 'column',
             md: 'row',
           },
-          justifyContent: 'space-between',
+
+          justifyContent:
+            'space-between',
+
           alignItems: {
             xs: 'stretch',
             md: 'flex-start',
           },
+
           gap: 2,
         }}
       >
@@ -1565,7 +2064,9 @@ export default function CallCenterRegistroCompletoForm() {
               fontWeight: 900,
             }}
           >
-            Registrar caso Call Center
+            {isEditMode
+              ? `Modificar registro Call Center #${registroId}`
+              : 'Registrar caso Call Center'}
           </Typography>
 
           <Typography
@@ -1573,18 +2074,21 @@ export default function CallCenterRegistroCompletoForm() {
             variant="body2"
             color="text.secondary"
           >
-            Registra el ciudadano, la llamada y la
-            programación de la visita en una sola operación.
+            {isEditMode
+              ? 'Modifica los datos del ciudadano, la llamada, las confirmaciones y la programación de la visita.'
+              : 'Registra el ciudadano, la llamada y la programación de la visita en una sola operación.'}
           </Typography>
         </Box>
 
         <Box
           sx={{
             display: 'flex',
+
             flexDirection: {
               xs: 'column',
               sm: 'row',
             },
+
             gap: 1,
           }}
         >
@@ -1593,14 +2097,12 @@ export default function CallCenterRegistroCompletoForm() {
             startIcon={
               <ArrowBackIcon />
             }
-            onClick={() => {
-              router.push(
-                '/dashboard/callcenter/registros',
-              );
-            }}
+            onClick={goBack}
             disabled={saving}
           >
-            Volver a registros
+            {isEditMode
+              ? 'Volver al caso'
+              : 'Volver a registros'}
           </Button>
 
           <Button
@@ -1613,16 +2115,26 @@ export default function CallCenterRegistroCompletoForm() {
             }
             disabled={saving}
           >
-            Limpiar formulario
+            {isEditMode
+              ? 'Restaurar datos'
+              : 'Limpiar formulario'}
           </Button>
         </Box>
       </Box>
 
       <Alert severity="info">
-        El funcionario responsable se obtiene de la sesión
-        autenticada. No es necesario seleccionar ni asignar
-        un funcionario Call Center.
+        {isEditMode
+          ? 'La operación actualizará el caso, la última llamada activa y la visita programada dentro de una sola transacción.'
+          : 'El funcionario responsable se obtiene de la sesión autenticada. No es necesario seleccionar ni asignar un funcionario Call Center.'}
       </Alert>
+
+      {isEditMode ? (
+        <Alert severity="warning">
+          La edición conserva los identificadores de la llamada
+          y de la visita. No se crearán nuevos registros de
+          historial.
+        </Alert>
+      ) : null}
 
       <Box
         sx={{
@@ -1649,11 +2161,11 @@ export default function CallCenterRegistroCompletoForm() {
         </Stepper>
       </Box>
 
-      {validationMessage && (
+      {validationMessage ? (
         <Alert severity="warning">
           {validationMessage}
         </Alert>
-      )}
+      ) : null}
 
       <Card>
         <CardContent
@@ -1671,7 +2183,7 @@ export default function CallCenterRegistroCompletoForm() {
             },
           }}
         >
-          {activeStep === 0 && (
+          {activeStep === 0 ? (
             <StepCiudadano
               form={form}
               barrios={barrios}
@@ -1697,9 +2209,9 @@ export default function CallCenterRegistroCompletoForm() {
                 )
               }
             />
-          )}
+          ) : null}
 
-          {activeStep === 1 && (
+          {activeStep === 1 ? (
             <StepLlamada
               form={form}
               resultados={
@@ -1727,9 +2239,9 @@ export default function CallCenterRegistroCompletoForm() {
                 updateForm
               }
             />
-          )}
+          ) : null}
 
-          {activeStep === 2 && (
+          {activeStep === 2 ? (
             <StepProgramacion
               form={form}
               encuestadores={
@@ -1742,9 +2254,9 @@ export default function CallCenterRegistroCompletoForm() {
                 updateForm
               }
             />
-          )}
+          ) : null}
 
-          {activeStep === 3 && (
+          {activeStep === 3 ? (
             <StepConfirmaciones
               form={form}
               motivosNoDisposicion={
@@ -1757,11 +2269,14 @@ export default function CallCenterRegistroCompletoForm() {
                 updateForm
               }
             />
-          )}
+          ) : null}
 
-          {activeStep === 4 && (
+          {activeStep === 4 ? (
             <StepResumen
               form={form}
+              isEditMode={
+                isEditMode
+              }
               resultLabel={
                 selectedResult?.nombre
                 ?? formatLabel(
@@ -1781,7 +2296,7 @@ export default function CallCenterRegistroCompletoForm() {
                 selectedNoDispositionLabel
               }
             />
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
@@ -1794,11 +2309,15 @@ export default function CallCenterRegistroCompletoForm() {
         <Box
           sx={{
             display: 'flex',
+
             flexDirection: {
               xs: 'column',
               sm: 'row',
             },
-            justifyContent: 'space-between',
+
+            justifyContent:
+              'space-between',
+
             gap: 1,
           }}
         >
@@ -1816,8 +2335,8 @@ export default function CallCenterRegistroCompletoForm() {
             Anterior
           </Button>
 
-          {activeStep <
-          STEPS.length - 1 ? (
+          {activeStep
+            < STEPS.length - 1 ? (
             <Button
               variant="contained"
               endIcon={
@@ -1851,8 +2370,12 @@ export default function CallCenterRegistroCompletoForm() {
               }
             >
               {saving
-                ? 'Guardando...'
-                : 'Confirmar y guardar'}
+                ? isEditMode
+                  ? 'Actualizando...'
+                  : 'Guardando...'
+                : isEditMode
+                  ? 'Actualizar registro completo'
+                  : 'Confirmar y guardar'}
             </Button>
           )}
         </Box>
@@ -2058,8 +2581,15 @@ function StepCiudadano({
           onChange={(event) => {
             onChange(
               'nombreCompleto',
-              event.target.value,
+              toUppercasePersonName(
+                event.target.value,
+              ),
             );
+          }}
+          slotProps={{
+            htmlInput: {
+              autoComplete: 'name',
+            },
           }}
           required
           fullWidth
@@ -2145,7 +2675,7 @@ function StepCiudadano({
         </Alert>
       )}
 
-      {existingOpenCase && (
+      {existingOpenCase ? (
         <Alert
           severity="warning"
           action={
@@ -2162,10 +2692,10 @@ function StepCiudadano({
             </Button>
           }
         >
-          Ya existe una nueva encuesta activa y pendiente:
+          Ya existe otra nueva encuesta activa y pendiente:
           caso #{existingOpenCase.id}.
         </Alert>
-      )}
+      ) : null}
 
       <TextField
         label="Observación general del caso"
@@ -2238,13 +2768,14 @@ function StepLlamada({
           variant="body2"
           color="text.secondary"
         >
-          Registra la primera llamada o intento de contacto.
+          Registra o modifica la gestión telefónica asociada
+          al caso.
         </Typography>
       </Box>
 
       <Alert severity="info">
-        Una llamada no conectada no bloquea la
-        programación ni la realización de la visita.
+        Una llamada no conectada no bloquea la programación
+        ni la realización de la visita.
       </Alert>
 
       <Box
@@ -2360,7 +2891,7 @@ function StepLlamada({
           )}
         </TextField>
 
-        {isNotConnected && (
+        {isNotConnected ? (
           <TextField
             label="Motivo de no contacto"
             select
@@ -2393,9 +2924,9 @@ function StepLlamada({
               ),
             )}
           </TextField>
-        )}
+        ) : null}
 
-        {requiresNoDisposition && (
+        {requiresNoDisposition ? (
           <TextField
             label="Motivo de no disposición"
             select
@@ -2428,9 +2959,9 @@ function StepLlamada({
               ),
             )}
           </TextField>
-        )}
+        ) : null}
 
-        {requiresCallReprogramming && (
+        {requiresCallReprogramming ? (
           <>
             <TextField
               label="Fecha del próximo intento"
@@ -2444,6 +2975,7 @@ function StepLlamada({
                   event.target.value,
                 )
               }
+              required
               fullWidth
               slotProps={{
                 inputLabel: {
@@ -2464,6 +2996,7 @@ function StepLlamada({
                   event.target.value,
                 )
               }
+              required
               fullWidth
               slotProps={{
                 inputLabel: {
@@ -2472,16 +3005,16 @@ function StepLlamada({
               }}
             />
           </>
-        )}
+        ) : null}
       </Box>
 
-      {isConnected && (
+      {isConnected ? (
         <Alert severity="success">
-          La llamada quedó marcada como conectada.
-          Las confirmaciones se registrarán después
-          de programar la visita.
+          La llamada está marcada como conectada. Las
+          confirmaciones del ciudadano se diligencian en el
+          cuarto paso.
         </Alert>
-      )}
+      ) : null}
 
       <TextField
         label="Observación de la llamada"
@@ -2540,17 +3073,17 @@ function StepProgramacion({
           variant="body2"
           color="text.secondary"
         >
-          Asigna el encuestador y define la fecha
-          y hora de la visita.
+          Selecciona el encuestador y define la fecha y hora
+          programadas.
         </Typography>
       </Box>
 
-      {isNotConnected && (
+      {isNotConnected ? (
         <Alert severity="warning">
-          No se logró contacto telefónico. La visita debe
-          programarse y realizarse en la fecha asignada.
+          No se logró contacto telefónico. La visita continúa
+          programada con el encuestador seleccionado.
         </Alert>
-      )}
+      ) : null}
 
       <Box
         sx={{
@@ -2725,7 +3258,8 @@ function StepConfirmaciones({
           variant="body2"
           color="text.secondary"
         >
-          Registra la información confirmada con el ciudadano.
+          Registra o modifica la información confirmada con
+          el ciudadano.
         </Typography>
       </Box>
 
@@ -2799,7 +3333,7 @@ function StepConfirmaciones({
         </TextField>
 
         {form.disposicionRecibirEncuesta
-          === 'NO' && (
+          === 'NO' ? (
           <TextField
             label="Motivo de no disposición"
             select
@@ -2832,7 +3366,7 @@ function StepConfirmaciones({
               ),
             )}
           </TextField>
-        )}
+        ) : null}
 
         <TextField
           label="Fecha de aplicación informada"
@@ -2890,6 +3424,7 @@ function StepConfirmaciones({
 
 type StepResumenProps = {
   form: FormState;
+  isEditMode: boolean;
   resultLabel: string;
   barrioLabel: string;
   encuestadorLabel: string;
@@ -2899,6 +3434,7 @@ type StepResumenProps = {
 
 function StepResumen({
   form,
+  isEditMode,
   resultLabel,
   barrioLabel,
   encuestadorLabel,
@@ -2924,7 +3460,9 @@ function StepResumen({
             fontWeight: 900,
           }}
         >
-          5. Revisión y confirmación
+          {isEditMode
+            ? '5. Revisión y actualización'
+            : '5. Revisión y confirmación'}
         </Typography>
 
         <Typography
@@ -2932,8 +3470,9 @@ function StepResumen({
           variant="body2"
           color="text.secondary"
         >
-          Revisa la información antes de guardar
-          el caso completo.
+          {isEditMode
+            ? 'Revisa la información antes de actualizar el registro completo.'
+            : 'Revisa la información antes de guardar el caso completo.'}
         </Typography>
       </Box>
 
@@ -2992,6 +3531,12 @@ function StepResumen({
                   form.tipoSolicitudCallcenter,
                 ),
             },
+            {
+              label: 'Observación del caso',
+              value:
+                form.observacionCaso
+                || 'Sin observación',
+            },
           ]}
         />
 
@@ -3027,6 +3572,13 @@ function StepResumen({
               value:
                 form.motivoNoDisposicionId
                   ? motivoNoDisposicionLabel
+                  : 'No aplica',
+            },
+            {
+              label: 'Próximo intento',
+              value:
+                form.fechaReprogramacionLlamada
+                  ? `${form.fechaReprogramacionLlamada} ${form.horaReprogramacionLlamada}`
                   : 'No aplica',
             },
             {
@@ -3107,10 +3659,16 @@ function StepResumen({
         />
       </Box>
 
-      <Alert severity="warning">
-        Al confirmar se enviará una única solicitud para
-        crear el caso, registrar la llamada y programar
-        la visita.
+      <Alert
+        severity={
+          isEditMode
+            ? 'info'
+            : 'warning'
+        }
+      >
+        {isEditMode
+          ? 'Al confirmar se actualizarán el caso, la llamada existente y la visita existente dentro de una sola transacción.'
+          : 'Al confirmar se enviará una única solicitud para crear el caso, registrar la llamada y programar la visita.'}
       </Alert>
     </Box>
   );

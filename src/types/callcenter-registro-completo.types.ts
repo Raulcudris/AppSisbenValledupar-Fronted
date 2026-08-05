@@ -14,7 +14,7 @@ import type {
  * Datos generales del caso maestro.
  *
  * No incluye funcionario Call Center porque el responsable
- * debe obtenerse desde el usuario autenticado en backend.
+ * se obtiene desde el usuario autenticado en backend.
  */
 export type CallCenterRegistroCompletoCasoRequest = {
   fechaLlamada: string;
@@ -38,10 +38,8 @@ export type CallCenterRegistroCompletoCasoRequest = {
 };
 
 /**
- * Datos de la primera llamada o intento telefónico.
- *
- * Los campos de confirmación actualizan la información
- * más reciente almacenada en el caso maestro.
+ * Información de la gestión telefónica que forma parte
+ * del registro completo.
  */
 export type CallCenterRegistroCompletoLlamadaRequest = {
   fechaLlamada: string;
@@ -72,7 +70,7 @@ export type CallCenterRegistroCompletoLlamadaRequest = {
 };
 
 /**
- * Encuestador y programación obligatoria de la visita.
+ * Encuestador y programación de la visita.
  */
 export type CallCenterRegistroCompletoVisitaRequest = {
   encuestadorId: number;
@@ -82,7 +80,8 @@ export type CallCenterRegistroCompletoVisitaRequest = {
 };
 
 /**
- * Payload completo enviado en una sola solicitud.
+ * Payload completo utilizado tanto para creación
+ * como para actualización.
  */
 export type CallCenterRegistroCompletoRequest = {
   registro: CallCenterRegistroCompletoCasoRequest;
@@ -91,7 +90,7 @@ export type CallCenterRegistroCompletoRequest = {
 };
 
 /**
- * Resultado de la operación transaccional.
+ * Resultado del agregado completo.
  */
 export type CallCenterRegistroCompletoResponse = {
   registro: CallCenterResponse;

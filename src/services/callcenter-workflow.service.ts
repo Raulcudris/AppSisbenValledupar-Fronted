@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/apiClient';
+
 import {
   CallCenterGestionLlamadaRequest,
   CallCenterGestionLlamadaResponse,
@@ -6,229 +7,283 @@ import {
   CallCenterResultadoLlamadaResponse,
   CallCenterVisitaAsignacionRequest,
   CallCenterVisitaFilterRequest,
+  CallCenterVisitaProgramacionRequest,
   CallCenterVisitaResponse,
   CallCenterVisitaResultadoRequest,
 } from '@/types/callcenter-workflow.types';
 
-/**
- * Valor permitido para construir parámetros de consulta.
- */
-type QueryValue = string | number | boolean | undefined | null;
+type QueryValue =
+  | string
+  | number
+  | boolean
+  | undefined
+  | null;
 
-/**
- * Construye una cadena query string omitiendo valores vacíos.
- *
- * @param params parámetros enviados al endpoint.
- * @returns cadena query string.
- */
-function toQueryString(params: Record<string, QueryValue>) {
-  const query = new URLSearchParams();
+function toQueryString(
+  params: Record<string, QueryValue>,
+) {
+  const query =
+    new URLSearchParams();
 
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      query.append(key, String(value));
-    }
-  });
+  Object.entries(params).forEach(
+    ([key, value]) => {
+      if (
+        value !== undefined
+        && value !== null
+        && value !== ''
+      ) {
+        query.append(
+          key,
+          String(value),
+        );
+      }
+    },
+  );
 
-  const queryString = query.toString();
+  const queryString =
+    query.toString();
 
-  return queryString ? `?${queryString}` : '';
+  return queryString
+    ? `?${queryString}`
+    : '';
 }
 
-/**
- * Extrae el contenido útil de una respuesta estándar del backend.
- *
- * El backend suele responder con estructura:
- * `{ data: T }`.
- *
- * Esta función también tolera respuestas directas para evitar errores
- * durante pruebas o ajustes de endpoints.
- *
- * @param response respuesta recibida desde apiRequest.
- * @returns contenido útil de la respuesta.
- */
-function unwrapApiResponse<T>(response: unknown): T {
+function unwrapApiResponse<T>(
+  response: unknown,
+): T {
   if (
-    response &&
-    typeof response === 'object' &&
-    'data' in response
+    response
+    && typeof response === 'object'
+    && 'data' in response
   ) {
-    return (response as { data: T }).data;
+    return (
+      response as {
+        data: T;
+      }
+    ).data;
   }
 
   return response as T;
 }
 
-/**
- * Consulta el catálogo de resultados de llamada del módulo Call Center.
- *
- * Este catálogo alimenta el selector usado al registrar una gestión
- * telefónica dentro del detalle del caso.
- *
- * @returns lista de resultados de llamada activos.
- */
-export async function getCallCenterResultadosLlamada(): Promise<CallCenterResultadoLlamadaResponse[]> {
-  const response = await apiRequest(
-    `/api/callcenter/catalogs/resultados-llamada${toQueryString({
-      _t: Date.now(),
-    })}`,
-  );
+export async function getCallCenterResultadosLlamada():
+Promise<CallCenterResultadoLlamadaResponse[]> {
+  const response =
+    await apiRequest(
+      `/api/callcenter/catalogs/resultados-llamada${toQueryString({
+        _t: Date.now(),
+      })}`,
+    );
 
-  return unwrapApiResponse<CallCenterResultadoLlamadaResponse[]>(response) ?? [];
+  return (
+    unwrapApiResponse<
+      CallCenterResultadoLlamadaResponse[]
+    >(response)
+    ?? []
+  );
 }
 
-/**
- * Consulta las gestiones de llamada registradas para un caso Call Center.
- *
- * @param callCenterRegistroId identificador del caso maestro.
- * @returns historial de llamadas del caso.
- */
 export async function getCallCenterLlamadas(
-  callCenterRegistroId: number | string,
+  callCenterRegistroId:
+    | number
+    | string,
 ): Promise<CallCenterGestionLlamadaResponse[]> {
-  const response = await apiRequest(
-    `/api/callcenter/${callCenterRegistroId}/llamadas${toQueryString({
-      _t: Date.now(),
-    })}`,
-  );
+  const response =
+    await apiRequest(
+      `/api/callcenter/${callCenterRegistroId}/llamadas${toQueryString({
+        _t: Date.now(),
+      })}`,
+    );
 
-  return unwrapApiResponse<CallCenterGestionLlamadaResponse[]>(response) ?? [];
+  return (
+    unwrapApiResponse<
+      CallCenterGestionLlamadaResponse[]
+    >(response)
+    ?? []
+  );
 }
 
-/**
- * Registra una nueva gestión de llamada sobre un caso Call Center.
- *
- * @param callCenterRegistroId identificador del caso maestro.
- * @param request información de la gestión telefónica.
- * @returns llamada registrada.
- */
 export async function registrarCallCenterLlamada(
-  callCenterRegistroId: number | string,
-  request: CallCenterGestionLlamadaRequest,
+  callCenterRegistroId:
+    | number
+    | string,
+
+  request:
+    CallCenterGestionLlamadaRequest,
 ): Promise<CallCenterGestionLlamadaResponse> {
-  const response = await apiRequest(
-    `/api/callcenter/${callCenterRegistroId}/llamadas`,
-    {
-      method: 'POST',
-      body: request,
-    },
-  );
+  const response =
+    await apiRequest(
+      `/api/callcenter/${callCenterRegistroId}/llamadas`,
+      {
+        method: 'POST',
+        body: request,
+      },
+    );
 
-  return unwrapApiResponse<CallCenterGestionLlamadaResponse>(response);
+  return unwrapApiResponse<
+    CallCenterGestionLlamadaResponse
+  >(response);
 }
 
-/**
- * Consulta las visitas asignadas o registradas para un caso Call Center.
- *
- * @param callCenterRegistroId identificador del caso maestro.
- * @returns historial de visitas del caso.
- */
 export async function getCallCenterVisitas(
-  callCenterRegistroId: number | string,
+  callCenterRegistroId:
+    | number
+    | string,
 ): Promise<CallCenterVisitaResponse[]> {
-  const response = await apiRequest(
-    `/api/callcenter/${callCenterRegistroId}/visitas${toQueryString({
-      _t: Date.now(),
-    })}`,
-  );
+  const response =
+    await apiRequest(
+      `/api/callcenter/${callCenterRegistroId}/visitas${toQueryString({
+        _t: Date.now(),
+      })}`,
+    );
 
-  return unwrapApiResponse<CallCenterVisitaResponse[]>(response) ?? [];
+  return (
+    unwrapApiResponse<
+      CallCenterVisitaResponse[]
+    >(response)
+    ?? []
+  );
 }
 
-/**
- * Asigna una visita de campo a un encuestador.
- *
- * Esta acción se ejecuta desde la pantalla de gestión del caso,
- * después de la gestión telefónica.
- *
- * @param callCenterRegistroId identificador del caso maestro.
- * @param request datos de asignación de visita.
- * @returns visita creada.
- */
 export async function asignarCallCenterVisita(
-  callCenterRegistroId: number | string,
-  request: CallCenterVisitaAsignacionRequest,
-): Promise<CallCenterVisitaResponse> {
-  const response = await apiRequest(
-    `/api/callcenter/${callCenterRegistroId}/visitas`,
-    {
-      method: 'POST',
-      body: request,
-    },
-  );
+  callCenterRegistroId:
+    | number
+    | string,
 
-  return unwrapApiResponse<CallCenterVisitaResponse>(response);
+  request:
+    CallCenterVisitaAsignacionRequest,
+): Promise<CallCenterVisitaResponse> {
+  const response =
+    await apiRequest(
+      `/api/callcenter/${callCenterRegistroId}/visitas`,
+      {
+        method: 'POST',
+        body: request,
+      },
+    );
+
+  return unwrapApiResponse<
+    CallCenterVisitaResponse
+  >(response);
 }
 
 /**
- * Consulta las visitas asignadas al encuestador autenticado.
- *
- * Esta función alimenta la vista:
- * `/dashboard/callcenter/mis-asignaciones`.
- *
- * @param page página solicitada.
- * @param size cantidad de registros por página.
- * @param filter filtros de búsqueda aplicados desde backend.
- * @returns respuesta paginada de visitas.
+ * Modifica el encuestador, la fecha y la hora
+ * programada de una visita existente.
  */
+export async function actualizarCallCenterProgramacionVisita(
+  visitaId:
+    | number
+    | string,
+
+  request:
+    CallCenterVisitaProgramacionRequest,
+): Promise<CallCenterVisitaResponse> {
+  const response =
+    await apiRequest(
+      `/api/callcenter/visitas/${visitaId}/programacion`,
+      {
+        method: 'PATCH',
+        body: request,
+      },
+    );
+
+  return unwrapApiResponse<
+    CallCenterVisitaResponse
+  >(response);
+}
+
 export async function getMisCallCenterVisitas(
   page = 0,
   size = 20,
-  filter: CallCenterVisitaFilterRequest = {},
-): Promise<CallCenterPageResponse<CallCenterVisitaResponse>> {
-  const response = await apiRequest(
-    `/api/callcenter/visitas/mis-asignaciones${toQueryString({
-      page,
-      size,
-      q: filter.q,
-      estadoVisita: normalizeFilterValue(filter.estadoVisita, 'TODOS'),
-      estadoCaso: normalizeFilterValue(filter.estadoCaso, 'TODOS'),
-      condicion: normalizeFilterValue(filter.condicion, 'TODAS'),
-      fechaDesde: filter.fechaDesde,
-      fechaHasta: filter.fechaHasta,
-      _t: Date.now(),
-    })}`,
-  );
 
-  return unwrapApiResponse<CallCenterPageResponse<CallCenterVisitaResponse>>(response);
+  filter:
+    CallCenterVisitaFilterRequest = {},
+): Promise<
+  CallCenterPageResponse<
+    CallCenterVisitaResponse
+  >
+> {
+  const response =
+    await apiRequest(
+      `/api/callcenter/visitas/mis-asignaciones${toQueryString({
+        page,
+        size,
+        q: filter.q,
+
+        estadoVisita:
+          normalizeFilterValue(
+            filter.estadoVisita,
+            'TODOS',
+          ),
+
+        estadoCaso:
+          normalizeFilterValue(
+            filter.estadoCaso,
+            'TODOS',
+          ),
+
+        condicion:
+          normalizeFilterValue(
+            filter.condicion,
+            'TODAS',
+          ),
+
+        fechaDesde:
+          filter.fechaDesde,
+
+        fechaHasta:
+          filter.fechaHasta,
+
+        _t:
+          Date.now(),
+      })}`,
+    );
+
+  return unwrapApiResponse<
+    CallCenterPageResponse<
+      CallCenterVisitaResponse
+    >
+  >(response);
 }
 
-/**
- * Limpia valores visuales de filtros antes de enviarlos al backend.
- *
- * @param value valor seleccionado.
- * @param emptyValue valor que representa "sin filtro".
- * @returns valor útil o undefined.
- */
-function normalizeFilterValue(value: string | null | undefined, emptyValue: string) {
-  if (!value || value === emptyValue) {
+function normalizeFilterValue(
+  value:
+    | string
+    | null
+    | undefined,
+
+  emptyValue:
+    string,
+) {
+  if (
+    !value
+    || value === emptyValue
+  ) {
     return undefined;
   }
 
   return value;
 }
 
-/**
- * Actualiza el resultado operativo de una visita Call Center.
- *
- * Esta acción la realiza el FUNCIONARIO_ENCUESTADOR desde
- * la vista de mis asignaciones.
- *
- * @param visitaId identificador de la visita.
- * @param request resultado operativo de campo.
- * @returns visita actualizada.
- */
 export async function actualizarCallCenterResultadoVisita(
-  visitaId: number | string,
-  request: CallCenterVisitaResultadoRequest,
-): Promise<CallCenterVisitaResponse> {
-  const response = await apiRequest(
-    `/api/callcenter/visitas/${visitaId}/resultado`,
-    {
-      method: 'PATCH',
-      body: request,
-    },
-  );
+  visitaId:
+    | number
+    | string,
 
-  return unwrapApiResponse<CallCenterVisitaResponse>(response);
+  request:
+    CallCenterVisitaResultadoRequest,
+): Promise<CallCenterVisitaResponse> {
+  const response =
+    await apiRequest(
+      `/api/callcenter/visitas/${visitaId}/resultado`,
+      {
+        method: 'PATCH',
+        body: request,
+      },
+    );
+
+  return unwrapApiResponse<
+    CallCenterVisitaResponse
+  >(response);
 }

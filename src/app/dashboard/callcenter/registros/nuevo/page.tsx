@@ -4,6 +4,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SaveIcon from '@mui/icons-material/Save';
 import SearchIcon from '@mui/icons-material/Search';
+
 import {
   Alert,
   Box,
@@ -18,10 +19,12 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+
 import {
   useRouter,
   useSearchParams,
 } from 'next/navigation';
+
 import {
   useCallback,
   useEffect,
@@ -29,6 +32,7 @@ import {
 } from 'react';
 
 import CallCenterRegistroCompletoForm from '@/components/callcenter/CallCenterRegistroCompletoForm';
+
 import {
   findVentanillaByCedulaForCallCenter,
   getCallCenterBarriosOptions,
@@ -36,6 +40,7 @@ import {
   searchCallCenter,
   updateCallCenterRegistro,
 } from '@/services/callcenter.service';
+
 import type {
   CallCenterOrigenRegistro,
   CallCenterRequest,
@@ -43,11 +48,15 @@ import type {
   CallCenterTipoSolicitud,
   VentanillaCallCenterResponse,
 } from '@/types/callcenter.types';
-import type { SelectOption } from '@/types/catalog.types';
+
+import type {
+  SelectOption,
+} from '@/types/catalog.types';
 
 type SnackbarState = {
   open: boolean;
   message: string;
+
   severity:
     | 'success'
     | 'error'
@@ -60,9 +69,11 @@ type FormState = {
   fechaLlamada: string;
   origenRegistro: CallCenterOrigenRegistro;
   ventanillaRegistroId: string;
+
   tipoSolicitudCallcenter:
     | CallCenterTipoSolicitud
     | string;
+
   estadoCaso: string;
   cedulaSolicitante: string;
   nombreCompleto: string;
@@ -106,7 +117,8 @@ function today() {
   return getLocalDateISO();
 }
 
-function buildInitialForm(): FormState {
+function buildInitialForm():
+  FormState {
   return {
     fechaLlamada:
       today(),
@@ -152,6 +164,16 @@ function normalizeText(
   return value?.trim() ?? '';
 }
 
+function normalizeCode(
+  value?: string | null,
+) {
+  return String(
+    value ?? '',
+  )
+    .trim()
+    .toUpperCase();
+}
+
 function toOptionalNumber(
   value: string,
 ) {
@@ -163,11 +185,12 @@ function toOptionalNumber(
 function getPageContent<T>(
   page: unknown,
 ): T[] {
-  const data = page as {
-    content?: T[];
-    items?: T[];
-    data?: T[];
-  };
+  const data =
+    page as {
+      content?: T[];
+      items?: T[];
+      data?: T[];
+    };
 
   return (
     data?.content
@@ -177,40 +200,37 @@ function getPageContent<T>(
   );
 }
 
-function isOpenCallCenterCase(
+function isEditableCallCenterCase(
   record: CallCenterResponse,
 ) {
   const estadoCaso =
-    String(
-      record.estadoCaso ?? '',
-    )
-      .trim()
-      .toUpperCase();
-
-  if (
-    record.activo === false
-  ) {
-    return false;
-  }
+    normalizeCode(
+      record.estadoCaso,
+    );
 
   return (
-    estadoCaso !== 'CERRADO'
+    record.activo !== false
+    && estadoCaso !== 'CERRADO'
     && estadoCaso !== 'CANCELADO'
   );
 }
 
 function normalizeOrigenRegistro(
-  value: CallCenterResponse['origenRegistro'],
+  value:
+    CallCenterResponse['origenRegistro'],
 ): CallCenterOrigenRegistro {
-  const normalized = String(value ?? '')
-    .trim()
-    .toUpperCase();
+  const normalized =
+    normalizeCode(value);
 
-  if (normalized === 'VENTANILLA') {
+  if (
+    normalized === 'VENTANILLA'
+  ) {
     return 'VENTANILLA';
   }
 
-  if (normalized === 'IMPORTACION') {
+  if (
+    normalized === 'IMPORTACION'
+  ) {
     return 'IMPORTACION';
   }
 
@@ -221,10 +241,12 @@ function recordToForm(
   record: CallCenterResponse,
 ): FormState {
   return {
-    id: record.id,
+    id:
+      record.id,
 
     fechaLlamada:
-      record.fechaLlamada || today(),
+      record.fechaLlamada
+      || today(),
 
     origenRegistro:
       normalizeOrigenRegistro(
@@ -232,9 +254,12 @@ function recordToForm(
       ),
 
     ventanillaRegistroId:
-      record.ventanillaRegistroId == null
+      record.ventanillaRegistroId
+        == null
         ? ''
-        : String(record.ventanillaRegistroId),
+        : String(
+          record.ventanillaRegistroId,
+        ),
 
     tipoSolicitudCallcenter:
       record.tipoSolicitudCallcenter
@@ -245,24 +270,32 @@ function recordToForm(
       || ESTADO_PENDIENTE_ENRUTAMIENTO,
 
     cedulaSolicitante:
-      record.cedulaSolicitante || '',
+      record.cedulaSolicitante
+      || '',
 
     nombreCompleto:
-      record.nombreCompleto || '',
+      record.nombreCompleto
+      || '',
 
     telefono:
-      record.telefono || '',
+      record.telefono
+      || '',
 
     direccionTexto:
-      record.direccionTexto || '',
+      record.direccionTexto
+      || '',
 
     barrioId:
-      record.barrioId == null
+      record.barrioId
+        == null
         ? ''
-        : String(record.barrioId),
+        : String(
+          record.barrioId,
+        ),
 
     observacion:
-      record.observacion || '',
+      record.observacion
+      || '',
 
     activo:
       record.activo !== false,
@@ -270,8 +303,11 @@ function recordToForm(
 }
 
 function ventanillaToForm(
-  record: VentanillaCallCenterResponse,
-  current: FormState,
+  record:
+    VentanillaCallCenterResponse,
+
+  current:
+    FormState,
 ): FormState {
   return {
     ...current,
@@ -306,50 +342,16 @@ function ventanillaToForm(
         ? String(record.barrioId)
         : current.barrioId,
 
-    observacion: [
+    /*
+     * La observación operativa no será enviada como una
+     * modificación. Este valor se conserva únicamente
+     * para mostrar la trazabilidad existente.
+     */
+    observacion:
       current.observacion,
-
-      'Datos cargados desde Ventanilla para actualizar el caso Call Center',
-
-      record.numeroVentanilla
-        ? `Ventanilla: ${record.numeroVentanilla}`
-        : '',
-
-      record.fecha
-        ? `Fecha ventanilla: ${record.fecha}`
-        : '',
-
-      record.solicitudNombre
-        ? `Solicitud: ${record.solicitudNombre}`
-        : '',
-
-      record.estadoSolicitudNombre
-        ? `Estado: ${record.estadoSolicitudNombre}`
-        : '',
-
-      record.barrioNombre
-        ? `Barrio: ${record.barrioNombre}`
-        : '',
-
-      record.comunaNombre
-        ? `Comuna: ${record.comunaNombre}`
-        : '',
-
-      record.observacion
-        ? `Observación ventanilla: ${record.observacion}`
-        : '',
-    ]
-      .filter(Boolean)
-      .join(' | '),
   };
 }
 
-/**
- * Entrada principal de la ruta.
- *
- * Sin ID muestra el formulario transaccional completo.
- * Con ID conserva la edición administrativa existente.
- */
 export default function NuevoRegistroCallCenterPage() {
   const searchParams =
     useSearchParams();
@@ -370,12 +372,6 @@ export default function NuevoRegistroCallCenterPage() {
   );
 }
 
-/**
- * Edición administrativa de un caso existente.
- *
- * No registra llamadas, no asigna visitas y no altera
- * directamente los estados operativos.
- */
 function EditarRegistroCallCenterPage({
   editId,
 }: EditFormProps) {
@@ -437,8 +433,16 @@ function EditarRegistroCallCenterPage({
     severity: 'success',
   });
 
+  const recordEditable =
+    originalRecord
+      ? isEditableCallCenterCase(
+        originalRecord,
+      )
+      : false;
+
   function showMessage(
     message: string,
+
     severity:
       SnackbarState['severity'] =
       'success',
@@ -459,10 +463,23 @@ function EditarRegistroCallCenterPage({
     );
   }
 
+  function goBackToCase() {
+    router.push(
+      `/dashboard/callcenter/mis-registros/${editId}`,
+    );
+  }
+
   function updateForm(
-    field: keyof FormState,
-    value: string | boolean,
+    field:
+      keyof FormState,
+
+    value:
+      string | boolean,
   ) {
+    if (!recordEditable) {
+      return;
+    }
+
     if (
       field === 'cedulaSolicitante'
       || field === 'ventanillaRegistroId'
@@ -499,8 +516,11 @@ function EditarRegistroCallCenterPage({
   const checkExistingOpenCase =
     useCallback(
       async (
-        candidate: FormState,
-        showWarning = true,
+        candidate:
+          FormState,
+
+        showWarning =
+          true,
       ) => {
         const cedula =
           normalizeText(
@@ -537,15 +557,16 @@ function EditarRegistroCallCenterPage({
             const foundByVentanilla =
               getPageContent<
                 CallCenterResponse
-              >(byVentanilla)
-                .find(
-                  (record) =>
-                    record.id
-                      !== candidate.id
-                    && isOpenCallCenterCase(
-                      record,
-                    ),
-                );
+              >(
+                byVentanilla,
+              ).find(
+                (record) =>
+                  record.id
+                    !== candidate.id
+                  && isEditableCallCenterCase(
+                    record,
+                  ),
+              );
 
             if (
               foundByVentanilla
@@ -554,7 +575,9 @@ function EditarRegistroCallCenterPage({
                 foundByVentanilla,
               );
 
-              if (showWarning) {
+              if (
+                showWarning
+              ) {
                 showMessage(
                   'Ya existe otro caso Call Center abierto para este registro de Ventanilla.',
                   'warning',
@@ -570,6 +593,7 @@ function EditarRegistroCallCenterPage({
               await searchCallCenter({
                 page: 0,
                 size: 5,
+
                 cedulaSolicitante:
                   cedula,
 
@@ -584,15 +608,16 @@ function EditarRegistroCallCenterPage({
             const foundByCedula =
               getPageContent<
                 CallCenterResponse
-              >(byCedula)
-                .find(
-                  (record) =>
-                    record.id
-                      !== candidate.id
-                    && isOpenCallCenterCase(
-                      record,
-                    ),
-                );
+              >(
+                byCedula,
+              ).find(
+                (record) =>
+                  record.id
+                    !== candidate.id
+                  && isEditableCallCenterCase(
+                    record,
+                  ),
+              );
 
             setExistingOpenCase(
               foundByCedula
@@ -629,9 +654,23 @@ function EditarRegistroCallCenterPage({
       setLoadingRecord(true);
 
       try {
+        const numericEditId =
+          Number(editId);
+
+        if (
+          !Number.isInteger(
+            numericEditId,
+          )
+          || numericEditId <= 0
+        ) {
+          throw new Error(
+            'El identificador del caso no es válido.',
+          );
+        }
+
         const record =
           await getCallCenterRegistro(
-            Number(editId),
+            numericEditId,
           );
 
         const nextForm =
@@ -645,13 +684,26 @@ function EditarRegistroCallCenterPage({
           nextForm,
         );
 
-        await checkExistingOpenCase(
-          nextForm,
-          false,
-        );
-      } catch {
+        if (
+          isEditableCallCenterCase(
+            record,
+          )
+        ) {
+          await checkExistingOpenCase(
+            nextForm,
+            false,
+          );
+        } else {
+          setExistingOpenCase(null);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'No fue posible cargar el registro para editar.';
+
         showMessage(
-          'No fue posible cargar el registro para editar.',
+          message,
           'error',
         );
       } finally {
@@ -673,6 +725,15 @@ function EditarRegistroCallCenterPage({
   ]);
 
   async function searchPersonByCedula() {
+    if (!recordEditable) {
+      showMessage(
+        'Este caso está finalizado o inactivo y no puede modificarse.',
+        'warning',
+      );
+
+      return;
+    }
+
     const cedula =
       normalizeText(
         form.cedulaSolicitante,
@@ -736,10 +797,6 @@ function EditarRegistroCallCenterPage({
     }
   }
 
-  /**
-   * Construye el request preservando los campos
-   * operativos protegidos.
-   */
   function buildRequest():
     CallCenterRequest {
     return {
@@ -819,8 +876,7 @@ function EditarRegistroCallCenterPage({
           ?.solicitoNuevaEncuesta
         ?? (
           form.tipoSolicitudCallcenter
-          ===
-          TIPO_SOLICITUD_NUEVA_ENCUESTA
+          === TIPO_SOLICITUD_NUEVA_ENCUESTA
         ),
 
       direccionTexto:
@@ -878,6 +934,10 @@ function EditarRegistroCallCenterPage({
         form.tipoSolicitudCallcenter
         || TIPO_SOLICITUD_NUEVA_ENCUESTA,
 
+      /*
+       * La observación operativa se conserva exactamente
+       * como está persistida.
+       */
       observacion:
         originalRecord
           ?.observacion
@@ -891,6 +951,10 @@ function EditarRegistroCallCenterPage({
   }
 
   function validateForm() {
+    if (!recordEditable) {
+      return 'Este caso está cerrado, cancelado o inactivo y no puede modificarse.';
+    }
+
     if (
       !normalizeText(
         form.cedulaSolicitante,
@@ -1011,15 +1075,23 @@ function EditarRegistroCallCenterPage({
       <Paper
         variant="outlined"
         sx={{
-          p: 4,
+          p:
+            4,
         }}
       >
         <Box
           sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 2,
+            display:
+              'flex',
+
+            flexDirection:
+              'column',
+
+            alignItems:
+              'center',
+
+            gap:
+              2,
           }}
         >
           <CircularProgress />
@@ -1036,19 +1108,32 @@ function EditarRegistroCallCenterPage({
     <Box>
       <Box
         sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 3,
+          display:
+            'flex',
+
+          flexDirection:
+            'column',
+
+          gap:
+            3,
         }}
       >
         <Box
           sx={{
-            display: 'flex',
+            display:
+              'flex',
+
             flexDirection: {
-              xs: 'column',
-              md: 'row',
+              xs:
+                'column',
+
+              md:
+                'row',
             },
-            gap: 2,
+
+            gap:
+              2,
+
             justifyContent:
               'space-between',
           }}
@@ -1058,34 +1143,39 @@ function EditarRegistroCallCenterPage({
               component="h1"
               variant="h5"
               sx={{
-                fontWeight: 800,
+                fontWeight:
+                  800,
               }}
             >
-              Editar datos administrativos del caso
+              Editar datos del caso #{editId}
             </Typography>
 
             <Typography
               component="p"
               variant="body2"
-              sx={{
-                color:
-                  'text.secondary',
-              }}
+              color="text.secondary"
             >
               Actualiza únicamente los datos generales.
-              Las llamadas, visitas y estados se gestionan
-              mediante sus operaciones formales.
+              Las llamadas, visitas, asignaciones y estados
+              se conservan mediante sus operaciones formales.
             </Typography>
           </Box>
 
           <Box
             sx={{
-              display: 'flex',
+              display:
+                'flex',
+
               flexDirection: {
-                xs: 'column',
-                sm: 'row',
+                xs:
+                  'column',
+
+                sm:
+                  'row',
               },
-              gap: 1,
+
+              gap:
+                1,
             }}
           >
             <Button
@@ -1093,13 +1183,11 @@ function EditarRegistroCallCenterPage({
               startIcon={
                 <ArrowBackIcon />
               }
-              onClick={() =>
-                router.push(
-                  '/dashboard/callcenter/registros',
-                )
+              onClick={
+                goBackToCase
               }
             >
-              Volver
+              Volver al caso
             </Button>
 
             <Button
@@ -1110,7 +1198,10 @@ function EditarRegistroCallCenterPage({
               onClick={
                 resetForm
               }
-              disabled={saving}
+              disabled={
+                saving
+                || !originalRecord
+              }
             >
               Restablecer
             </Button>
@@ -1120,15 +1211,16 @@ function EditarRegistroCallCenterPage({
               startIcon={
                 <SaveIcon />
               }
-              onClick={() =>
-                void save()
-              }
+              onClick={() => {
+                void save();
+              }}
               disabled={
                 saving
                 || checkingCase
                 || Boolean(
                   existingOpenCase,
                 )
+                || !recordEditable
               }
             >
               {saving
@@ -1138,33 +1230,61 @@ function EditarRegistroCallCenterPage({
           </Box>
         </Box>
 
-        <Alert severity="info">
-          Esta pantalla solo actualiza datos administrativos.
-          No registra llamadas, no asigna encuestadores,
-          no programa visitas y no cambia directamente
-          el estado operativo.
-        </Alert>
+        {!originalRecord ? (
+          <Alert severity="error">
+            No fue posible cargar la información del caso.
+          </Alert>
+        ) : null}
+
+        {originalRecord
+        && !recordEditable ? (
+          <Alert severity="warning">
+            Este caso se encuentra{' '}
+            <strong>
+              {formatLabel(
+                originalRecord.estadoCaso,
+              )}
+            </strong>
+            {originalRecord.activo === false
+              ? ' e inactivo'
+              : ''}
+            . La información permanece disponible únicamente
+            para consulta y no puede modificarse.
+          </Alert>
+        ) : null}
+
+        {recordEditable ? (
+          <Alert severity="info">
+            Puedes actualizar nombre, cédula, teléfono,
+            dirección, barrio, origen y tipo de solicitud.
+          </Alert>
+        ) : null}
 
         <Alert severity="warning">
-          Se preservan la fecha original, el estado del caso,
-          los resultados telefónicos, las asignaciones,
-          las visitas y las observaciones operativas.
+          La fecha original, el estado del caso, las llamadas,
+          las asignaciones, las visitas y las observaciones
+          operativas se preservarán sin modificaciones.
         </Alert>
 
-        {existingOpenCase && (
+        {existingOpenCase ? (
           <Alert severity="warning">
             Ya existe otro caso Call Center abierto para
             este ciudadano o registro de Ventanilla.
           </Alert>
-        )}
+        ) : null}
 
         <Card>
           <CardContent>
             <Box
               sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 3,
+                display:
+                  'flex',
+
+                flexDirection:
+                  'column',
+
+                gap:
+                  3,
               }}
             >
               <Box>
@@ -1172,7 +1292,8 @@ function EditarRegistroCallCenterPage({
                   component="h2"
                   variant="h6"
                   sx={{
-                    fontWeight: 800,
+                    fontWeight:
+                      800,
                   }}
                 >
                   1. Identificación del ciudadano
@@ -1181,10 +1302,7 @@ function EditarRegistroCallCenterPage({
                 <Typography
                   component="p"
                   variant="body2"
-                  sx={{
-                    color:
-                      'text.secondary',
-                  }}
+                  color="text.secondary"
                 >
                   Actualiza los datos generales o consulta
                   nuevamente la información de Ventanilla.
@@ -1193,12 +1311,19 @@ function EditarRegistroCallCenterPage({
 
               <Box
                 sx={{
-                  display: 'flex',
+                  display:
+                    'flex',
+
                   flexDirection: {
-                    xs: 'column',
-                    md: 'row',
+                    xs:
+                      'column',
+
+                    md:
+                      'row',
                   },
-                  gap: 2,
+
+                  gap:
+                    2,
                 }}
               >
                 <TextField
@@ -1206,14 +1331,17 @@ function EditarRegistroCallCenterPage({
                   value={
                     form.cedulaSolicitante
                   }
-                  onChange={(event) =>
+                  onChange={(event) => {
                     updateForm(
                       'cedulaSolicitante',
                       event.target.value,
-                    )
-                  }
+                    );
+                  }}
                   fullWidth
                   required
+                  disabled={
+                    !recordEditable
+                  }
                   slotProps={{
                     input: {
                       startAdornment: (
@@ -1230,15 +1358,17 @@ function EditarRegistroCallCenterPage({
                   startIcon={
                     <SearchIcon />
                   }
-                  onClick={() =>
-                    void searchPersonByCedula()
-                  }
+                  onClick={() => {
+                    void searchPersonByCedula();
+                  }}
                   disabled={
                     searchingCedula
                     || checkingCase
+                    || !recordEditable
                   }
                   sx={{
-                    minWidth: 220,
+                    minWidth:
+                      220,
                   }}
                 >
                   {searchingCedula
@@ -1248,23 +1378,30 @@ function EditarRegistroCallCenterPage({
                 </Button>
               </Box>
 
-              {form.ventanillaRegistroId && (
+              {form.ventanillaRegistroId ? (
                 <Alert severity="success">
                   Registro relacionado con Ventanilla ID:{' '}
                   <strong>
                     {form.ventanillaRegistroId}
                   </strong>
                 </Alert>
-              )}
+              ) : null}
 
               <Box
                 sx={{
-                  display: 'grid',
+                  display:
+                    'grid',
+
                   gridTemplateColumns: {
-                    xs: '1fr',
-                    md: 'repeat(2, minmax(0, 1fr))',
+                    xs:
+                      '1fr',
+
+                    md:
+                      'repeat(2, minmax(0, 1fr))',
                   },
-                  gap: 2,
+
+                  gap:
+                    2,
                 }}
               >
                 <TextField
@@ -1272,14 +1409,17 @@ function EditarRegistroCallCenterPage({
                   value={
                     form.nombreCompleto
                   }
-                  onChange={(event) =>
+                  onChange={(event) => {
                     updateForm(
                       'nombreCompleto',
                       event.target.value,
-                    )
-                  }
+                    );
+                  }}
                   fullWidth
                   required
+                  disabled={
+                    !recordEditable
+                  }
                 />
 
                 <TextField
@@ -1287,13 +1427,16 @@ function EditarRegistroCallCenterPage({
                   value={
                     form.telefono
                   }
-                  onChange={(event) =>
+                  onChange={(event) => {
                     updateForm(
                       'telefono',
                       event.target.value,
-                    )
-                  }
+                    );
+                  }}
                   fullWidth
+                  disabled={
+                    !recordEditable
+                  }
                 />
 
                 <TextField
@@ -1301,13 +1444,16 @@ function EditarRegistroCallCenterPage({
                   value={
                     form.direccionTexto
                   }
-                  onChange={(event) =>
+                  onChange={(event) => {
                     updateForm(
                       'direccionTexto',
                       event.target.value,
-                    )
-                  }
+                    );
+                  }}
                   fullWidth
+                  disabled={
+                    !recordEditable
+                  }
                 />
 
                 <TextField
@@ -1316,13 +1462,16 @@ function EditarRegistroCallCenterPage({
                   value={
                     form.barrioId
                   }
-                  onChange={(event) =>
+                  onChange={(event) => {
                     updateForm(
                       'barrioId',
                       event.target.value,
-                    )
-                  }
+                    );
+                  }}
                   fullWidth
+                  disabled={
+                    !recordEditable
+                  }
                 >
                   <MenuItem value="">
                     Sin seleccionar
@@ -1331,7 +1480,9 @@ function EditarRegistroCallCenterPage({
                   {barrios.map(
                     (option) => (
                       <MenuItem
-                        key={option.id}
+                        key={
+                          option.id
+                        }
                         value={
                           String(
                             option.id,
@@ -1352,9 +1503,14 @@ function EditarRegistroCallCenterPage({
           <CardContent>
             <Box
               sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 3,
+                display:
+                  'flex',
+
+                flexDirection:
+                  'column',
+
+                gap:
+                  3,
               }}
             >
               <Box>
@@ -1362,7 +1518,8 @@ function EditarRegistroCallCenterPage({
                   component="h2"
                   variant="h6"
                   sx={{
-                    fontWeight: 800,
+                    fontWeight:
+                      800,
                   }}
                 >
                   2. Datos administrativos del caso
@@ -1371,10 +1528,7 @@ function EditarRegistroCallCenterPage({
                 <Typography
                   component="p"
                   variant="body2"
-                  sx={{
-                    color:
-                      'text.secondary',
-                  }}
+                  color="text.secondary"
                 >
                   Actualiza el origen y el tipo de solicitud.
                   El estado operativo no se modifica aquí.
@@ -1383,12 +1537,19 @@ function EditarRegistroCallCenterPage({
 
               <Box
                 sx={{
-                  display: 'grid',
+                  display:
+                    'grid',
+
                   gridTemplateColumns: {
-                    xs: '1fr',
-                    md: 'repeat(3, minmax(0, 1fr))',
+                    xs:
+                      '1fr',
+
+                    md:
+                      'repeat(3, minmax(0, 1fr))',
                   },
-                  gap: 2,
+
+                  gap:
+                    2,
                 }}
               >
                 <TextField
@@ -1399,10 +1560,11 @@ function EditarRegistroCallCenterPage({
                   }
                   fullWidth
                   disabled
-                  helperText="La fecha original no puede modificarse desde la edición administrativa."
+                  helperText="La fecha original no puede modificarse."
                   slotProps={{
                     inputLabel: {
-                      shrink: true,
+                      shrink:
+                        true,
                     },
                   }}
                 />
@@ -1413,13 +1575,16 @@ function EditarRegistroCallCenterPage({
                   value={
                     form.origenRegistro
                   }
-                  onChange={(event) =>
+                  onChange={(event) => {
                     updateForm(
                       'origenRegistro',
                       event.target.value,
-                    )
-                  }
+                    );
+                  }}
                   fullWidth
+                  disabled={
+                    !recordEditable
+                  }
                 >
                   <MenuItem value="MANUAL">
                     Manual
@@ -1440,14 +1605,17 @@ function EditarRegistroCallCenterPage({
                   value={
                     form.tipoSolicitudCallcenter
                   }
-                  onChange={(event) =>
+                  onChange={(event) => {
                     updateForm(
                       'tipoSolicitudCallcenter',
                       event.target.value,
-                    )
-                  }
+                    );
+                  }}
                   fullWidth
                   required
+                  disabled={
+                    !recordEditable
+                  }
                 >
                   <MenuItem value="NUEVA_ENCUESTA">
                     Nueva encuesta
@@ -1475,7 +1643,7 @@ function EditarRegistroCallCenterPage({
                   }
                   fullWidth
                   disabled
-                  helperText="El estado cambia mediante las operaciones formales del flujo."
+                  helperText="El estado cambia mediante las operaciones formales."
                 />
 
                 <TextField
@@ -1483,16 +1651,17 @@ function EditarRegistroCallCenterPage({
                   value={
                     form.ventanillaRegistroId
                   }
-                  onChange={(event) =>
+                  onChange={(event) => {
                     updateForm(
                       'ventanillaRegistroId',
                       event.target.value,
-                    )
-                  }
+                    );
+                  }}
                   fullWidth
                   disabled={
-                    form.origenRegistro
-                    !== 'VENTANILLA'
+                    !recordEditable
+                    || form.origenRegistro
+                      !== 'VENTANILLA'
                   }
                 />
 
@@ -1505,7 +1674,7 @@ function EditarRegistroCallCenterPage({
                   }
                   fullWidth
                   disabled
-                  helperText="La activación e inactivación se gestiona desde el listado."
+                  helperText="La activación o inactivación se gestiona desde el listado."
                 />
               </Box>
 
@@ -1518,7 +1687,7 @@ function EditarRegistroCallCenterPage({
                 multiline
                 minRows={3}
                 disabled
-                helperText="La observación operativa no se modifica desde la edición administrativa."
+                helperText="La observación operativa no se modifica desde esta pantalla."
               />
             </Box>
           </CardContent>
@@ -1527,17 +1696,26 @@ function EditarRegistroCallCenterPage({
         <Paper
           variant="outlined"
           sx={{
-            p: 2,
+            p:
+              2,
           }}
         >
           <Box
             sx={{
-              display: 'flex',
+              display:
+                'flex',
+
               flexDirection: {
-                xs: 'column',
-                sm: 'row',
+                xs:
+                  'column',
+
+                sm:
+                  'row',
               },
-              gap: 1,
+
+              gap:
+                1,
+
               justifyContent:
                 'flex-end',
             }}
@@ -1547,10 +1725,8 @@ function EditarRegistroCallCenterPage({
               startIcon={
                 <ArrowBackIcon />
               }
-              onClick={() =>
-                router.push(
-                  '/dashboard/callcenter/registros',
-                )
+              onClick={
+                goBackToCase
               }
             >
               Cancelar
@@ -1561,15 +1737,16 @@ function EditarRegistroCallCenterPage({
               startIcon={
                 <SaveIcon />
               }
-              onClick={() =>
-                void save()
-              }
+              onClick={() => {
+                void save();
+              }}
               disabled={
                 saving
                 || checkingCase
                 || Boolean(
                   existingOpenCase,
                 )
+                || !recordEditable
               }
             >
               {saving
@@ -1589,8 +1766,11 @@ function EditarRegistroCallCenterPage({
           closeSnackbar
         }
         anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right',
+          vertical:
+            'bottom',
+
+          horizontal:
+            'right',
         }}
       >
         <Alert
@@ -1601,7 +1781,8 @@ function EditarRegistroCallCenterPage({
             closeSnackbar
           }
           sx={{
-            width: '100%',
+            width:
+              '100%',
           }}
         >
           {snackbar.message}

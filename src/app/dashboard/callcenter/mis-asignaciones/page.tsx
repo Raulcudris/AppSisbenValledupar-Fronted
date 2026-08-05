@@ -15,6 +15,7 @@ import ReplayIcon from '@mui/icons-material/Replay';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import SearchIcon from '@mui/icons-material/Search';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+
 import {
   Alert,
   Avatar,
@@ -38,21 +39,25 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import {
   actualizarCallCenterResultadoVisita,
   getMisCallCenterVisitas,
 } from '@/services/callcenter-workflow.service';
-import {
+
+import type {
   CallCenterEstadoVisita,
   CallCenterVisitaResponse,
   CallCenterVisitaResultadoRequest,
 } from '@/types/callcenter-workflow.types';
 
-/**
- * Color permitido para chips de estado.
- */
 type ChipColor =
   | 'default'
   | 'primary'
@@ -62,12 +67,6 @@ type ChipColor =
   | 'success'
   | 'warning';
 
-/**
- * Estado local de filtros de visitas.
- *
- * Se separan los filtros escritos en pantalla de los filtros aplicados,
- * para evitar consultas automáticas mientras el usuario escribe.
- */
 type VisitaFilterState = {
   q: string;
   estadoVisita: string;
@@ -76,9 +75,6 @@ type VisitaFilterState = {
   fechaHasta: string;
 };
 
-/**
- * Estados permitidos para actualizar visitas desde frontend.
- */
 const ESTADOS_VISITA: CallCenterEstadoVisita[] = [
   'REALIZADA',
   'NO_ATENDIDA',
@@ -86,9 +82,6 @@ const ESTADOS_VISITA: CallCenterEstadoVisita[] = [
   'CANCELADA',
 ];
 
-/**
- * Opciones de filtro para el estado operativo de la visita.
- */
 const ESTADOS_VISITA_FILTRO = [
   'PENDIENTE',
   'PROGRAMADA',
@@ -98,9 +91,6 @@ const ESTADOS_VISITA_FILTRO = [
   'CANCELADA',
 ];
 
-/**
- * Filtros iniciales de consulta.
- */
 const initialFilters: VisitaFilterState = {
   q: '',
   estadoVisita: 'TODOS',
@@ -109,9 +99,6 @@ const initialFilters: VisitaFilterState = {
   fechaHasta: '',
 };
 
-/**
- * Estado inicial del formulario de resultado de visita.
- */
 const initialResultadoForm: CallCenterVisitaResultadoRequest = {
   estadoVisita: 'REALIZADA',
   fechaVisitaReal: null,
@@ -122,43 +109,112 @@ const initialResultadoForm: CallCenterVisitaResultadoRequest = {
   observacionEncuestador: '',
 };
 
-/**
- * Página de mis asignaciones de visitas para encuestadores.
- *
- * Esta vista pertenece al flujo del FUNCIONARIO_ENCUESTADOR.
- * Permite consultar visitas asignadas, filtrar resultados y registrar
- * el resultado operativo de campo cuando la visita está abierta.
- */
 export default function PageMisAsignacionesCallCenter() {
-  const [items, setItems] = useState<CallCenterVisitaResponse[]>([]);
-  const [selected, setSelected] = useState<CallCenterVisitaResponse | null>(null);
-  const [form, setForm] = useState<CallCenterVisitaResultadoRequest>(initialResultadoForm);
+  const [
+    items,
+    setItems,
+  ] = useState<CallCenterVisitaResponse[]>([]);
 
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(10);
-  const [total, setTotal] = useState(0);
+  const [
+    selected,
+    setSelected,
+  ] = useState<CallCenterVisitaResponse | null>(
+    null,
+  );
 
-  const [searchText, setSearchText] = useState('');
-  const [estadoVisitaFiltro, setEstadoVisitaFiltro] = useState('TODOS');
-  const [condicionFiltro, setCondicionFiltro] = useState('TODAS');
-  const [fechaDesde, setFechaDesde] = useState('');
-  const [fechaHasta, setFechaHasta] = useState('');
-  const [appliedFilters, setAppliedFilters] = useState<VisitaFilterState>(initialFilters);
+  const [
+    form,
+    setForm,
+  ] = useState<CallCenterVisitaResultadoRequest>(
+    initialResultadoForm,
+  );
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [
+    page,
+    setPage,
+  ] = useState(0);
 
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [
+    size,
+    setSize,
+  ] = useState(10);
+
+  const [
+    total,
+    setTotal,
+  ] = useState(0);
+
+  const [
+    searchText,
+    setSearchText,
+  ] = useState('');
+
+  const [
+    estadoVisitaFiltro,
+    setEstadoVisitaFiltro,
+  ] = useState('TODOS');
+
+  const [
+    condicionFiltro,
+    setCondicionFiltro,
+  ] = useState('TODAS');
+
+  const [
+    fechaDesde,
+    setFechaDesde,
+  ] = useState('');
+
+  const [
+    fechaHasta,
+    setFechaHasta,
+  ] = useState('');
+
+  const [
+    appliedFilters,
+    setAppliedFilters,
+  ] = useState<VisitaFilterState>(
+    initialFilters,
+  );
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] = useState<string | null>(null);
+
+  const [
+    resultError,
+    setResultError,
+  ] = useState<string | null>(null);
+
+  const [
+    success,
+    setSuccess,
+  ] = useState<string | null>(null);
 
   const visitasFinalizadas = useMemo(
-    () => items.filter((item) => isVisitLocked(item)).length,
-    [items]
+    () =>
+      items.filter(
+        (item) => isVisitLocked(item),
+      ).length,
+    [items],
   );
 
   const visitasAbiertas = useMemo(
-    () => items.filter((item) => !isVisitLocked(item)).length,
-    [items]
+    () =>
+      items.filter(
+        (item) => !isVisitLocked(item),
+      ).length,
+    [items],
   );
 
   const hasActiveFilters = Boolean(
@@ -166,67 +222,93 @@ export default function PageMisAsignacionesCallCenter() {
     || estadoVisitaFiltro !== 'TODOS'
     || condicionFiltro !== 'TODAS'
     || fechaDesde
-    || fechaHasta
+    || fechaHasta,
   );
 
-  /**
-   * Carga las visitas asignadas al encuestador autenticado aplicando filtros desde backend.
-   *
-   * @param nextPage página solicitada.
-   * @param nextSize tamaño de página.
-   * @param filters filtros aplicados.
-   */
+  const resultImpact = getResultadoImpacto(
+    form.estadoVisita,
+  );
+
   async function loadData(
     nextPage = page,
     nextSize = size,
-    filters = appliedFilters
+    filters = appliedFilters,
   ) {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await getMisCallCenterVisitas(nextPage, nextSize, {
-        q: filters.q,
-        estadoVisita: filters.estadoVisita,
-        condicion: filters.condicion,
-        fechaDesde: filters.fechaDesde,
-        fechaHasta: filters.fechaHasta,
-      });
+      const response =
+        await getMisCallCenterVisitas(
+          nextPage,
+          nextSize,
+          {
+            q: filters.q,
+            estadoVisita:
+              filters.estadoVisita,
+            condicion:
+              filters.condicion,
+            fechaDesde:
+              filters.fechaDesde,
+            fechaHasta:
+              filters.fechaHasta,
+          },
+        );
 
-      const content = getPageContent<CallCenterVisitaResponse>(response);
+      const content =
+        getPageContent<CallCenterVisitaResponse>(
+          response,
+        );
 
       setItems(content);
-      setTotal(getTotalElements(response, content.length));
+
+      setTotal(
+        getTotalElements(
+          response,
+          content.length,
+        ),
+      );
     } catch (exception) {
-      setError(getErrorMessage(exception, 'No fue posible cargar las asignaciones.'));
+      setError(
+        getErrorMessage(
+          exception,
+          'No fue posible cargar las asignaciones.',
+        ),
+      );
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadData(page, size, appliedFilters);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, size, appliedFilters]);
+    void loadData(
+      page,
+      size,
+      appliedFilters,
+    );
 
-  /**
-   * Refresca manualmente las visitas asignadas usando los últimos filtros aplicados.
-   */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    page,
+    size,
+    appliedFilters,
+  ]);
+
   function refresh() {
-    loadData(page, size, appliedFilters);
+    void loadData(
+      page,
+      size,
+      appliedFilters,
+    );
   }
 
-  /**
-   * Ejecuta la búsqueda con los filtros seleccionados.
-   *
-   * No se consulta automáticamente mientras el usuario escribe; la búsqueda
-   * se ejecuta únicamente al pulsar el botón Buscar.
-   */
   function handleSearch() {
     const nextFilters: VisitaFilterState = {
-      q: searchText,
-      estadoVisita: estadoVisitaFiltro,
-      condicion: condicionFiltro,
+      q: searchText.trim(),
+      estadoVisita:
+        estadoVisitaFiltro,
+      condicion:
+        condicionFiltro,
       fechaDesde,
       fechaHasta,
     };
@@ -235,9 +317,6 @@ export default function PageMisAsignacionesCallCenter() {
     setAppliedFilters(nextFilters);
   }
 
-  /**
-   * Limpia todos los filtros visuales y vuelve a consultar las visitas sin filtros.
-   */
   function clearFilters() {
     setSearchText('');
     setEstadoVisitaFiltro('TODOS');
@@ -248,94 +327,155 @@ export default function PageMisAsignacionesCallCenter() {
     setAppliedFilters(initialFilters);
   }
 
-  /**
-   * Abre el formulario para registrar el resultado de la visita.
-   *
-   * @param item visita seleccionada.
-   */
-  function handleOpenResultado(item: CallCenterVisitaResponse) {
+  function handleOpenResultado(
+    item: CallCenterVisitaResponse,
+  ) {
     if (isVisitLocked(item)) {
-      setError('Esta visita ya está finalizada o pertenece a un caso cerrado/cancelado.');
+      setError(
+        'Esta visita ya está finalizada o pertenece a un caso cerrado o cancelado.',
+      );
+
       return;
     }
 
     const now = new Date();
 
     setSelected(item);
+    setResultError(null);
+
     setForm({
-      estadoVisita: 'REALIZADA',
-      fechaVisitaReal: now.toISOString().slice(0, 10),
-      horaVisitaReal: now.toTimeString().slice(0, 5),
-      encuestaRealizada: true,
-      motivoNoEncuesta: '',
-      fechaReprogramacion: null,
-      observacionEncuestador: '',
+      estadoVisita:
+        'REALIZADA',
+
+      fechaVisitaReal:
+        getLocalDateISO(now),
+
+      horaVisitaReal:
+        getLocalTime(now),
+
+      encuestaRealizada:
+        true,
+
+      motivoNoEncuesta:
+        '',
+
+      fechaReprogramacion:
+        null,
+
+      observacionEncuestador:
+        '',
     });
   }
 
-  /**
-   * Cierra el formulario de resultado.
-   */
   function handleCloseResultado() {
     setSelected(null);
+    setResultError(null);
     setForm(initialResultadoForm);
   }
 
-  /**
-   * Cambia el estado de visita seleccionado y ajusta campos relacionados.
-   *
-   * @param estado estado seleccionado.
-   */
-  function handleChangeEstadoVisita(estado: CallCenterEstadoVisita) {
+  function handleChangeEstadoVisita(
+    estado: CallCenterEstadoVisita,
+  ) {
+    setResultError(null);
+
     setForm((current) => ({
       ...current,
-      estadoVisita: estado,
-      encuestaRealizada: estado === 'REALIZADA',
-      motivoNoEncuesta: estado === 'REALIZADA' ? '' : current.motivoNoEncuesta,
-      fechaReprogramacion: estado === 'REPROGRAMADA' ? current.fechaReprogramacion : null,
+
+      estadoVisita:
+        estado,
+
+      encuestaRealizada:
+        estado === 'REALIZADA',
+
+      motivoNoEncuesta:
+        estado === 'REALIZADA'
+          ? ''
+          : current.motivoNoEncuesta,
+
+      fechaReprogramacion:
+        estado === 'REPROGRAMADA'
+          ? current.fechaReprogramacion
+          : null,
     }));
   }
 
-  /**
-   * Guarda el resultado operativo de la visita seleccionada.
-   */
   async function handleSaveResultado() {
     if (!selected) {
       return;
     }
 
+    setResultError(null);
+
     if (isVisitLocked(selected)) {
-      setError('Esta visita ya está finalizada o pertenece a un caso cerrado/cancelado.');
+      setResultError(
+        'Esta visita ya está finalizada o pertenece a un caso cerrado o cancelado.',
+      );
+
       return;
     }
 
-    if (form.estadoVisita !== 'REALIZADA' && !form.motivoNoEncuesta?.trim()) {
-      setError('Debes registrar el motivo cuando la visita no queda realizada.');
+    if (
+      form.estadoVisita !== 'REALIZADA'
+      && !form.motivoNoEncuesta?.trim()
+    ) {
+      setResultError(
+        'Debes registrar el motivo cuando la visita no queda realizada.',
+      );
+
       return;
     }
 
-    if (form.estadoVisita === 'REPROGRAMADA' && !form.fechaReprogramacion) {
-      setError('Debes seleccionar la fecha de reprogramación.');
+    if (
+      form.estadoVisita === 'REPROGRAMADA'
+      && !form.fechaReprogramacion
+    ) {
+      setResultError(
+        'Debes seleccionar la nueva fecha de la visita.',
+      );
+
       return;
     }
 
     try {
       setSaving(true);
-      setError(null);
 
-      await actualizarCallCenterResultadoVisita(selected.id, form);
+      await actualizarCallCenterResultadoVisita(
+        selected.id,
+        form,
+      );
 
-      setSuccess('Resultado de visita actualizado correctamente.');
+      const reprogramada =
+        form.estadoVisita === 'REPROGRAMADA';
+
       handleCloseResultado();
-      await loadData(page, size, appliedFilters);
+
+      setSuccess(
+        reprogramada
+          ? 'La visita fue reprogramada. El caso continúa abierto para registrar el nuevo resultado.'
+          : 'El resultado fue registrado correctamente y el caso quedó finalizado.',
+      );
+
+      await loadData(
+        page,
+        size,
+        appliedFilters,
+      );
     } catch (exception) {
-      setError(getErrorMessage(exception, 'No fue posible actualizar el resultado de visita.'));
+      setResultError(
+        getErrorMessage(
+          exception,
+          'No fue posible actualizar el resultado de la visita.',
+        ),
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading && items.length === 0) {
+  if (
+    loading
+    && items.length === 0
+  ) {
     return (
       <Box
         sx={{
@@ -344,11 +484,12 @@ export default function PageMisAsignacionesCallCenter() {
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'column',
+          gap: 2,
         }}
       >
         <CircularProgress />
 
-        <Typography component="p" sx={{ mt: 2 }}>
+        <Typography component="p">
           Cargando asignaciones...
         </Typography>
       </Box>
@@ -356,28 +497,60 @@ export default function PageMisAsignacionesCallCenter() {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+      }}
+    >
       <Box
         sx={{
           display: 'flex',
-          flexDirection: { xs: 'column', md: 'row' },
-          justifyContent: 'space-between',
-          gap: 1.5,
+
+          flexDirection: {
+            xs: 'column',
+            md: 'row',
+          },
+
+          alignItems: {
+            xs: 'stretch',
+            md: 'flex-start',
+          },
+
+          justifyContent:
+            'space-between',
+
+          gap:
+            1.5,
         }}
       >
         <Box>
-          <Typography component="h1" variant="h5" sx={{ fontWeight: 800 }}>
+          <Typography
+            component="h1"
+            variant="h5"
+            sx={{
+              fontWeight: 900,
+            }}
+          >
             Mis asignaciones
           </Typography>
 
-          <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-            Consulta tus visitas asignadas, filtra la información y registra el resultado de campo.
+          <Typography
+            component="p"
+            variant="body2"
+            color="text.secondary"
+          >
+            Consulta tus visitas y registra el resultado
+            del trabajo de campo.
           </Typography>
         </Box>
 
         <Button
           variant="outlined"
-          startIcon={<RefreshIcon />}
+          startIcon={
+            <RefreshIcon />
+          }
           onClick={refresh}
           disabled={loading}
         >
@@ -388,82 +561,189 @@ export default function PageMisAsignacionesCallCenter() {
       <Box
         sx={{
           display: 'grid',
+
           gridTemplateColumns: {
             xs: '1fr',
-            sm: '1fr 1fr',
-            lg: '1fr 1fr 1fr',
+            sm: 'repeat(3, 1fr)',
           },
-          gap: 1.5,
+
+          gap:
+            1.25,
         }}
       >
-        <SummaryCard label="Visitas cargadas" value={items.length} />
-        <SummaryCard label="Abiertas" value={visitasAbiertas} />
-        <SummaryCard label="Finalizadas" value={visitasFinalizadas} />
+        <SummaryCard
+          label="Visitas cargadas"
+          value={items.length}
+          color="primary.main"
+        />
+
+        <SummaryCard
+          label="Pendientes"
+          value={visitasAbiertas}
+          color="warning.main"
+        />
+
+        <SummaryCard
+          label="Finalizadas"
+          value={visitasFinalizadas}
+          color="success.main"
+        />
       </Box>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 2.5,
+        }}
+      >
+        <CardContent
+          sx={{
+            p: {
+              xs: 1.5,
+              md: 2,
+            },
+
+            '&:last-child': {
+              pb: {
+                xs: 1.5,
+                md: 2,
+              },
+            },
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1.5,
+            }}
+          >
             <Box>
-              <Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>
-                Filtros de búsqueda
+              <Typography
+                component="h2"
+                variant="subtitle1"
+                sx={{
+                  fontWeight: 900,
+                }}
+              >
+                Buscar asignaciones
               </Typography>
 
-              <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                Selecciona los filtros y pulsa Buscar para consultar en base de datos.
+              <Typography
+                component="p"
+                variant="caption"
+                color="text.secondary"
+              >
+                Selecciona los filtros y pulsa Buscar.
               </Typography>
             </Box>
 
             <Box
               sx={{
                 display: 'grid',
+
                 gridTemplateColumns: {
                   xs: '1fr',
                   md: '2fr 1fr 1fr',
-                  lg: '2fr 1fr 1fr 1fr 1fr',
+                  xl: '2fr 1fr 1fr 1fr 1fr',
                 },
-                gap: 1.5,
+
+                gap:
+                  1.25,
               }}
             >
               <TextField
-                label="Buscar"
+                label="Buscar ciudadano o caso"
                 value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Nombre, cédula, teléfono, barrio, dirección o caso"
+                onChange={(event) => {
+                  setSearchText(
+                    event.target.value,
+                  );
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    handleSearch();
+                  }
+                }}
+                placeholder="Nombre, cédula, teléfono, barrio o dirección"
+                size="small"
                 fullWidth
               />
 
-              <FormControl fullWidth>
-                <InputLabel>Estado visita</InputLabel>
+              <FormControl
+                size="small"
+                fullWidth
+              >
+                <InputLabel>
+                  Estado visita
+                </InputLabel>
 
                 <Select
                   label="Estado visita"
                   value={estadoVisitaFiltro}
-                  onChange={(event) => setEstadoVisitaFiltro(String(event.target.value))}
+                  onChange={(event) => {
+                    setEstadoVisitaFiltro(
+                      String(
+                        event.target.value,
+                      ),
+                    );
+                  }}
                 >
-                  <MenuItem value="TODOS">Todos</MenuItem>
+                  <MenuItem value="TODOS">
+                    Todos
+                  </MenuItem>
 
-                  {ESTADOS_VISITA_FILTRO.map((estado) => (
-                    <MenuItem key={estado} value={estado}>
-                      {formatLabel(estado)}
-                    </MenuItem>
-                  ))}
+                  {ESTADOS_VISITA_FILTRO.map(
+                    (estado) => (
+                      <MenuItem
+                        key={estado}
+                        value={estado}
+                      >
+                        {formatLabel(estado)}
+                      </MenuItem>
+                    ),
+                  )}
                 </Select>
               </FormControl>
 
-              <FormControl fullWidth>
-                <InputLabel>Condición</InputLabel>
+              <FormControl
+                size="small"
+                fullWidth
+              >
+                <InputLabel>
+                  Condición
+                </InputLabel>
 
                 <Select
                   label="Condición"
                   value={condicionFiltro}
-                  onChange={(event) => setCondicionFiltro(String(event.target.value))}
+                  onChange={(event) => {
+                    setCondicionFiltro(
+                      String(
+                        event.target.value,
+                      ),
+                    );
+                  }}
                 >
-                  <MenuItem value="TODAS">Todas</MenuItem>
-                  <MenuItem value="ABIERTAS">Abiertas</MenuItem>
-                  <MenuItem value="FINALIZADAS">Finalizadas</MenuItem>
-                  <MenuItem value="CERRADO">Caso cerrado</MenuItem>
-                  <MenuItem value="CANCELADO">Caso cancelado</MenuItem>
+                  <MenuItem value="TODAS">
+                    Todas
+                  </MenuItem>
+
+                  <MenuItem value="ABIERTAS">
+                    Abiertas
+                  </MenuItem>
+
+                  <MenuItem value="FINALIZADAS">
+                    Finalizadas
+                  </MenuItem>
+
+                  <MenuItem value="CERRADO">
+                    Caso cerrado
+                  </MenuItem>
+
+                  <MenuItem value="CANCELADO">
+                    Caso cancelado
+                  </MenuItem>
                 </Select>
               </FormControl>
 
@@ -471,8 +751,17 @@ export default function PageMisAsignacionesCallCenter() {
                 label="Fecha desde"
                 type="date"
                 value={fechaDesde}
-                onChange={(event) => setFechaDesde(event.target.value)}
-                slotProps={{ inputLabel: { shrink: true } }}
+                onChange={(event) => {
+                  setFechaDesde(
+                    event.target.value,
+                  );
+                }}
+                size="small"
+                slotProps={{
+                  inputLabel: {
+                    shrink: true,
+                  },
+                }}
                 fullWidth
               />
 
@@ -480,8 +769,17 @@ export default function PageMisAsignacionesCallCenter() {
                 label="Fecha hasta"
                 type="date"
                 value={fechaHasta}
-                onChange={(event) => setFechaHasta(event.target.value)}
-                slotProps={{ inputLabel: { shrink: true } }}
+                onChange={(event) => {
+                  setFechaHasta(
+                    event.target.value,
+                  );
+                }}
+                size="small"
+                slotProps={{
+                  inputLabel: {
+                    shrink: true,
+                  },
+                }}
                 fullWidth
               />
             </Box>
@@ -489,19 +787,46 @@ export default function PageMisAsignacionesCallCenter() {
             <Box
               sx={{
                 display: 'flex',
-                justifyContent: 'space-between',
-                flexDirection: { xs: 'column', sm: 'row' },
-                gap: 1,
+
+                flexDirection: {
+                  xs: 'column',
+                  sm: 'row',
+                },
+
+                alignItems: {
+                  xs: 'stretch',
+                  sm: 'center',
+                },
+
+                justifyContent:
+                  'space-between',
+
+                gap:
+                  1,
               }}
             >
-              <Typography component="p" variant="body2" sx={{ color: 'text.secondary' }}>
-                {loading ? 'Buscando visitas...' : `Mostrando ${items.length} de ${total} visita(s).`}
+              <Typography
+                component="p"
+                variant="caption"
+                color="text.secondary"
+              >
+                {loading
+                  ? 'Buscando visitas...'
+                  : `Mostrando ${items.length} de ${total} visita(s).`}
               </Typography>
 
-              <Box sx={{ display: 'flex', gap: 1, justifyContent: { xs: 'stretch', sm: 'flex-end' } }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 1,
+                }}
+              >
                 <Button
                   variant="contained"
-                  startIcon={<SearchIcon />}
+                  size="small"
+                  startIcon={
+                    <SearchIcon />
+                  }
                   onClick={handleSearch}
                   disabled={loading}
                 >
@@ -510,11 +835,17 @@ export default function PageMisAsignacionesCallCenter() {
 
                 <Button
                   variant="text"
-                  startIcon={<FilterAltOffIcon />}
+                  size="small"
+                  startIcon={
+                    <FilterAltOffIcon />
+                  }
                   onClick={clearFilters}
-                  disabled={!hasActiveFilters || loading}
+                  disabled={
+                    !hasActiveFilters
+                    || loading
+                  }
                 >
-                  Limpiar filtros
+                  Limpiar
                 </Button>
               </Box>
             </Box>
@@ -522,202 +853,497 @@ export default function PageMisAsignacionesCallCenter() {
         </CardContent>
       </Card>
 
-      {visitasFinalizadas > 0 && (
-        <Alert severity="info">
-          Tienes {visitasFinalizadas} visita(s) finalizada(s). Estas quedan solo para consulta y no permiten registrar
-          nuevos resultados.
+      {visitasFinalizadas > 0 ? (
+        <Alert
+          severity="info"
+          sx={{
+            py: 0.5,
+          }}
+        >
+          Las visitas finalizadas permanecen visibles para
+          consulta y no admiten nuevos resultados.
         </Alert>
-      )}
+      ) : null}
 
       {items.length === 0 ? (
         <Alert severity="info">
-          No tienes visitas asignadas con los filtros aplicados.
+          No tienes visitas asignadas con los filtros
+          aplicados.
         </Alert>
       ) : (
         <Box
           sx={{
             display: 'grid',
+
             gridTemplateColumns: {
               xs: '1fr',
-              md: '1fr 1fr',
-              xl: '1fr 1fr 1fr',
+              md: 'repeat(2, minmax(0, 1fr))',
+              lg: 'repeat(3, minmax(0, 1fr))',
+              xl: 'repeat(4, minmax(0, 1fr))',
             },
-            gap: 2,
-            opacity: loading ? 0.65 : 1,
-            pointerEvents: loading ? 'none' : 'auto',
+
+            gap:
+              1.5,
+
+            opacity:
+              loading
+                ? 0.6
+                : 1,
+
+            pointerEvents:
+              loading
+                ? 'none'
+                : 'auto',
+
+            transition:
+              'opacity 180ms ease',
           }}
         >
           {items.map((item) => {
-            const locked = isVisitLocked(item);
-            const estadoCaso = getOptionalStringField(item, 'estadoCaso');
-            const tipoSolicitud = getOptionalStringField(item, 'tipoSolicitudCallcenter');
+            const locked =
+              isVisitLocked(item);
+
+            const estadoCaso =
+              getOptionalStringField(
+                item,
+                'estadoCaso',
+              );
+
+            const tipoSolicitud =
+              getOptionalStringField(
+                item,
+                'tipoSolicitudCallcenter',
+              );
+
+            const reprogramada =
+              normalizeCode(
+                item.estadoVisita,
+              ) === 'REPROGRAMADA';
 
             return (
-              <Card key={item.id} variant="outlined" sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Card
+                key={item.id}
+                variant="outlined"
+                sx={{
+                  position: 'relative',
+                  overflow: 'hidden',
+                  height: '100%',
+                  borderRadius: 2.5,
+
+                  borderColor:
+                    locked
+                      ? 'divider'
+                      : getCardAccent(
+                        item.estadoVisita,
+                      ),
+
+                  backgroundColor:
+                    locked
+                      ? 'action.hover'
+                      : 'background.paper',
+
+                  transition: (
+                    theme,
+                  ) =>
+                    theme.transitions.create(
+                      [
+                        'transform',
+                        'box-shadow',
+                        'border-color',
+                      ],
+                      {
+                        duration:
+                          theme.transitions
+                            .duration.short,
+                      },
+                    ),
+
+                  '&:hover': {
+                    transform:
+                      'translateY(-4px)',
+
+                    boxShadow:
+                      locked
+                        ? 2
+                        : 6,
+
+                    borderColor:
+                      getCardAccent(
+                        item.estadoVisita,
+                      ),
+                  },
+                }}
+              >
+                <Box
+                  sx={{
+                    height: 4,
+                    bgcolor:
+                      getCardAccent(
+                        item.estadoVisita,
+                      ),
+                  }}
+                />
+
+                <CardContent
+                  sx={{
+                    p: 1.75,
+
+                    '&:last-child': {
+                      pb: 1.75,
+                    },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 1.25,
+                      height: '100%',
+                    }}
+                  >
                     <Box
                       sx={{
                         display: 'flex',
                         alignItems: 'flex-start',
-                        justifyContent: 'space-between',
-                        gap: 1.5,
+                        justifyContent:
+                          'space-between',
+                        gap: 1,
                       }}
                     >
-                      <Box sx={{ display: 'flex', gap: 1.2, alignItems: 'center' }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          minWidth: 0,
+                        }}
+                      >
                         <Avatar
                           sx={{
-                            width: 44,
-                            height: 44,
+                            width: 36,
+                            height: 36,
+                            bgcolor:
+                              getCardAccent(
+                                item.estadoVisita,
+                              ),
                           }}
                         >
                           {getVisitIcon(item)}
                         </Avatar>
 
-                        <Box>
-                          <Typography component="p" sx={{ fontWeight: 900 }}>
-                            {`Caso #${item.callCenterRegistroId}`}
+                        <Box
+                          sx={{
+                            minWidth: 0,
+                          }}
+                        >
+                          <Typography
+                            component="p"
+                            variant="subtitle2"
+                            sx={{
+                              fontWeight: 900,
+                            }}
+                          >
+                            Caso #{item.callCenterRegistroId}
                           </Typography>
 
-                          <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
-                            {`Visita #${item.id}`}
+                          <Typography
+                            component="p"
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            Visita #{item.id}
                           </Typography>
                         </Box>
                       </Box>
 
-                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-end',
+                          gap: 0.5,
+                        }}
+                      >
                         <Chip
                           size="small"
-                          label={formatLabel(item.estadoVisita)}
-                          color={getStatusColor(item.estadoVisita)}
+                          label={
+                            formatLabel(
+                              item.estadoVisita,
+                            )
+                          }
+                          color={
+                            getStatusColor(
+                              item.estadoVisita,
+                            )
+                          }
                         />
 
-                        {estadoCaso && (
+                        {estadoCaso ? (
                           <Chip
                             size="small"
-                            label={formatLabel(estadoCaso)}
-                            color={getStatusColor(estadoCaso)}
                             variant="outlined"
+                            label={
+                              formatLabel(
+                                estadoCaso,
+                              )
+                            }
+                            color={
+                              getStatusColor(
+                                estadoCaso,
+                              )
+                            }
                           />
-                        )}
+                        ) : null}
                       </Box>
                     </Box>
 
-                    {locked && (
-                      <Alert severity="success" sx={{ py: 0.5 }}>
-                        Esta visita se encuentra finalizada. Solo permite consulta.
-                      </Alert>
-                    )}
-
                     <Divider />
 
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      <Typography component="p" variant="subtitle2" sx={{ fontWeight: 900 }}>
-                        Datos del ciudadano
-                      </Typography>
-
-                      <InfoItem
-                        icon={<PersonIcon fontSize="small" />}
-                        label="Ciudadano"
-                        value={item.nombreCompleto ?? 'Sin nombre'}
-                      />
-
-                      <InfoItem
-                        icon={<AssignmentIndIcon fontSize="small" />}
-                        label="Cédula"
-                        value={item.cedulaSolicitante ?? 'Sin cédula'}
-                      />
-
-                      <InfoItem
-                        icon={<PhoneIcon fontSize="small" />}
-                        label="Teléfono"
-                        value={item.telefono ?? 'Sin teléfono'}
-                      />
-                    </Box>
-
-                    <Divider />
-
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      <Typography component="p" variant="subtitle2" sx={{ fontWeight: 900 }}>
-                        Ubicación y programación
-                      </Typography>
-
-                      <InfoItem
-                        icon={<LocationOnIcon fontSize="small" />}
-                        label="Dirección"
-                        value={item.direccionTexto ?? 'Sin dirección'}
-                      />
-
-                      <InfoItem
-                        icon={<HomeWorkIcon fontSize="small" />}
-                        label="Barrio / Comuna"
-                        value={`${item.barrioNombre ?? 'Sin barrio'} / ${item.comunaNombre ?? 'Sin comuna'}`}
-                      />
-
-                      <InfoItem
-                        icon={<CalendarMonthIcon fontSize="small" />}
-                        label="Fecha programada"
-                        value={`${item.fechaProgramada ?? 'Sin fecha'} ${item.horaProgramada ?? ''}`.trim()}
-                      />
-                    </Box>
-
-                    <Divider />
-
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      <Typography component="p" variant="subtitle2" sx={{ fontWeight: 900 }}>
-                        Resultado y solicitud
-                      </Typography>
-
-                      {tipoSolicitud && (
-                        <InfoItem
-                          label="Tipo de solicitud"
-                          value={formatLabel(tipoSolicitud)}
-                        />
-                      )}
-
-                      {item.fechaVisitaReal && (
-                        <InfoItem
-                          label="Fecha visita real"
-                          value={`${item.fechaVisitaReal} ${item.horaVisitaReal ?? ''}`.trim()}
-                        />
-                      )}
-
-                      {item.encuestaRealizada !== null && item.encuestaRealizada !== undefined && (
-                        <InfoItem
-                          label="Encuesta realizada"
-                          value={item.encuestaRealizada ? 'Sí' : 'No'}
-                        />
-                      )}
-
-                      {item.motivoNoEncuesta && (
-                        <InfoItem
-                          label="Motivo no encuesta"
-                          value={item.motivoNoEncuesta}
-                        />
-                      )}
-
-                      {item.observacionEncuestador && (
-                        <Box>
-                          <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
-                            Observación
-                          </Typography>
-
-                          <Typography component="p" variant="body2">
-                            {item.observacionEncuestador}
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-
-                    <Button
-                      variant={locked ? 'outlined' : 'contained'}
-                      startIcon={<FactCheckIcon />}
-                      onClick={() => handleOpenResultado(item)}
-                      disabled={locked}
-                      fullWidth
+                    <Box
+                      sx={{
+                        minWidth: 0,
+                      }}
                     >
-                      {locked ? 'Resultado registrado' : 'Registrar resultado'}
-                    </Button>
+                      <Typography
+                        component="p"
+                        variant="subtitle2"
+                        noWrap
+                        sx={{
+                          fontWeight: 900,
+                        }}
+                      >
+                        {item.nombreCompleto
+                          ?? 'Ciudadano sin nombre'}
+                      </Typography>
+
+                      <Typography
+                        component="p"
+                        variant="caption"
+                        color="text.secondary"
+                      >
+                        C.C.{' '}
+                        {item.cedulaSolicitante
+                          ?? 'Sin cédula'}
+                      </Typography>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns:
+                          'repeat(2, minmax(0, 1fr))',
+                        gap: 1,
+                      }}
+                    >
+                      <CompactInfoItem
+                        icon={
+                          <PhoneIcon fontSize="small" />
+                        }
+                        label="Teléfono"
+                        value={
+                          item.telefono
+                          ?? 'Sin teléfono'
+                        }
+                      />
+
+                      <CompactInfoItem
+                        icon={
+                          <CalendarMonthIcon fontSize="small" />
+                        }
+                        label="Programada"
+                        value={
+                          formatVisitSchedule(
+                            item.fechaProgramada,
+                            item.horaProgramada,
+                          )
+                        }
+                      />
+                    </Box>
+
+                    <CompactInfoItem
+                      icon={
+                        <LocationOnIcon fontSize="small" />
+                      }
+                      label="Dirección"
+                      value={
+                        item.direccionTexto
+                        ?? 'Sin dirección'
+                      }
+                    />
+
+                    <CompactInfoItem
+                      icon={
+                        <HomeWorkIcon fontSize="small" />
+                      }
+                      label="Barrio / comuna"
+                      value={
+                        `${item.barrioNombre ?? 'Sin barrio'} / ${item.comunaNombre ?? 'Sin comuna'}`
+                      }
+                    />
+
+                    {tipoSolicitud ? (
+                      <CompactInfoItem
+                        icon={
+                          <AssignmentIndIcon fontSize="small" />
+                        }
+                        label="Solicitud"
+                        value={
+                          formatLabel(
+                            tipoSolicitud,
+                          )
+                        }
+                      />
+                    ) : null}
+
+                    {item.fechaReprogramacion ? (
+                      <Alert
+                        severity="warning"
+                        icon={
+                          <ReplayIcon fontSize="small" />
+                        }
+                        sx={{
+                          py: 0.25,
+
+                          '& .MuiAlert-message': {
+                            py: 0.25,
+                          },
+                        }}
+                      >
+                        Nueva fecha:{' '}
+                        <strong>
+                          {formatDate(
+                            item.fechaReprogramacion,
+                          )}
+                        </strong>
+                      </Alert>
+                    ) : null}
+
+                    {item.motivoNoEncuesta ? (
+                      <Box
+                        sx={{
+                          p: 1,
+                          borderRadius: 1.5,
+                          bgcolor:
+                            'action.hover',
+                        }}
+                      >
+                        <Typography
+                          component="p"
+                          variant="caption"
+                          color="text.secondary"
+                        >
+                          Motivo registrado
+                        </Typography>
+
+                        <Typography
+                          component="p"
+                          variant="body2"
+                          sx={{
+                            fontWeight: 700,
+                            overflowWrap:
+                              'anywhere',
+                          }}
+                        >
+                          {item.motivoNoEncuesta}
+                        </Typography>
+                      </Box>
+                    ) : null}
+
+                    {item.observacionEncuestador ? (
+                      <Box
+                        sx={{
+                          p: 1,
+                          borderRadius: 1.5,
+                          bgcolor:
+                            'action.hover',
+                        }}
+                      >
+                        <Typography
+                          component="p"
+                          variant="caption"
+                          color="text.secondary"
+                        >
+                          Observación
+                        </Typography>
+
+                        <Typography
+                          component="p"
+                          variant="body2"
+                          sx={{
+                            display:
+                              '-webkit-box',
+
+                            WebkitBoxOrient:
+                              'vertical',
+
+                            WebkitLineClamp:
+                              2,
+
+                            overflow:
+                              'hidden',
+                          }}
+                        >
+                          {item.observacionEncuestador}
+                        </Typography>
+                      </Box>
+                    ) : null}
+
+                    <Box
+                      sx={{
+                        mt: 'auto',
+                        pt: 0.5,
+                      }}
+                    >
+                      <Button
+                        variant={
+                          locked
+                            ? 'outlined'
+                            : 'contained'
+                        }
+                        color={
+                          locked
+                            ? 'inherit'
+                            : 'primary'
+                        }
+                        startIcon={
+                          locked
+                            ? <CheckCircleIcon />
+                            : reprogramada
+                              ? <ReplayIcon />
+                              : <FactCheckIcon />
+                        }
+                        onClick={() => {
+                          handleOpenResultado(
+                            item,
+                          );
+                        }}
+                        disabled={locked}
+                        fullWidth
+                        size="small"
+                      >
+                        {locked
+                          ? 'Caso finalizado'
+                          : reprogramada
+                            ? 'Actualizar resultado'
+                            : 'Registrar resultado'}
+                      </Button>
+
+                      <Typography
+                        component="p"
+                        variant="caption"
+                        color="text.secondary"
+                        align="center"
+                        sx={{
+                          mt: 0.5,
+                        }}
+                      >
+                        {locked
+                          ? 'Solo disponible para consulta'
+                          : reprogramada
+                            ? 'Pendiente de la nueva visita'
+                            : 'Completa el resultado de campo'}
+                      </Typography>
+                    </Box>
                   </Box>
                 </CardContent>
               </Card>
@@ -731,117 +1357,329 @@ export default function PageMisAsignacionesCallCenter() {
         count={total}
         page={page}
         rowsPerPage={size}
-        onPageChange={(_, newPage) => {
+        onPageChange={(
+          _,
+          newPage,
+        ) => {
           setPage(newPage);
         }}
         onRowsPerPageChange={(event) => {
-          setSize(Number(event.target.value));
+          setSize(
+            Number(
+              event.target.value,
+            ),
+          );
+
           setPage(0);
         }}
-        rowsPerPageOptions={[10, 20, 50]}
+        rowsPerPageOptions={[
+          10,
+          20,
+          50,
+        ]}
         labelRowsPerPage="Filas"
+        labelDisplayedRows={({
+          from,
+          to,
+          count,
+        }) =>
+          `${from}-${to} de ${
+            count !== -1
+              ? count
+              : `más de ${to}`
+          }`
+        }
       />
 
-      <Dialog open={Boolean(selected)} onClose={handleCloseResultado} maxWidth="sm" fullWidth>
-        <DialogTitle>Registrar resultado de visita</DialogTitle>
+      <Dialog
+        open={Boolean(selected)}
+        onClose={() => {
+          if (!saving) {
+            handleCloseResultado();
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            pb: 1,
+          }}
+        >
+          <Typography
+            component="span"
+            variant="h6"
+            sx={{
+              fontWeight: 900,
+            }}
+          >
+            Registrar resultado de visita
+          </Typography>
 
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <FormControl fullWidth>
-              <InputLabel>Estado visita</InputLabel>
+          {selected ? (
+            <Typography
+              component="p"
+              variant="body2"
+              color="text.secondary"
+            >
+              Caso #{selected.callCenterRegistroId} ·{' '}
+              {selected.nombreCompleto
+                ?? 'Ciudadano sin nombre'}
+            </Typography>
+          ) : null}
+        </DialogTitle>
 
-              <Select
-                label="Estado visita"
-                value={form.estadoVisita}
-                onChange={(event) => {
-                  handleChangeEstadoVisita(event.target.value as CallCenterEstadoVisita);
+        <DialogContent dividers>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              mt: 0.5,
+            }}
+          >
+            {resultError ? (
+              <Alert severity="error">
+                {resultError}
+              </Alert>
+            ) : null}
+
+            <Alert
+              severity={
+                resultImpact.severity
+              }
+            >
+              <Typography
+                component="p"
+                variant="body2"
+                sx={{
+                  fontWeight: 900,
                 }}
               >
-                {ESTADOS_VISITA.map((estado) => (
-                  <MenuItem key={estado} value={estado}>
-                    {formatLabel(estado)}
-                  </MenuItem>
-                ))}
+                {resultImpact.title}
+              </Typography>
+
+              <Typography
+                component="p"
+                variant="caption"
+              >
+                {resultImpact.description}
+              </Typography>
+            </Alert>
+
+            <FormControl
+              size="small"
+              fullWidth
+            >
+              <InputLabel>
+                Resultado de la visita
+              </InputLabel>
+
+              <Select
+                label="Resultado de la visita"
+                value={form.estadoVisita}
+                onChange={(event) => {
+                  handleChangeEstadoVisita(
+                    event.target
+                      .value as CallCenterEstadoVisita,
+                  );
+                }}
+              >
+                {ESTADOS_VISITA.map(
+                  (estado) => (
+                    <MenuItem
+                      key={estado}
+                      value={estado}
+                    >
+                      {getResultadoOptionLabel(
+                        estado,
+                      )}
+                    </MenuItem>
+                  ),
+                )}
               </Select>
             </FormControl>
 
-            <TextField
-              label="Fecha visita real"
-              type="date"
-              value={form.fechaVisitaReal ?? ''}
-              onChange={(event) => setForm((current) => ({
-                ...current,
-                fechaVisitaReal: event.target.value || null,
-              }))}
-              slotProps={{ inputLabel: { shrink: true } }}
-              fullWidth
-            />
+            <Box
+              sx={{
+                display: 'grid',
 
-            <TextField
-              label="Hora visita real"
-              type="time"
-              value={form.horaVisitaReal ?? ''}
-              onChange={(event) => setForm((current) => ({
-                ...current,
-                horaVisitaReal: event.target.value || null,
-              }))}
-              slotProps={{ inputLabel: { shrink: true } }}
-              fullWidth
-            />
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: 'repeat(2, minmax(0, 1fr))',
+                },
 
-            {form.estadoVisita !== 'REALIZADA' && (
+                gap:
+                  1.5,
+              }}
+            >
               <TextField
-                label="Motivo no encuesta"
-                value={form.motivoNoEncuesta ?? ''}
-                onChange={(event) => setForm((current) => ({
-                  ...current,
-                  motivoNoEncuesta: event.target.value,
-                }))}
-                required
-                fullWidth
-              />
-            )}
-
-            {form.estadoVisita === 'REPROGRAMADA' && (
-              <TextField
-                label="Fecha reprogramación"
+                label="Fecha de la gestión"
                 type="date"
-                value={form.fechaReprogramacion ?? ''}
-                onChange={(event) => setForm((current) => ({
-                  ...current,
-                  fechaReprogramacion: event.target.value || null,
-                }))}
-                slotProps={{ inputLabel: { shrink: true } }}
-                required
+                value={
+                  form.fechaVisitaReal
+                  ?? ''
+                }
+                onChange={(event) => {
+                  setForm((current) => ({
+                    ...current,
+
+                    fechaVisitaReal:
+                      event.target.value
+                      || null,
+                  }));
+                }}
+                size="small"
+                slotProps={{
+                  inputLabel: {
+                    shrink: true,
+                  },
+                }}
                 fullWidth
               />
-            )}
+
+              <TextField
+                label="Hora de la gestión"
+                type="time"
+                value={
+                  form.horaVisitaReal
+                  ?? ''
+                }
+                onChange={(event) => {
+                  setForm((current) => ({
+                    ...current,
+
+                    horaVisitaReal:
+                      event.target.value
+                      || null,
+                  }));
+                }}
+                size="small"
+                slotProps={{
+                  inputLabel: {
+                    shrink: true,
+                  },
+                }}
+                fullWidth
+              />
+            </Box>
+
+            {form.estadoVisita !== 'REALIZADA' ? (
+              <TextField
+                label={
+                  form.estadoVisita === 'REPROGRAMADA'
+                    ? 'Motivo de la reprogramación'
+                    : form.estadoVisita === 'CANCELADA'
+                      ? 'Motivo de la cancelación'
+                      : 'Motivo de visita no atendida'
+                }
+                value={
+                  form.motivoNoEncuesta
+                  ?? ''
+                }
+                onChange={(event) => {
+                  setForm((current) => ({
+                    ...current,
+
+                    motivoNoEncuesta:
+                      event.target.value,
+                  }));
+                }}
+                required
+                size="small"
+                helperText="Este campo es obligatorio para continuar."
+                fullWidth
+              />
+            ) : null}
+
+            {form.estadoVisita === 'REPROGRAMADA' ? (
+              <TextField
+                label="Nueva fecha de la visita"
+                type="date"
+                value={
+                  form.fechaReprogramacion
+                  ?? ''
+                }
+                onChange={(event) => {
+                  setForm((current) => ({
+                    ...current,
+
+                    fechaReprogramacion:
+                      event.target.value
+                      || null,
+                  }));
+                }}
+                size="small"
+                slotProps={{
+                  inputLabel: {
+                    shrink: true,
+                  },
+                }}
+                required
+                helperText="El caso permanecerá abierto para registrar el resultado de la nueva visita."
+                fullWidth
+              />
+            ) : null}
 
             <TextField
               label="Observación del encuestador"
-              value={form.observacionEncuestador ?? ''}
-              onChange={(event) => setForm((current) => ({
-                ...current,
-                observacionEncuestador: event.target.value,
-              }))}
+              value={
+                form.observacionEncuestador
+                ?? ''
+              }
+              onChange={(event) => {
+                setForm((current) => ({
+                  ...current,
+
+                  observacionEncuestador:
+                    event.target.value,
+                }));
+              }}
               multiline
               minRows={3}
+              size="small"
+              placeholder="Agrega información relevante del trabajo de campo."
               fullWidth
             />
           </Box>
         </DialogContent>
 
-        <DialogActions>
-          <Button onClick={handleCloseResultado}>
+        <DialogActions
+          sx={{
+            px: 3,
+            py: 2,
+          }}
+        >
+          <Button
+            onClick={
+              handleCloseResultado
+            }
+            disabled={saving}
+          >
             Cancelar
           </Button>
 
           <Button
             variant="contained"
-            disabled={saving || (selected ? isVisitLocked(selected) : false)}
-            onClick={handleSaveResultado}
+            disabled={
+              saving
+              || (
+                selected
+                  ? isVisitLocked(
+                    selected,
+                  )
+                  : false
+              )
+            }
+            onClick={() => {
+              void handleSaveResultado();
+            }}
           >
-            Guardar resultado
+            {saving
+              ? 'Guardando...'
+              : getResultadoSaveLabel(
+                form.estadoVisita,
+              )}
           </Button>
         </DialogActions>
       </Dialog>
@@ -849,19 +1687,41 @@ export default function PageMisAsignacionesCallCenter() {
       <Snackbar
         open={Boolean(error)}
         autoHideDuration={6000}
-        onClose={() => setError(null)}
+        onClose={() => {
+          setError(null);
+        }}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
       >
-        <Alert severity="error" onClose={() => setError(null)}>
+        <Alert
+          severity="error"
+          onClose={() => {
+            setError(null);
+          }}
+        >
           {error}
         </Alert>
       </Snackbar>
 
       <Snackbar
         open={Boolean(success)}
-        autoHideDuration={4000}
-        onClose={() => setSuccess(null)}
+        autoHideDuration={5000}
+        onClose={() => {
+          setSuccess(null);
+        }}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
       >
-        <Alert severity="success" onClose={() => setSuccess(null)}>
+        <Alert
+          severity="success"
+          onClose={() => {
+            setSuccess(null);
+          }}
+        >
           {success}
         </Alert>
       </Snackbar>
@@ -869,18 +1729,65 @@ export default function PageMisAsignacionesCallCenter() {
   );
 }
 
-/**
- * Tarjeta breve para mostrar un indicador de resumen.
- */
-function SummaryCard({ label, value }: { label: string; value: number }) {
+function SummaryCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
-          {label}
-        </Typography>
+    <Card
+      variant="outlined"
+      sx={{
+        borderRadius: 2,
+      }}
+    >
+      <CardContent
+        sx={{
+          p: 1.5,
 
-        <Typography component="p" variant="h5" sx={{ fontWeight: 900 }}>
+          '&:last-child': {
+            pb: 1.5,
+          },
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+          }}
+        >
+          <Typography
+            component="p"
+            variant="caption"
+            color="text.secondary"
+          >
+            {label}
+          </Typography>
+
+          <Box
+            sx={{
+              width: 9,
+              height: 9,
+              borderRadius: '50%',
+              bgcolor: color,
+            }}
+          />
+        </Box>
+
+        <Typography
+          component="p"
+          variant="h6"
+          sx={{
+            fontWeight: 900,
+            lineHeight: 1.2,
+          }}
+        >
           {value}
         </Typography>
       </CardContent>
@@ -888,10 +1795,7 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-/**
- * Componente auxiliar para mostrar un dato breve de la visita.
- */
-function InfoItem({
+function CompactInfoItem({
   label,
   value,
   icon,
@@ -901,19 +1805,55 @@ function InfoItem({
   icon?: ReactNode;
 }) {
   return (
-    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-      {icon && (
-        <Box sx={{ color: 'text.secondary', mt: 0.2 }}>
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 0.75,
+        minWidth: 0,
+      }}
+    >
+      {icon ? (
+        <Box
+          sx={{
+            color: 'text.secondary',
+            display: 'flex',
+            mt: 0.1,
+
+            '& svg': {
+              fontSize: 17,
+            },
+          }}
+        >
           {icon}
         </Box>
-      )}
+      ) : null}
 
-      <Box>
-        <Typography component="p" variant="caption" sx={{ color: 'text.secondary' }}>
+      <Box
+        sx={{
+          minWidth: 0,
+        }}
+      >
+        <Typography
+          component="p"
+          variant="caption"
+          color="text.secondary"
+          sx={{
+            lineHeight: 1.2,
+          }}
+        >
           {label}
         </Typography>
 
-        <Typography component="p" variant="body2" sx={{ fontWeight: 700 }}>
+        <Typography
+          component="p"
+          variant="body2"
+          sx={{
+            fontWeight: 700,
+            lineHeight: 1.35,
+            overflowWrap: 'anywhere',
+          }}
+        >
           {value}
         </Typography>
       </Box>
@@ -921,132 +1861,262 @@ function InfoItem({
   );
 }
 
-/**
- * Extrae el contenido de una respuesta paginada de forma tolerante.
- *
- * @param pageResponse respuesta recibida.
- * @returns arreglo de registros.
- */
-function getPageContent<T>(pageResponse: unknown): T[] {
-  const data = pageResponse as {
-    content?: T[];
-    items?: T[];
-    data?: T[];
-  };
+function getPageContent<T>(
+  pageResponse: unknown,
+): T[] {
+  const data =
+    pageResponse as {
+      content?: T[];
+      items?: T[];
+      data?: T[];
+    };
 
-  return data.content ?? data.items ?? data.data ?? [];
+  return (
+    data.content
+    ?? data.items
+    ?? data.data
+    ?? []
+  );
 }
 
-/**
- * Obtiene el total de registros de una respuesta paginada.
- *
- * @param pageResponse respuesta recibida.
- * @param fallback total alternativo.
- * @returns total de registros.
- */
-function getTotalElements(pageResponse: unknown, fallback: number) {
-  const data = pageResponse as {
-    totalElements?: number;
-    totalItems?: number;
-    total?: number;
-    totalRecords?: number;
-  };
+function getTotalElements(
+  pageResponse: unknown,
+  fallback: number,
+) {
+  const data =
+    pageResponse as {
+      totalElements?: number;
+      totalItems?: number;
+      total?: number;
+      totalRecords?: number;
+    };
 
-  return data.totalElements ?? data.totalItems ?? data.total ?? data.totalRecords ?? fallback;
+  return (
+    data.totalElements
+    ?? data.totalItems
+    ?? data.total
+    ?? data.totalRecords
+    ?? fallback
+  );
 }
 
-/**
- * Obtiene un campo string opcional desde una respuesta dinámica.
- *
- * @param item registro de visita.
- * @param field campo opcional.
- * @returns valor string o null.
- */
-function getOptionalStringField(item: CallCenterVisitaResponse, field: string) {
-  const data = item as unknown as Record<string, unknown>;
-  const value = data[field];
+function getOptionalStringField(
+  item: CallCenterVisitaResponse,
+  field: string,
+) {
+  const data =
+    item as unknown as Record<
+      string,
+      unknown
+    >;
 
-  if (typeof value !== 'string') {
+  const value =
+    data[field];
+
+  if (
+    typeof value !== 'string'
+  ) {
     return null;
   }
 
-  const trimmed = value.trim();
+  const trimmed =
+    value.trim();
 
-  return trimmed.length > 0 ? trimmed : null;
+  return trimmed.length > 0
+    ? trimmed
+    : null;
 }
 
-/**
- * Valida si una visita debe bloquear nuevas actualizaciones de resultado.
- *
- * @param item visita evaluada.
- * @returns true si la visita está finalizada o el caso está cerrado/cancelado.
- */
-function isVisitLocked(item: CallCenterVisitaResponse) {
-  const estadoVisita = normalizeCode(item.estadoVisita);
-  const estadoCaso = normalizeCode(getOptionalStringField(item, 'estadoCaso'));
+function isVisitLocked(
+  item: CallCenterVisitaResponse,
+) {
+  const estadoVisita =
+    normalizeCode(
+      item.estadoVisita,
+    );
 
-  return item.encuestaRealizada === true
+  const estadoCaso =
+    normalizeCode(
+      getOptionalStringField(
+        item,
+        'estadoCaso',
+      ),
+    );
+
+  return (
+    item.encuestaRealizada === true
     || estadoVisita === 'REALIZADA'
+    || estadoVisita === 'NO_ATENDIDA'
     || estadoVisita === 'CANCELADA'
     || estadoCaso === 'CERRADO'
-    || estadoCaso === 'CANCELADO';
+    || estadoCaso === 'CANCELADO'
+  );
 }
 
-/**
- * Obtiene un icono representativo según el estado de la visita.
- *
- * @param item visita evaluada.
- * @returns icono visual.
- */
-function getVisitIcon(item: CallCenterVisitaResponse) {
-  const estadoVisita = normalizeCode(item.estadoVisita);
+function getVisitIcon(
+  item: CallCenterVisitaResponse,
+) {
+  const estadoVisita =
+    normalizeCode(
+      item.estadoVisita,
+    );
 
-  if (item.encuestaRealizada === true || estadoVisita === 'REALIZADA') {
-    return <CheckCircleIcon />;
-  }
-
-  if (estadoVisita === 'CANCELADA') {
-    return <CancelIcon />;
-  }
-
-  if (estadoVisita === 'REPROGRAMADA') {
-    return <ReplayIcon />;
-  }
-
-  if (estadoVisita === 'NO_ATENDIDA') {
-    return <WarningAmberIcon />;
-  }
-
-  if (estadoVisita === 'PROGRAMADA') {
-    return <ScheduleIcon />;
-  }
-
-  return <AssignmentIndIcon />;
-}
-
-/**
- * Normaliza códigos técnicos para comparaciones internas.
- *
- * @param value valor recibido.
- * @returns código normalizado.
- */
-function normalizeCode(value?: string | number | null) {
-  return String(value ?? '').trim().toUpperCase();
-}
-
-/**
- * Obtiene un mensaje de error legible.
- *
- * @param exception excepción recibida.
- * @param fallback mensaje por defecto.
- * @returns mensaje de error.
- */
-function getErrorMessage(exception: unknown, fallback: string) {
   if (
-    exception &&
-    typeof exception === 'object' &&
-    'message' in exception &&
-    typeof exception.message === 'string'
+    item.encuestaRealizada === true
+    || estadoVisita === 'REALIZADA'
+  ) {
+    return (
+      <CheckCircleIcon fontSize="small" />
+    );
+  }
+
+  if (
+    estadoVisita === 'CANCELADA'
+  ) {
+    return (
+      <CancelIcon fontSize="small" />
+    );
+  }
+
+  if (
+    estadoVisita === 'REPROGRAMADA'
+  ) {
+    return (
+      <ReplayIcon fontSize="small" />
+    );
+  }
+
+  if (
+    estadoVisita === 'NO_ATENDIDA'
+  ) {
+    return (
+      <WarningAmberIcon fontSize="small" />
+    );
+  }
+
+  if (
+    estadoVisita === 'PROGRAMADA'
+  ) {
+    return (
+      <ScheduleIcon fontSize="small" />
+    );
+  }
+
+  return (
+    <AssignmentIndIcon fontSize="small" />
+  );
+}
+
+function getResultadoImpacto(
+  estado: CallCenterEstadoVisita,
+) {
+  if (estado === 'REALIZADA') {
+    return {
+      severity: 'success' as const,
+      title: 'La encuesta fue realizada',
+      description:
+        'Al guardar, la visita y el caso quedarán finalizados.',
+    };
+  }
+
+  if (estado === 'NO_ATENDIDA') {
+    return {
+      severity: 'warning' as const,
+      title: 'La visita no fue atendida',
+      description:
+        'Debes registrar el motivo. Al guardar, el caso quedará finalizado.',
+    };
+  }
+
+  if (estado === 'CANCELADA') {
+    return {
+      severity: 'error' as const,
+      title: 'La visita será cancelada',
+      description:
+        'Debes registrar el motivo. Al guardar, el caso quedará cancelado y finalizado.',
+    };
+  }
+
+  return {
+    severity: 'info' as const,
+    title: 'La visita será reprogramada',
+    description:
+      'Debes seleccionar una nueva fecha. El caso continuará abierto.',
+  };
+}
+
+function getResultadoOptionLabel(
+  estado: CallCenterEstadoVisita,
+) {
+  if (estado === 'REALIZADA') {
+    return 'Realizada — finaliza el caso';
+  }
+
+  if (estado === 'NO_ATENDIDA') {
+    return 'No atendida — finaliza el caso';
+  }
+
+  if (estado === 'CANCELADA') {
+    return 'Cancelada — cancela el caso';
+  }
+
+  return 'Reprogramada — mantiene el caso abierto';
+}
+
+function getResultadoSaveLabel(
+  estado: CallCenterEstadoVisita,
+) {
+  return estado === 'REPROGRAMADA'
+    ? 'Guardar reprogramación'
+    : 'Guardar y finalizar caso';
+}
+
+function getCardAccent(
+  value?: string | null,
+) {
+  const normalized =
+    normalizeCode(value);
+
+  if (normalized === 'REALIZADA') {
+    return 'success.main';
+  }
+
+  if (normalized === 'NO_ATENDIDA') {
+    return 'warning.main';
+  }
+
+  if (normalized === 'REPROGRAMADA') {
+    return 'info.main';
+  }
+
+  if (normalized === 'CANCELADA') {
+    return 'error.main';
+  }
+
+  if (normalized === 'PROGRAMADA') {
+    return 'primary.main';
+  }
+
+  return 'grey.500';
+}
+
+function normalizeCode(
+  value?: string | number | null,
+) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase();
+}
+
+function getErrorMessage(
+  exception: unknown,
+  fallback: string,
+) {
+  if (
+    exception
+    && typeof exception === 'object'
+    && 'message' in exception
+    && typeof exception.message === 'string'
   ) {
     return exception.message;
   }
@@ -1054,30 +2124,32 @@ function getErrorMessage(exception: unknown, fallback: string) {
   return fallback;
 }
 
-/**
- * Convierte códigos técnicos en etiquetas legibles.
- *
- * @param value código técnico.
- * @returns etiqueta visible.
- */
-function formatLabel(value?: string | null) {
-  return String(value ?? 'Sin estado')
+function formatLabel(
+  value?: string | null,
+) {
+  return String(
+    value ?? 'Sin estado',
+  )
     .split('_')
     .join(' ')
     .toLowerCase()
-    .replace(/^\w/, (letter) => letter.toUpperCase());
+    .replace(
+      /^\w/,
+      (letter) =>
+        letter.toUpperCase(),
+    );
 }
 
-/**
- * Define el color visual de los estados.
- *
- * @param value estado técnico.
- * @returns color del chip.
- */
-function getStatusColor(value?: string | null): ChipColor {
-  const normalized = String(value ?? '').toUpperCase();
+function getStatusColor(
+  value?: string | null,
+): ChipColor {
+  const normalized =
+    normalizeCode(value);
 
-  if (normalized.includes('REALIZADA') || normalized.includes('CERRADO')) {
+  if (
+    normalized.includes('REALIZADA')
+    || normalized.includes('CERRADO')
+  ) {
     return 'success';
   }
 
@@ -1089,13 +2161,96 @@ function getStatusColor(value?: string | null): ChipColor {
     return 'info';
   }
 
-  if (normalized.includes('REPROGRAMADA') || normalized.includes('NO_ATENDIDA')) {
+  if (
+    normalized.includes('REPROGRAMADA')
+    || normalized.includes('NO_ATENDIDA')
+  ) {
     return 'warning';
   }
 
-  if (normalized.includes('CANCELADA') || normalized.includes('CANCELADO')) {
+  if (
+    normalized.includes('CANCELADA')
+    || normalized.includes('CANCELADO')
+  ) {
     return 'error';
   }
 
   return 'default';
+}
+
+function getLocalDateISO(
+  date = new Date(),
+) {
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1,
+    ).padStart(2, '0');
+
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function getLocalTime(
+  date = new Date(),
+) {
+  const hours =
+    String(
+      date.getHours(),
+    ).padStart(2, '0');
+
+  const minutes =
+    String(
+      date.getMinutes(),
+    ).padStart(2, '0');
+
+  return `${hours}:${minutes}`;
+}
+
+function formatDate(
+  value?: string | null,
+) {
+  if (!value) {
+    return 'Sin fecha';
+  }
+
+  const parts =
+    value.split('-');
+
+  if (parts.length !== 3) {
+    return value;
+  }
+
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function formatTime(
+  value?: string | null,
+) {
+  if (!value) {
+    return '';
+  }
+
+  return value.slice(0, 5);
+}
+
+function formatVisitSchedule(
+  fecha?: string | null,
+  hora?: string | null,
+) {
+  const date =
+    formatDate(fecha);
+
+  const time =
+    formatTime(hora);
+
+  return time
+    ? `${date} · ${time}`
+    : date;
 }

@@ -112,6 +112,16 @@ export type CallCenterVisitaAsignacionRequest = {
   observacion?: string | null;
 };
 
+
+/**
+ * Solicitud para modificar la programación de una
+ * visita existente.
+ */
+export type CallCenterVisitaProgramacionRequest = {
+  encuestadorId: number;
+  fechaProgramada: string;
+  horaProgramada?: string | null;
+};
 /**
  * Solicitud para actualizar el resultado de una visita.
  *

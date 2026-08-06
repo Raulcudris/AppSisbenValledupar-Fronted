@@ -14,6 +14,10 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   InputAdornment,
   MenuItem,
   Paper,
@@ -25,7 +29,9 @@ import {
   Typography,
 } from '@mui/material';
 
-import { useRouter } from 'next/navigation';
+import {
+  useRouter,
+} from 'next/navigation';
 
 import {
   type RefObject,
@@ -43,12 +49,13 @@ import {
 } from '@/services/callcenter-registro-completo.service';
 
 import {
+  findAsignacionPendienteNuevaEncuesta,
+  findUltimoRegistroManualActivoPorCedula,
   findVentanillaByCedulaForCallCenter,
   getCallCenterBarriosOptions,
   getCallCenterEncuestadoresOptions,
   getMotivosNoContactoOptions,
   getMotivosNoDisposicionOptions,
-  searchCallCenter,
 } from '@/services/callcenter.service';
 
 import {
@@ -95,36 +102,75 @@ type FormState = {
   fechaLlamada: string;
   horaLlamada: string;
 
-  origenRegistro: CallCenterOrigenRegistro;
-  ventanillaRegistroId: string;
+  origenRegistro:
+    CallCenterOrigenRegistro;
+
+  ventanillaRegistroId:
+    string;
 
   tipoSolicitudCallcenter:
     | CallCenterTipoSolicitud
     | string;
 
-  cedulaSolicitante: string;
-  nombreCompleto: string;
-  telefono: string;
-  direccionTexto: string;
-  barrioId: string;
-  observacionCaso: string;
+  cedulaSolicitante:
+    string;
 
-  llamadaConectada: YesNoValue;
-  resultadoLlamada: string;
-  motivoNoContactoId: string;
-  motivoNoDisposicionId: string;
-  fechaReprogramacionLlamada: string;
-  horaReprogramacionLlamada: string;
-  observacionLlamada: string;
+  nombreCompleto:
+    string;
 
-  encuestadorId: string;
-  fechaProgramada: string;
-  horaProgramada: string;
-  observacionVisita: string;
+  telefono:
+    string;
 
-  fechaAplicacionInformada: string;
-  disposicionRecibirEncuesta: YesNoValue;
-  explicoInformanteCalificado: YesNoValue;
+  direccionTexto:
+    string;
+
+  barrioId:
+    string;
+
+  observacionCaso:
+    string;
+
+  llamadaConectada:
+    YesNoValue;
+
+  resultadoLlamada:
+    string;
+
+  motivoNoContactoId:
+    string;
+
+  motivoNoDisposicionId:
+    string;
+
+  fechaReprogramacionLlamada:
+    string;
+
+  horaReprogramacionLlamada:
+    string;
+
+  observacionLlamada:
+    string;
+
+  encuestadorId:
+    string;
+
+  fechaProgramada:
+    string;
+
+  horaProgramada:
+    string;
+
+  observacionVisita:
+    string;
+
+  fechaAplicacionInformada:
+    string;
+
+  disposicionRecibirEncuesta:
+    YesNoValue;
+
+  explicoInformanteCalificado:
+    YesNoValue;
 };
 
 type CallCenterRegistroCompletoFormProps = {
@@ -141,20 +187,32 @@ const STEPS = [
 
 const TIPOS_SOLICITUD = [
   {
-    value: 'NUEVA_ENCUESTA',
-    label: 'Nueva encuesta',
+    value:
+      'NUEVA_ENCUESTA',
+
+    label:
+      'Nueva encuesta',
   },
   {
-    value: 'INCLUSION',
-    label: 'Inclusión',
+    value:
+      'INCLUSION',
+
+    label:
+      'Inclusión',
   },
   {
-    value: 'VERIFICACION',
-    label: 'Verificación',
+    value:
+      'VERIFICACION',
+
+    label:
+      'Verificación',
   },
   {
-    value: 'OTRO',
-    label: 'Otro',
+    value:
+      'OTRO',
+
+    label:
+      'Otro',
   },
 ];
 
@@ -175,12 +233,18 @@ function getLocalDateISO(
   const month =
     String(
       date.getMonth() + 1,
-    ).padStart(2, '0');
+    ).padStart(
+      2,
+      '0',
+    );
 
   const day =
     String(
       date.getDate(),
-    ).padStart(2, '0');
+    ).padStart(
+      2,
+      '0',
+    );
 
   return `${year}-${month}-${day}`;
 }
@@ -191,17 +255,24 @@ function getLocalTime(
   const hours =
     String(
       date.getHours(),
-    ).padStart(2, '0');
+    ).padStart(
+      2,
+      '0',
+    );
 
   const minutes =
     String(
       date.getMinutes(),
-    ).padStart(2, '0');
+    ).padStart(
+      2,
+      '0',
+    );
 
   return `${hours}:${minutes}`;
 }
 
-function buildInitialForm(): FormState {
+function buildInitialForm():
+  FormState {
   const now =
     new Date();
 
@@ -286,14 +357,10 @@ function buildInitialForm(): FormState {
 function normalizeText(
   value?: string | null,
 ) {
-  return value?.trim() ?? '';
+  return value?.trim()
+    ?? '';
 }
 
-/**
- * Convierte nombres de personas a mayúsculas.
- *
- * No elimina espacios mientras el usuario escribe.
- */
 function toUppercasePersonName(
   value?: string | null,
 ) {
@@ -307,7 +374,9 @@ function toUppercasePersonName(
 function normalizeCode(
   value?: string | null,
 ) {
-  return String(value ?? '')
+  return String(
+    value ?? '',
+  )
     .trim()
     .toUpperCase();
 }
@@ -316,7 +385,9 @@ function normalizeOrigenRegistro(
   value?: string | null,
 ): CallCenterOrigenRegistro {
   const normalized =
-    normalizeCode(value);
+    normalizeCode(
+      value,
+    );
 
   if (
     normalized === 'VENTANILLA'
@@ -336,7 +407,9 @@ function normalizeOrigenRegistro(
 function removeVentanillaObservationParts(
   value?: string | null,
 ) {
-  return String(value ?? '')
+  return String(
+    value ?? '',
+  )
     .split('|')
     .map(
       (part) =>
@@ -359,14 +432,20 @@ function removeVentanillaObservationParts(
 function toOptionalNumber(
   value: string,
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return null;
   }
 
   const number =
-    Number(value);
+    Number(
+      value,
+    );
 
-  return Number.isFinite(number)
+  return Number.isFinite(
+    number,
+  )
     ? number
     : null;
 }
@@ -374,11 +453,15 @@ function toOptionalNumber(
 function toNullableBoolean(
   value: YesNoValue,
 ) {
-  if (value === 'SI') {
+  if (
+    value === 'SI'
+  ) {
     return true;
   }
 
-  if (value === 'NO') {
+  if (
+    value === 'NO'
+  ) {
     return false;
   }
 
@@ -388,43 +471,19 @@ function toNullableBoolean(
 function toYesNoValue(
   value?: boolean | null,
 ): YesNoValue {
-  if (value === true) {
+  if (
+    value === true
+  ) {
     return 'SI';
   }
 
-  if (value === false) {
+  if (
+    value === false
+  ) {
     return 'NO';
   }
 
   return '';
-}
-
-function getPageContent<T>(
-  page: unknown,
-): T[] {
-  const data =
-    page as {
-      content?: T[];
-      items?: T[];
-      data?: T[];
-    };
-
-  return (
-    data?.content
-    ?? data?.items
-    ?? data?.data
-    ?? []
-  );
-}
-
-function isPendingNewSurvey(
-  record: CallCenterResponse,
-) {
-  return (
-    record.activo !== false
-    && record.solicitoNuevaEncuesta === true
-    && record.encuestaRealizada !== true
-  );
 }
 
 function isEditableRecord(
@@ -443,8 +502,11 @@ function isEditableRecord(
 }
 
 function ventanillaToForm(
-  record: VentanillaCallCenterResponse,
-  current: FormState,
+  record:
+    VentanillaCallCenterResponse,
+
+  current:
+    FormState,
 ): FormState {
   const manualObservation =
     removeVentanillaObservationParts(
@@ -458,7 +520,9 @@ function ventanillaToForm(
       'VENTANILLA',
 
     ventanillaRegistroId:
-      String(record.id),
+      String(
+        record.id,
+      ),
 
     cedulaSolicitante:
       normalizeText(
@@ -485,7 +549,9 @@ function ventanillaToForm(
 
     barrioId:
       record.barrioId
-        ? String(record.barrioId)
+        ? String(
+          record.barrioId,
+        )
         : '',
 
     observacionCaso: [
@@ -517,7 +583,8 @@ function ventanillaToForm(
 }
 
 function registroCompletoToForm(
-  data: CallCenterRegistroCompletoResponse,
+  data:
+    CallCenterRegistroCompletoResponse,
 ): FormState {
   const {
     registro,
@@ -542,7 +609,8 @@ function registroCompletoToForm(
       ),
 
     ventanillaRegistroId:
-      registro.ventanillaRegistroId == null
+      registro.ventanillaRegistroId
+        == null
         ? ''
         : String(
           registro.ventanillaRegistroId,
@@ -570,7 +638,8 @@ function registroCompletoToForm(
       || '',
 
     barrioId:
-      registro.barrioId == null
+      registro.barrioId
+        == null
         ? ''
         : String(
           registro.barrioId,
@@ -590,14 +659,16 @@ function registroCompletoToForm(
       || '',
 
     motivoNoContactoId:
-      llamada.motivoNoContactoId == null
+      llamada.motivoNoContactoId
+        == null
         ? ''
         : String(
           llamada.motivoNoContactoId,
         ),
 
     motivoNoDisposicionId:
-      llamada.motivoNoDisposicionId == null
+      llamada.motivoNoDisposicionId
+        == null
         ? ''
         : String(
           llamada.motivoNoDisposicionId,
@@ -616,7 +687,8 @@ function registroCompletoToForm(
       || '',
 
     encuestadorId:
-      visita.encuestadorId == null
+      visita.encuestadorId
+        == null
         ? ''
         : String(
           visita.encuestadorId,
@@ -659,16 +731,32 @@ export default function CallCenterRegistroCompletoForm({
 
   const isEditMode =
     typeof registroId === 'number'
-    && Number.isSafeInteger(registroId)
+    && Number.isSafeInteger(
+      registroId,
+    )
     && registroId > 0;
 
   const cedulaInputRef =
-    useRef<HTMLInputElement>(null);
+    useRef<HTMLInputElement>(
+      null,
+    );
+
+  const duplicateValidationSequenceRef =
+    useRef(
+      0,
+    );
+
+  const citizenLookupSequenceRef =
+    useRef(
+      0,
+    );
 
   const [
     activeStep,
     setActiveStep,
-  ] = useState(0);
+  ] = useState(
+    0,
+  );
 
   const [
     form,
@@ -687,34 +775,46 @@ export default function CallCenterRegistroCompletoForm({
   const [
     barrios,
     setBarrios,
-  ] = useState<SelectOption[]>([]);
+  ] = useState<SelectOption[]>(
+    [],
+  );
 
   const [
     encuestadores,
     setEncuestadores,
-  ] = useState<SelectOption[]>([]);
+  ] = useState<SelectOption[]>(
+    [],
+  );
 
   const [
     motivosNoContacto,
     setMotivosNoContacto,
-  ] = useState<SelectOption[]>([]);
+  ] = useState<SelectOption[]>(
+    [],
+  );
 
   const [
     motivosNoDisposicion,
     setMotivosNoDisposicion,
-  ] = useState<SelectOption[]>([]);
+  ] = useState<SelectOption[]>(
+    [],
+  );
 
   const [
     resultadosLlamada,
     setResultadosLlamada,
   ] = useState<
     CallCenterResultadoLlamadaResponse[]
-  >([]);
+  >(
+    [],
+  );
 
   const [
     loadingCatalogs,
     setLoadingCatalogs,
-  ] = useState(true);
+  ] = useState(
+    true,
+  );
 
   const [
     loadingRecord,
@@ -731,25 +831,49 @@ export default function CallCenterRegistroCompletoForm({
   );
 
   const [
-    searchingVentanilla,
-    setSearchingVentanilla,
-  ] = useState(false);
+    searchingCitizen,
+    setSearchingCitizen,
+  ] = useState(
+    false,
+  );
 
   const [
     checkingDuplicate,
     setCheckingDuplicate,
-  ] = useState(false);
+  ] = useState(
+    false,
+  );
 
   const [
     saving,
     setSaving,
-  ] = useState(false);
+  ] = useState(
+    false,
+  );
 
   const [
     existingOpenCase,
     setExistingOpenCase,
-  ] = useState<CallCenterResponse | null>(
+  ] = useState<
+    CallCenterResponse | null
+  >(
     null,
+  );
+
+  const [
+    historicalManualRecord,
+    setHistoricalManualRecord,
+  ] = useState<
+    CallCenterResponse | null
+  >(
+    null,
+  );
+
+  const [
+    openPendingSurveyDialog,
+    setOpenPendingSurveyDialog,
+  ] = useState(
+    false,
   );
 
   const [
@@ -763,16 +887,23 @@ export default function CallCenterRegistroCompletoForm({
     snackbar,
     setSnackbar,
   ] = useState<SnackbarState>({
-    open: false,
-    message: '',
-    severity: 'success',
+    open:
+      false,
+
+    message:
+      '',
+
+    severity:
+      'success',
   });
 
   const isConnected =
-    form.llamadaConectada === 'SI';
+    form.llamadaConectada
+      === 'SI';
 
   const isNotConnected =
-    form.llamadaConectada === 'NO';
+    form.llamadaConectada
+      === 'NO';
 
   const resultCode =
     normalizeCode(
@@ -780,8 +911,8 @@ export default function CallCenterRegistroCompletoForm({
     );
 
   const requiresNoDisposition =
-    resultCode ===
-      'CONTACTADO_NO_ACEPTA_VISITA'
+    resultCode
+      === 'CONTACTADO_NO_ACEPTA_VISITA'
     || (
       isConnected
       && form.disposicionRecibirEncuesta
@@ -789,8 +920,8 @@ export default function CallCenterRegistroCompletoForm({
     );
 
   const requiresCallReprogramming =
-    resultCode ===
-      'REPROGRAMAR_LLAMADA';
+    resultCode
+      === 'REPROGRAMAR_LLAMADA';
 
   const availableResults =
     useMemo(
@@ -809,7 +940,9 @@ export default function CallCenterRegistroCompletoForm({
             );
           },
         ),
-      [resultadosLlamada],
+      [
+        resultadosLlamada,
+      ],
     );
 
   const selectedResult =
@@ -820,7 +953,8 @@ export default function CallCenterRegistroCompletoForm({
             normalizeCode(
               result.codigo,
             ) === resultCode,
-        ) ?? null,
+        )
+        ?? null,
       [
         resultadosLlamada,
         resultCode,
@@ -856,163 +990,301 @@ export default function CallCenterRegistroCompletoForm({
     );
 
   const loadCatalogs =
-    useCallback(async () => {
-      setLoadingCatalogs(true);
-
-      try {
-        const [
-          barriosData,
-          encuestadoresData,
-          noContactoData,
-          noDisposicionData,
-          resultadosData,
-        ] = await Promise.all([
-          getCallCenterBarriosOptions(),
-          getCallCenterEncuestadoresOptions(),
-          getMotivosNoContactoOptions(),
-          getMotivosNoDisposicionOptions(),
-          getCallCenterResultadosLlamada(),
-        ]);
-
-        setBarrios(
-          barriosData,
+    useCallback(
+      async () => {
+        setLoadingCatalogs(
+          true,
         );
 
-        setEncuestadores(
-          encuestadoresData,
+        try {
+          const [
+            barriosData,
+            encuestadoresData,
+            noContactoData,
+            noDisposicionData,
+            resultadosData,
+          ] = await Promise.all([
+            getCallCenterBarriosOptions(),
+            getCallCenterEncuestadoresOptions(),
+            getMotivosNoContactoOptions(),
+            getMotivosNoDisposicionOptions(),
+            getCallCenterResultadosLlamada(),
+          ]);
+
+          setBarrios(
+            barriosData,
+          );
+
+          setEncuestadores(
+            encuestadoresData,
+          );
+
+          setMotivosNoContacto(
+            noContactoData,
+          );
+
+          setMotivosNoDisposicion(
+            noDisposicionData,
+          );
+
+          setResultadosLlamada(
+            resultadosData,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'No fue posible cargar los catálogos del formulario.';
+
+          showMessage(
+            message,
+            'error',
+          );
+        } finally {
+          setLoadingCatalogs(
+            false,
+          );
+        }
+      },
+      [],
+    );
+
+  useEffect(
+    () => {
+      void loadCatalogs();
+    },
+    [
+      loadCatalogs,
+    ],
+  );
+
+  useEffect(
+    () => {
+      if (
+        !isEditMode
+        || typeof registroId
+          !== 'number'
+      ) {
+        setLoadingRecord(
+          false,
         );
 
-        setMotivosNoContacto(
-          noContactoData,
+        setRecordLoadError(
+          null,
         );
 
-        setMotivosNoDisposicion(
-          noDisposicionData,
-        );
-
-        setResultadosLlamada(
-          resultadosData,
-        );
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'No fue posible cargar los catálogos del formulario.';
-
-        showMessage(
-          message,
-          'error',
-        );
-      } finally {
-        setLoadingCatalogs(false);
+        return;
       }
-    }, []);
 
-  useEffect(() => {
-    void loadCatalogs();
-  }, [loadCatalogs]);
+      const currentRegistroId =
+        registroId;
 
-  useEffect(() => {
-    if (
-      !isEditMode
-      || typeof registroId !== 'number'
-    ) {
-      setLoadingRecord(false);
-      setRecordLoadError(null);
-      return;
-    }
+      let cancelled =
+        false;
 
-    const currentRegistroId =
-      registroId;
-
-    let cancelled =
-      false;
-
-    async function loadRecord() {
-      setLoadingRecord(true);
-      setRecordLoadError(null);
-      setValidationMessage(null);
-
-      try {
-        const data =
-          await getCallCenterRegistroCompleto(
-            currentRegistroId,
-          );
-
-        if (cancelled) {
-          return;
-        }
-
-        if (
-          !data?.registro
-          || !data?.llamada
-          || !data?.visita
-        ) {
-          throw new Error(
-            'El registro no contiene el caso, la llamada y la visita requeridos para la edición completa.',
-          );
-        }
-
-        if (
-          !isEditableRecord(
-            data.registro,
-          )
-        ) {
-          throw new Error(
-            'El caso está cerrado, cancelado o inactivo y permanece disponible únicamente para consulta.',
-          );
-        }
-
-        const nextForm =
-          registroCompletoToForm(
-            data,
-          );
-
-        setForm(
-          nextForm,
+      async function loadRecord() {
+        setLoadingRecord(
+          true,
         );
 
-        setOriginalForm({
-          ...nextForm,
-        });
+        setRecordLoadError(
+          null,
+        );
+
+        setValidationMessage(
+          null,
+        );
+
+        try {
+          const data =
+            await getCallCenterRegistroCompleto(
+              currentRegistroId,
+            );
+
+          if (
+            cancelled
+          ) {
+            return;
+          }
+
+          if (
+            !data?.registro
+            || !data?.llamada
+            || !data?.visita
+          ) {
+            throw new Error(
+              'El registro no contiene el caso, la llamada y la visita requeridos para la edición completa.',
+            );
+          }
+
+          if (
+            !isEditableRecord(
+              data.registro,
+            )
+          ) {
+            throw new Error(
+              'El caso está cerrado, cancelado o inactivo y permanece disponible únicamente para consulta.',
+            );
+          }
+
+          const nextForm =
+            registroCompletoToForm(
+              data,
+            );
+
+          duplicateValidationSequenceRef
+            .current +=
+            1;
+
+          citizenLookupSequenceRef
+            .current +=
+            1;
+
+          setForm(
+            nextForm,
+          );
+
+          setOriginalForm({
+            ...nextForm,
+          });
+
+          setExistingOpenCase(
+            null,
+          );
+
+          setHistoricalManualRecord(
+            null,
+          );
+
+          setOpenPendingSurveyDialog(
+            false,
+          );
+
+          setActiveStep(
+            0,
+          );
+        } catch (error) {
+          if (
+            cancelled
+          ) {
+            return;
+          }
+
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'No fue posible cargar el registro completo.';
+
+          setRecordLoadError(
+            message,
+          );
+        } finally {
+          if (
+            !cancelled
+          ) {
+            setLoadingRecord(
+              false,
+            );
+          }
+        }
+      }
+
+      void loadRecord();
+
+      return () => {
+        cancelled =
+          true;
+      };
+    },
+    [
+      isEditMode,
+      registroId,
+    ],
+  );
+
+  useEffect(
+    () => {
+      const cedula =
+        normalizeText(
+          form.cedulaSolicitante,
+        );
+
+      if (
+        !cedula
+      ) {
+        duplicateValidationSequenceRef
+          .current +=
+          1;
+
+        citizenLookupSequenceRef
+          .current +=
+          1;
+
+        setSearchingCitizen(
+          false,
+        );
+
+        setCheckingDuplicate(
+          false,
+        );
 
         setExistingOpenCase(
           null,
         );
 
-        setActiveStep(
-          0,
+        setHistoricalManualRecord(
+          null,
         );
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
 
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'No fue posible cargar el registro completo.';
-
-        setRecordLoadError(
-          message,
+        setOpenPendingSurveyDialog(
+          false,
         );
-      } finally {
-        if (!cancelled) {
-          setLoadingRecord(false);
-        }
+
+        return;
       }
-    }
 
-    void loadRecord();
+      const candidate:
+        FormState = {
+          ...form,
+        };
 
-    return () => {
-      cancelled =
-        true;
-    };
-  }, [
-    isEditMode,
-    registroId,
-  ]);
+      const timeoutId =
+        window.setTimeout(
+          () => {
+            if (
+              isEditMode
+            ) {
+              void checkPendingNewSurvey(
+                candidate,
+                false,
+              );
+
+              return;
+            }
+
+            void resolveCitizenByCedula(
+              candidate,
+              false,
+            );
+          },
+          700,
+        );
+
+      return () => {
+        window.clearTimeout(
+          timeoutId,
+        );
+      };
+
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [
+      form.cedulaSolicitante,
+      form.tipoSolicitudCallcenter,
+      form.ventanillaRegistroId,
+      isEditMode,
+    ],
+  );
 
   function showMessage(
     message: string,
@@ -1021,8 +1293,11 @@ export default function CallCenterRegistroCompletoForm({
       'success',
   ) {
     setSnackbar({
-      open: true,
+      open:
+        true,
+
       message,
+
       severity,
     });
   }
@@ -1031,7 +1306,9 @@ export default function CallCenterRegistroCompletoForm({
     setSnackbar(
       (current) => ({
         ...current,
-        open: false,
+
+        open:
+          false,
       }),
     );
   }
@@ -1057,8 +1334,11 @@ export default function CallCenterRegistroCompletoForm({
     window.requestAnimationFrame(
       () => {
         window.scrollTo({
-          top: 0,
-          behavior: 'smooth',
+          top:
+            0,
+
+          behavior:
+            'smooth',
         });
 
         cedulaInputRef
@@ -1069,227 +1349,217 @@ export default function CallCenterRegistroCompletoForm({
   }
 
   function updateForm(
-    field: keyof FormState,
-    value: string,
+    field:
+      keyof FormState,
+
+    value:
+      string,
   ) {
-    setValidationMessage(null);
+    setValidationMessage(
+      null,
+    );
+
+    const cedulaChanged =
+      field === 'cedulaSolicitante'
+      && normalizeText(
+        value,
+      ) !== normalizeText(
+        form.cedulaSolicitante,
+      );
+
+    const clearHistoricalData =
+      cedulaChanged
+      && Boolean(
+        historicalManualRecord,
+      );
 
     if (
       field === 'cedulaSolicitante'
       || field === 'tipoSolicitudCallcenter'
       || field === 'ventanillaRegistroId'
     ) {
-      setExistingOpenCase(null);
+      duplicateValidationSequenceRef
+        .current +=
+        1;
+
+      citizenLookupSequenceRef
+        .current +=
+        1;
+
+      setSearchingCitizen(
+        false,
+      );
+
+      setCheckingDuplicate(
+        false,
+      );
+
+      setExistingOpenCase(
+        null,
+      );
+
+      setOpenPendingSurveyDialog(
+        false,
+      );
     }
 
-    setForm((current) => {
-      const next: FormState = {
-        ...current,
-        [field]: value,
-      };
+    if (
+      cedulaChanged
+      || field === 'ventanillaRegistroId'
+    ) {
+      setHistoricalManualRecord(
+        null,
+      );
+    }
 
-      if (
-        field === 'cedulaSolicitante'
-        && current.ventanillaRegistroId
-        && normalizeText(value)
-          !== normalizeText(
+    setForm(
+      (current) => {
+        const next:
+          FormState = {
+            ...current,
+
+            [field]:
+              value,
+          };
+
+        if (
+          clearHistoricalData
+        ) {
+          next.nombreCompleto =
+            '';
+
+          next.telefono =
+            '';
+
+          next.direccionTexto =
+            '';
+
+          next.barrioId =
+            '';
+        }
+
+        if (
+          field === 'cedulaSolicitante'
+          && current.ventanillaRegistroId
+          && normalizeText(
+            value,
+          ) !== normalizeText(
             current.cedulaSolicitante,
           )
-      ) {
-        next.origenRegistro =
-          'MANUAL';
+        ) {
+          next.origenRegistro =
+            'MANUAL';
 
-        next.ventanillaRegistroId =
-          '';
-
-        next.nombreCompleto =
-          '';
-
-        next.telefono =
-          '';
-
-        next.direccionTexto =
-          '';
-
-        next.barrioId =
-          '';
-
-        next.observacionCaso =
-          removeVentanillaObservationParts(
-            current.observacionCaso,
-          );
-      }
-
-      if (
-        field === 'llamadaConectada'
-      ) {
-        if (value === 'SI') {
-          next.motivoNoContactoId =
-            '';
-        }
-
-        if (value === 'NO') {
-          next.motivoNoDisposicionId =
+          next.ventanillaRegistroId =
             '';
 
-          next.fechaAplicacionInformada =
+          next.nombreCompleto =
             '';
 
-          next.disposicionRecibirEncuesta =
+          next.telefono =
             '';
 
-          next.explicoInformanteCalificado =
+          next.direccionTexto =
             '';
-        }
-      }
 
-      if (
-        field === 'resultadoLlamada'
-        && normalizeCode(value)
-          !== 'REPROGRAMAR_LLAMADA'
-      ) {
-        next.fechaReprogramacionLlamada =
-          '';
+          next.barrioId =
+            '';
 
-        next.horaReprogramacionLlamada =
-          '';
-      }
-
-      return next;
-    });
-  }
-
-  async function searchPersonByCedula() {
-    if (searchingVentanilla) {
-      return;
-    }
-
-    const cedula =
-      normalizeText(
-        form.cedulaSolicitante,
-      );
-
-    if (!cedula) {
-      showMessage(
-        'Digita una cédula y presiona Enter.',
-        'warning',
-      );
-
-      return;
-    }
-
-    setSearchingVentanilla(true);
-    setValidationMessage(null);
-
-    try {
-      const record =
-        await findVentanillaByCedulaForCallCenter(
-          cedula,
-        );
-
-      if (!record) {
-        const hadVentanillaData =
-          Boolean(
-            form.ventanillaRegistroId,
-          )
-          || form.origenRegistro
-            === 'VENTANILLA';
-
-        const nextForm: FormState = {
-          ...form,
-
-          cedulaSolicitante:
-            cedula,
-
-          origenRegistro:
-            'MANUAL',
-
-          ventanillaRegistroId:
-            '',
-
-          nombreCompleto:
-            hadVentanillaData
-              ? ''
-              : form.nombreCompleto,
-
-          telefono:
-            hadVentanillaData
-              ? ''
-              : form.telefono,
-
-          direccionTexto:
-            hadVentanillaData
-              ? ''
-              : form.direccionTexto,
-
-          barrioId:
-            hadVentanillaData
-              ? ''
-              : form.barrioId,
-
-          observacionCaso:
+          next.observacionCaso =
             removeVentanillaObservationParts(
-              form.observacionCaso,
-            ),
-        };
+              current.observacionCaso,
+            );
+        }
 
-        setForm(nextForm);
+        if (
+          field === 'llamadaConectada'
+        ) {
+          if (
+            value === 'SI'
+          ) {
+            next.motivoNoContactoId =
+              '';
+          }
 
-        showMessage(
-          'La cédula no está registrada en Ventanilla. Completa los datos para continuar como registro manual.',
-          'info',
-        );
+          if (
+            value === 'NO'
+          ) {
+            next.motivoNoDisposicionId =
+              '';
 
-        await checkPendingNewSurvey(
-          nextForm,
-          false,
-        );
+            next.fechaAplicacionInformada =
+              '';
 
-        return;
-      }
+            next.disposicionRecibirEncuesta =
+              '';
 
-      const nextForm =
-        ventanillaToForm(
-          record,
-          form,
-        );
+            next.explicoInformanteCalificado =
+              '';
+          }
+        }
 
-      setForm(nextForm);
+        if (
+          field === 'resultadoLlamada'
+          && normalizeCode(
+            value,
+          ) !== 'REPROGRAMAR_LLAMADA'
+        ) {
+          next.fechaReprogramacionLlamada =
+            '';
 
-      showMessage(
-        'Ciudadano encontrado. Los datos fueron cargados desde Ventanilla.',
-        'success',
-      );
+          next.horaReprogramacionLlamada =
+            '';
+        }
 
-      await checkPendingNewSurvey(
-        nextForm,
-        true,
-      );
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'No fue posible consultar la cédula en Ventanilla.';
-
-      showMessage(
-        message,
-        'error',
-      );
-    } finally {
-      setSearchingVentanilla(false);
-    }
+        return next;
+      },
+    );
   }
 
   async function checkPendingNewSurvey(
-    candidate: FormState,
-    showWarning = true,
+    candidate:
+      FormState,
+
+    showWarning =
+      true,
   ) {
+    const validationSequence =
+      duplicateValidationSequenceRef
+        .current + 1;
+
+    duplicateValidationSequenceRef
+      .current =
+      validationSequence;
+
+    function isCurrentValidation() {
+      return (
+        duplicateValidationSequenceRef
+          .current
+        === validationSequence
+      );
+    }
+
     if (
       normalizeCode(
         candidate.tipoSolicitudCallcenter,
       ) !== 'NUEVA_ENCUESTA'
     ) {
-      setExistingOpenCase(null);
+      if (
+        isCurrentValidation()
+      ) {
+        setExistingOpenCase(
+          null,
+        );
+
+        setOpenPendingSurveyDialog(
+          false,
+        );
+
+        setCheckingDuplicate(
+          false,
+        );
+      }
+
       return null;
     }
 
@@ -1307,119 +1577,412 @@ export default function CallCenterRegistroCompletoForm({
       !cedula
       && !ventanillaRegistroId
     ) {
-      setExistingOpenCase(null);
+      if (
+        isCurrentValidation()
+      ) {
+        setExistingOpenCase(
+          null,
+        );
+
+        setOpenPendingSurveyDialog(
+          false,
+        );
+
+        setCheckingDuplicate(
+          false,
+        );
+      }
+
       return null;
     }
 
-    setCheckingDuplicate(true);
+    setCheckingDuplicate(
+      true,
+    );
 
     try {
-      if (ventanillaRegistroId) {
-        const response =
-          await searchCallCenter({
-            page: 0,
-            size: 20,
-            ventanillaRegistroId,
-            solicitoNuevaEncuesta:
-              true,
-            encuestaRealizada:
-              false,
-            activo:
-              true,
-          });
+      const found =
+        await findAsignacionPendienteNuevaEncuesta({
+          cedulaSolicitante:
+            cedula
+            || null,
 
-        const found =
-          getPageContent<CallCenterResponse>(
-            response,
-          ).find(
-            (record) =>
-              record.id !== registroId
-              && isPendingNewSurvey(
-                record,
-              ),
-          );
+          ventanillaRegistroId,
 
-        if (found) {
-          setExistingOpenCase(
-            found,
-          );
+          excludeId:
+            registroId
+            ?? null,
+        });
 
-          if (showWarning) {
-            showMessage(
-              `Ya existe otra nueva encuesta activa y pendiente para este registro de Ventanilla: caso #${found.id}.`,
-              'warning',
-            );
-          }
-
-          return found;
-        }
+      if (
+        !isCurrentValidation()
+      ) {
+        return null;
       }
 
-      if (cedula) {
-        const response =
-          await searchCallCenter({
-            page: 0,
-            size: 20,
+      setExistingOpenCase(
+        found,
+      );
 
-            cedulaSolicitante:
-              cedula,
+      setOpenPendingSurveyDialog(
+        Boolean(
+          found,
+        ),
+      );
 
-            solicitoNuevaEncuesta:
-              true,
+      if (
+        found
+        && showWarning
+      ) {
+        showMessage(
+          `El ciudadano ya tiene una encuesta pendiente en el caso #${found.id}. Debe finalizarla antes de registrar otra nueva encuesta.`,
+          'warning',
+        );
+      }
 
-            encuestaRealizada:
-              false,
-
-            activo:
-              true,
-          });
-
-        const found =
-          getPageContent<CallCenterResponse>(
-            response,
-          ).find(
-            (record) =>
-              record.id !== registroId
-              && isPendingNewSurvey(
-                record,
-              ),
-          );
-
+      return found;
+    } catch (error) {
+      if (
+        isCurrentValidation()
+      ) {
         setExistingOpenCase(
-          found ?? null,
+          null,
         );
 
-        if (
-          found
-          && showWarning
-        ) {
-          showMessage(
-            `Ya existe otra nueva encuesta activa y pendiente para esta cédula: caso #${found.id}.`,
-            'warning',
-          );
-        }
+        setOpenPendingSurveyDialog(
+          false,
+        );
 
-        return found ?? null;
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'No fue posible validar si el ciudadano tiene una encuesta pendiente.';
+
+        showMessage(
+          message,
+          'error',
+        );
       }
-
-      setExistingOpenCase(null);
-      return null;
-    } catch {
-      showMessage(
-        'No fue posible ejecutar la validación preventiva de duplicidad. El backend volverá a validarla al guardar.',
-        'info',
-      );
 
       return null;
     } finally {
-      setCheckingDuplicate(false);
+      if (
+        isCurrentValidation()
+      ) {
+        setCheckingDuplicate(
+          false,
+        );
+      }
     }
   }
 
-  function validateStep(
-    step: number,
+  async function resolveCitizenByCedula(
+    candidate:
+      FormState,
+
+    showMessages =
+      true,
   ) {
-    if (step === 0) {
+    const cedula =
+      normalizeText(
+        candidate.cedulaSolicitante,
+      );
+
+    if (
+      !cedula
+    ) {
+      return;
+    }
+
+    const lookupSequence =
+      citizenLookupSequenceRef
+        .current + 1;
+
+    citizenLookupSequenceRef
+      .current =
+      lookupSequence;
+
+    function isCurrentLookup() {
+      return (
+        citizenLookupSequenceRef
+          .current
+        === lookupSequence
+      );
+    }
+
+    setSearchingCitizen(
+      true,
+    );
+
+    setValidationMessage(
+      null,
+    );
+
+    try {
+      const pending =
+        await checkPendingNewSurvey(
+          candidate,
+          showMessages,
+        );
+
+      if (
+        !isCurrentLookup()
+      ) {
+        return;
+      }
+
+      if (
+        pending
+      ) {
+        setHistoricalManualRecord(
+          null,
+        );
+
+        return;
+      }
+
+      if (
+        candidate.ventanillaRegistroId
+      ) {
+        setHistoricalManualRecord(
+          null,
+        );
+
+        return;
+      }
+
+      const ventanillaRecord =
+        await findVentanillaByCedulaForCallCenter(
+          cedula,
+        );
+
+      if (
+        !isCurrentLookup()
+      ) {
+        return;
+      }
+
+      if (
+        ventanillaRecord
+      ) {
+        const nextForm =
+          ventanillaToForm(
+            ventanillaRecord,
+            candidate,
+          );
+
+        setHistoricalManualRecord(
+          null,
+        );
+
+        setForm(
+          nextForm,
+        );
+
+        if (
+          showMessages
+        ) {
+          showMessage(
+            'Ciudadano encontrado. Los datos fueron cargados desde Ventanilla.',
+            'success',
+          );
+        }
+
+        return;
+      }
+
+      const manualRecord =
+        await findUltimoRegistroManualActivoPorCedula(
+          cedula,
+          isEditMode
+            ? registroId
+              ?? null
+            : null,
+        );
+
+      if (
+        !isCurrentLookup()
+      ) {
+        return;
+      }
+
+      if (
+        manualRecord
+      ) {
+        setHistoricalManualRecord(
+          manualRecord,
+        );
+
+        setForm(
+          (current) => {
+            if (
+              normalizeText(
+                current.cedulaSolicitante,
+              ) !== cedula
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+
+              origenRegistro:
+                'MANUAL',
+
+              ventanillaRegistroId:
+                '',
+
+              nombreCompleto:
+                toUppercasePersonName(
+                  manualRecord.nombreCompleto,
+                ),
+
+              telefono:
+                normalizeText(
+                  manualRecord.telefono,
+                ),
+
+              direccionTexto:
+                normalizeText(
+                  manualRecord.direccionTexto,
+                ),
+
+              barrioId:
+                manualRecord.barrioId
+                  == null
+                  ? ''
+                  : String(
+                    manualRecord.barrioId,
+                  ),
+
+              observacionCaso:
+                removeVentanillaObservationParts(
+                  current.observacionCaso,
+                ),
+            };
+          },
+        );
+
+        if (
+          showMessages
+        ) {
+          showMessage(
+            `Se recuperaron los datos del último registro manual activo, caso #${manualRecord.id}. Puedes actualizarlos antes de continuar.`,
+            'success',
+          );
+        }
+
+        return;
+      }
+
+      setHistoricalManualRecord(
+        null,
+      );
+
+      setForm(
+        (current) => {
+          if (
+            normalizeText(
+              current.cedulaSolicitante,
+            ) !== cedula
+          ) {
+            return current;
+          }
+
+          return {
+            ...current,
+
+            origenRegistro:
+              'MANUAL',
+
+            ventanillaRegistroId:
+              '',
+
+            observacionCaso:
+              removeVentanillaObservationParts(
+                current.observacionCaso,
+              ),
+          };
+        },
+      );
+
+      if (
+        showMessages
+      ) {
+        showMessage(
+          'La cédula no tiene registros en Ventanilla ni antecedentes manuales activos. Completa los datos para continuar.',
+          'info',
+        );
+      }
+    } catch (error) {
+      if (
+        !isCurrentLookup()
+      ) {
+        return;
+      }
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No fue posible consultar los datos anteriores del ciudadano.';
+
+      showMessage(
+        message,
+        'error',
+      );
+    } finally {
+      if (
+        isCurrentLookup()
+      ) {
+        setSearchingCitizen(
+          false,
+        );
+      }
+    }
+  }
+
+  async function searchPersonByCedula() {
+    if (
+      searchingCitizen
+      || checkingDuplicate
+    ) {
+      return;
+    }
+
+    const cedula =
+      normalizeText(
+        form.cedulaSolicitante,
+      );
+
+    if (
+      !cedula
+    ) {
+      showMessage(
+        'Digita una cédula y presiona Enter.',
+        'warning',
+      );
+
+      return;
+    }
+
+    await resolveCitizenByCedula(
+      {
+        ...form,
+
+        cedulaSolicitante:
+          cedula,
+      },
+      true,
+    );
+  }
+
+  function validateStep(
+    step:
+      number,
+  ) {
+    if (
+      step === 0
+    ) {
       if (
         !normalizeText(
           form.cedulaSolicitante,
@@ -1453,33 +2016,46 @@ export default function CallCenterRegistroCompletoForm({
       }
 
       if (
-        form.origenRegistro === 'VENTANILLA'
+        form.origenRegistro
+          === 'VENTANILLA'
         && !form.ventanillaRegistroId
       ) {
         return 'La cédula debe estar vinculada a un registro válido de Ventanilla.';
       }
 
-      if (existingOpenCase) {
-        return 'Ya existe otra nueva encuesta activa y pendiente para este ciudadano.';
+      if (
+        existingOpenCase
+      ) {
+        return 'El ciudadano ya tiene una nueva encuesta activa y pendiente. Debe finalizarla antes de continuar.';
       }
 
       return '';
     }
 
-    if (step === 1) {
-      if (!form.fechaLlamada) {
+    if (
+      step === 1
+    ) {
+      if (
+        !form.fechaLlamada
+      ) {
         return 'La fecha de la llamada es obligatoria.';
       }
 
-      if (!form.horaLlamada) {
+      if (
+        !form.horaLlamada
+      ) {
         return 'La hora de la llamada es obligatoria.';
       }
 
-      if (!form.llamadaConectada) {
+      if (
+        !form.llamadaConectada
+      ) {
         return 'Indica si se logró conectar la llamada.';
       }
 
-      if (!form.resultadoLlamada) {
+      if (
+        !form.resultadoLlamada
+      ) {
         return 'Selecciona el resultado de la llamada.';
       }
 
@@ -1504,8 +2080,8 @@ export default function CallCenterRegistroCompletoForm({
       }
 
       if (
-        resultCode ===
-          'CONTACTADO_NO_ACEPTA_VISITA'
+        resultCode
+          === 'CONTACTADO_NO_ACEPTA_VISITA'
         && !form.motivoNoDisposicionId
       ) {
         return 'Selecciona el motivo de no disposición.';
@@ -1528,24 +2104,36 @@ export default function CallCenterRegistroCompletoForm({
       return '';
     }
 
-    if (step === 2) {
-      if (!form.encuestadorId) {
+    if (
+      step === 2
+    ) {
+      if (
+        !form.encuestadorId
+      ) {
         return 'Selecciona el encuestador.';
       }
 
-      if (!form.fechaProgramada) {
+      if (
+        !form.fechaProgramada
+      ) {
         return 'La fecha programada de la visita es obligatoria.';
       }
 
-      if (!form.horaProgramada) {
+      if (
+        !form.horaProgramada
+      ) {
         return 'La hora programada de la visita es obligatoria.';
       }
 
       return '';
     }
 
-    if (step === 3) {
-      if (!isConnected) {
+    if (
+      step === 3
+    ) {
+      if (
+        !isConnected
+      ) {
         return '';
       }
 
@@ -1595,7 +2183,9 @@ export default function CallCenterRegistroCompletoForm({
         activeStep,
       );
 
-    if (validation) {
+    if (
+      validation
+    ) {
       setValidationMessage(
         validation,
       );
@@ -1603,16 +2193,24 @@ export default function CallCenterRegistroCompletoForm({
       return;
     }
 
-    if (activeStep === 0) {
+    if (
+      activeStep === 0
+    ) {
       const existing =
         await checkPendingNewSurvey(
           form,
           true,
         );
 
-      if (existing) {
+      if (
+        existing
+      ) {
+        setOpenPendingSurveyDialog(
+          true,
+        );
+
         setValidationMessage(
-          'No es posible continuar porque existe otra nueva encuesta activa y pendiente.',
+          'No es posible continuar porque el ciudadano ya tiene otra nueva encuesta activa y pendiente.',
         );
 
         return;
@@ -1634,7 +2232,9 @@ export default function CallCenterRegistroCompletoForm({
       );
     }
 
-    setValidationMessage(null);
+    setValidationMessage(
+      null,
+    );
 
     setActiveStep(
       (current) =>
@@ -1646,7 +2246,9 @@ export default function CallCenterRegistroCompletoForm({
   }
 
   function handleBack() {
-    setValidationMessage(null);
+    setValidationMessage(
+      null,
+    );
 
     setActiveStep(
       (current) =>
@@ -1664,9 +2266,13 @@ export default function CallCenterRegistroCompletoForm({
       step += 1
     ) {
       const message =
-        validateStep(step);
+        validateStep(
+          step,
+        );
 
-      if (message) {
+      if (
+        message
+      ) {
         return {
           step,
           message,
@@ -1710,7 +2316,8 @@ export default function CallCenterRegistroCompletoForm({
         telefono:
           normalizeText(
             form.telefono,
-          ) || null,
+          )
+          || null,
 
         direccionTexto:
           normalizeText(
@@ -1728,7 +2335,8 @@ export default function CallCenterRegistroCompletoForm({
         observacion:
           normalizeText(
             form.observacionCaso,
-          ) || null,
+          )
+          || null,
       },
 
       llamada: {
@@ -1805,7 +2413,8 @@ export default function CallCenterRegistroCompletoForm({
         observacion:
           normalizeText(
             form.observacionLlamada,
-          ) || null,
+          )
+          || null,
       },
 
       visita: {
@@ -1823,7 +2432,8 @@ export default function CallCenterRegistroCompletoForm({
         observacion:
           normalizeText(
             form.observacionVisita,
-          ) || null,
+          )
+          || null,
       },
     };
   }
@@ -1832,7 +2442,9 @@ export default function CallCenterRegistroCompletoForm({
     const validation =
       validateCompleteForm();
 
-    if (validation) {
+    if (
+      validation
+    ) {
       setActiveStep(
         validation.step,
       );
@@ -1850,18 +2462,31 @@ export default function CallCenterRegistroCompletoForm({
         true,
       );
 
-    if (existing) {
-      setActiveStep(0);
+    if (
+      existing
+    ) {
+      setActiveStep(
+        0,
+      );
+
+      setOpenPendingSurveyDialog(
+        true,
+      );
 
       setValidationMessage(
-        'No es posible guardar porque existe otra nueva encuesta activa y pendiente.',
+        'No es posible guardar porque el ciudadano ya tiene otra nueva encuesta activa y pendiente.',
       );
 
       return;
     }
 
-    setSaving(true);
-    setValidationMessage(null);
+    setSaving(
+      true,
+    );
+
+    setValidationMessage(
+      null,
+    );
 
     try {
       const request =
@@ -1869,7 +2494,8 @@ export default function CallCenterRegistroCompletoForm({
 
       if (
         isEditMode
-        && typeof registroId === 'number'
+        && typeof registroId
+          === 'number'
       ) {
         const updated =
           await updateCallCenterRegistroCompleto(
@@ -1919,11 +2545,37 @@ export default function CallCenterRegistroCompletoForm({
         'error',
       );
     } finally {
-      setSaving(false);
+      setSaving(
+        false,
+      );
     }
   }
 
   function resetForm() {
+    duplicateValidationSequenceRef
+      .current +=
+      1;
+
+    citizenLookupSequenceRef
+      .current +=
+      1;
+
+    setCheckingDuplicate(
+      false,
+    );
+
+    setSearchingCitizen(
+      false,
+    );
+
+    setOpenPendingSurveyDialog(
+      false,
+    );
+
+    setHistoricalManualRecord(
+      null,
+    );
+
     if (
       isEditMode
       && originalForm
@@ -1932,9 +2584,17 @@ export default function CallCenterRegistroCompletoForm({
         ...originalForm,
       });
 
-      setActiveStep(0);
-      setExistingOpenCase(null);
-      setValidationMessage(null);
+      setActiveStep(
+        0,
+      );
+
+      setExistingOpenCase(
+        null,
+      );
+
+      setValidationMessage(
+        null,
+      );
 
       return;
     }
@@ -1943,15 +2603,25 @@ export default function CallCenterRegistroCompletoForm({
       buildInitialForm(),
     );
 
-    setActiveStep(0);
-    setExistingOpenCase(null);
-    setValidationMessage(null);
+    setActiveStep(
+      0,
+    );
+
+    setExistingOpenCase(
+      null,
+    );
+
+    setValidationMessage(
+      null,
+    );
   }
 
   function handleResetForm() {
     resetForm();
 
-    if (!isEditMode) {
+    if (
+      !isEditMode
+    ) {
       focusCedulaAndScrollTop();
     }
   }
@@ -1964,15 +2634,23 @@ export default function CallCenterRegistroCompletoForm({
       <Paper
         variant="outlined"
         sx={{
-          p: 4,
+          p:
+            4,
         }}
       >
         <Box
           sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 2,
+            display:
+              'flex',
+
+            flexDirection:
+              'column',
+
+            alignItems:
+              'center',
+
+            gap:
+              2,
           }}
         >
           <CircularProgress />
@@ -1996,16 +2674,24 @@ export default function CallCenterRegistroCompletoForm({
         variant="outlined"
         sx={{
           p: {
-            xs: 2,
-            md: 4,
+            xs:
+              2,
+
+            md:
+              4,
           },
         }}
       >
         <Box
           sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
+            display:
+              'flex',
+
+            flexDirection:
+              'column',
+
+            gap:
+              2,
           }}
         >
           <Alert severity="error">
@@ -2018,7 +2704,9 @@ export default function CallCenterRegistroCompletoForm({
               startIcon={
                 <ArrowBackIcon />
               }
-              onClick={goBack}
+              onClick={
+                goBack
+              }
             >
               Volver al caso
             </Button>
@@ -2031,29 +2719,42 @@ export default function CallCenterRegistroCompletoForm({
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2.5,
+        display:
+          'flex',
+
+        flexDirection:
+          'column',
+
+        gap:
+          2.5,
       }}
     >
       <Box
         sx={{
-          display: 'flex',
+          display:
+            'flex',
 
           flexDirection: {
-            xs: 'column',
-            md: 'row',
+            xs:
+              'column',
+
+            md:
+              'row',
           },
 
           justifyContent:
             'space-between',
 
           alignItems: {
-            xs: 'stretch',
-            md: 'flex-start',
+            xs:
+              'stretch',
+
+            md:
+              'flex-start',
           },
 
-          gap: 2,
+          gap:
+            2,
         }}
       >
         <Box>
@@ -2061,12 +2762,13 @@ export default function CallCenterRegistroCompletoForm({
             component="h1"
             variant="h5"
             sx={{
-              fontWeight: 900,
+              fontWeight:
+                900,
             }}
           >
-           {isEditMode
-            ? `Corregir registro completo #${registroId}`
-            : 'Registrar caso Call Center'}
+            {isEditMode
+              ? `Corregir registro completo #${registroId}`
+              : 'Registrar caso Call Center'}
           </Typography>
 
           <Typography
@@ -2074,22 +2776,27 @@ export default function CallCenterRegistroCompletoForm({
             variant="body2"
             color="text.secondary"
           >
-           {isEditMode
-            ? 'Corrige los datos existentes del ciudadano, la llamada inicial, las confirmaciones y la programación vigente.'
-            : 'Registra el ciudadano, la llamada y la programación de la visita en una sola operación.'}
+            {isEditMode
+              ? 'Corrige los datos existentes del ciudadano, la llamada inicial, las confirmaciones y la programación vigente.'
+              : 'Registra el ciudadano, la llamada y la programación de la visita en una sola operación.'}
           </Typography>
         </Box>
 
         <Box
           sx={{
-            display: 'flex',
+            display:
+              'flex',
 
             flexDirection: {
-              xs: 'column',
-              sm: 'row',
+              xs:
+                'column',
+
+              sm:
+                'row',
             },
 
-            gap: 1,
+            gap:
+              1,
           }}
         >
           <Button
@@ -2097,8 +2804,12 @@ export default function CallCenterRegistroCompletoForm({
             startIcon={
               <ArrowBackIcon />
             }
-            onClick={goBack}
-            disabled={saving}
+            onClick={
+              goBack
+            }
+            disabled={
+              saving
+            }
           >
             {isEditMode
               ? 'Volver al caso'
@@ -2113,7 +2824,9 @@ export default function CallCenterRegistroCompletoForm({
             onClick={
               handleResetForm
             }
-            disabled={saving}
+            disabled={
+              saving
+            }
           >
             {isEditMode
               ? 'Restaurar datos'
@@ -2138,20 +2851,30 @@ export default function CallCenterRegistroCompletoForm({
 
       <Box
         sx={{
-          overflowX: 'auto',
-          pb: 1,
+          overflowX:
+            'auto',
+
+          pb:
+            1,
         }}
       >
         <Stepper
-          activeStep={activeStep}
+          activeStep={
+            activeStep
+          }
           alternativeLabel
           sx={{
-            minWidth: 720,
+            minWidth:
+              720,
           }}
         >
           {STEPS.map(
             (label) => (
-              <Step key={label}>
+              <Step
+                key={
+                  label
+                }
+              >
                 <StepLabel>
                   {label}
                 </StepLabel>
@@ -2171,49 +2894,66 @@ export default function CallCenterRegistroCompletoForm({
         <CardContent
           sx={{
             p: {
-              xs: 2,
-              md: 3,
+              xs:
+                2,
+
+              md:
+                3,
             },
 
             '&:last-child': {
               pb: {
-                xs: 2,
-                md: 3,
+                xs:
+                  2,
+
+                md:
+                  3,
               },
             },
           }}
         >
           {activeStep === 0 ? (
             <StepCiudadano
-              form={form}
-              barrios={barrios}
+              form={
+                form
+              }
+              barrios={
+                barrios
+              }
+              historicalManualRecord={
+                historicalManualRecord
+              }
               existingOpenCase={
                 existingOpenCase
               }
               searching={
-                searchingVentanilla
+                searchingCitizen
                 || checkingDuplicate
               }
               cedulaInputRef={
                 cedulaInputRef
               }
-              onChange={updateForm}
+              onChange={
+                updateForm
+              }
               onSearch={
                 searchPersonByCedula
               }
               onOpenExistingCase={(
                 id,
-              ) =>
+              ) => {
                 router.push(
                   `/dashboard/callcenter/mis-registros/${id}`,
-                )
-              }
+                );
+              }}
             />
           ) : null}
 
           {activeStep === 1 ? (
             <StepLlamada
-              form={form}
+              form={
+                form
+              }
               resultados={
                 availableResults
               }
@@ -2243,7 +2983,9 @@ export default function CallCenterRegistroCompletoForm({
 
           {activeStep === 2 ? (
             <StepProgramacion
-              form={form}
+              form={
+                form
+              }
               encuestadores={
                 encuestadores
               }
@@ -2258,7 +3000,9 @@ export default function CallCenterRegistroCompletoForm({
 
           {activeStep === 3 ? (
             <StepConfirmaciones
-              form={form}
+              form={
+                form
+              }
               motivosNoDisposicion={
                 motivosNoDisposicion
               }
@@ -2273,7 +3017,9 @@ export default function CallCenterRegistroCompletoForm({
 
           {activeStep === 4 ? (
             <StepResumen
-              form={form}
+              form={
+                form
+              }
               isEditMode={
                 isEditMode
               }
@@ -2303,22 +3049,28 @@ export default function CallCenterRegistroCompletoForm({
       <Paper
         variant="outlined"
         sx={{
-          p: 2,
+          p:
+            2,
         }}
       >
         <Box
           sx={{
-            display: 'flex',
+            display:
+              'flex',
 
             flexDirection: {
-              xs: 'column',
-              sm: 'row',
+              xs:
+                'column',
+
+              sm:
+                'row',
             },
 
             justifyContent:
               'space-between',
 
-            gap: 1,
+            gap:
+              1,
           }}
         >
           <Button
@@ -2326,7 +3078,9 @@ export default function CallCenterRegistroCompletoForm({
             startIcon={
               <NavigateBeforeIcon />
             }
-            onClick={handleBack}
+            onClick={
+              handleBack
+            }
             disabled={
               activeStep === 0
               || saving
@@ -2342,15 +3096,22 @@ export default function CallCenterRegistroCompletoForm({
               endIcon={
                 <NavigateNextIcon />
               }
-              onClick={() =>
-                void handleNext()
-              }
+              onClick={() => {
+                void handleNext();
+              }}
               disabled={
                 saving
                 || checkingDuplicate
+                || searchingCitizen
+                || Boolean(
+                  existingOpenCase,
+                )
               }
             >
-              Continuar
+              {checkingDuplicate
+                || searchingCitizen
+                ? 'Validando...'
+                : 'Continuar'}
             </Button>
           ) : (
             <Button
@@ -2358,12 +3119,13 @@ export default function CallCenterRegistroCompletoForm({
               startIcon={
                 <SaveIcon />
               }
-              onClick={() =>
-                void save()
-              }
+              onClick={() => {
+                void save();
+              }}
               disabled={
                 saving
                 || checkingDuplicate
+                || searchingCitizen
                 || Boolean(
                   existingOpenCase,
                 )
@@ -2381,20 +3143,319 @@ export default function CallCenterRegistroCompletoForm({
         </Box>
       </Paper>
 
+      <Dialog
+        open={
+          openPendingSurveyDialog
+          && Boolean(
+            existingOpenCase,
+          )
+        }
+        onClose={(
+          _event,
+          reason,
+        ) => {
+          if (
+            reason === 'backdropClick'
+            || reason === 'escapeKeyDown'
+          ) {
+            return;
+          }
+
+          setOpenPendingSurveyDialog(
+            false,
+          );
+        }}
+        maxWidth="sm"
+        fullWidth
+        sx={{
+          '& .MuiBackdrop-root': {
+            backgroundColor:
+              'rgba(0, 0, 0, 0.76)',
+
+            backdropFilter:
+              'blur(3px)',
+          },
+
+          '& .MuiDialog-paper': {
+            borderRadius:
+              3,
+
+            borderTop:
+              '7px solid',
+
+            borderTopColor:
+              'warning.main',
+
+            boxShadow:
+              24,
+
+            mx:
+              2,
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            textAlign:
+              'center',
+
+            fontWeight:
+              900,
+
+            fontSize: {
+              xs:
+                '1.25rem',
+
+              sm:
+                '1.5rem',
+            },
+
+            color:
+              'warning.dark',
+
+            pt:
+              3,
+          }}
+        >
+          El ciudadano ya tiene una encuesta pendiente
+        </DialogTitle>
+
+        <DialogContent dividers>
+          <Box
+            sx={{
+              display:
+                'flex',
+
+              flexDirection:
+                'column',
+
+              gap:
+                2.5,
+            }}
+          >
+            <Alert
+              severity="warning"
+              sx={{
+                fontWeight:
+                  700,
+
+                '& .MuiAlert-message': {
+                  width:
+                    '100%',
+
+                  textAlign:
+                    'center',
+                },
+              }}
+            >
+              Debe finalizar el proceso existente antes de
+              registrar otra nueva encuesta.
+            </Alert>
+
+            <Typography
+              component="p"
+              variant="body1"
+              sx={{
+                textAlign:
+                  'center',
+              }}
+            >
+              La cédula{' '}
+              <strong>
+                {form.cedulaSolicitante}
+              </strong>{' '}
+              está relacionada con una nueva encuesta activa
+              que todavía no ha sido finalizada.
+            </Typography>
+
+            {existingOpenCase ? (
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: {
+                    xs:
+                      2,
+
+                    sm:
+                      3,
+                  },
+
+                  backgroundColor:
+                    'rgba(237, 108, 2, 0.06)',
+
+                  borderColor:
+                    'warning.main',
+                }}
+              >
+                <Box
+                  sx={{
+                    display:
+                      'grid',
+
+                    gridTemplateColumns: {
+                      xs:
+                        '1fr',
+
+                      sm:
+                        'repeat(2, minmax(0, 1fr))',
+                    },
+
+                    gap:
+                      2.5,
+                  }}
+                >
+                  <PendingCaseInfo
+                    label="Caso pendiente"
+                    value={
+                      `#${existingOpenCase.id}`
+                    }
+                  />
+
+                  <PendingCaseInfo
+                    label="Estado"
+                    value={
+                      formatLabel(
+                        existingOpenCase.estadoCaso
+                        || 'SIN_ESTADO',
+                      )
+                    }
+                  />
+
+                  <PendingCaseInfo
+                    label="Tipo de solicitud"
+                    value={
+                      formatLabel(
+                        existingOpenCase
+                          .tipoSolicitudCallcenter
+                        || 'NUEVA_ENCUESTA',
+                      )
+                    }
+                  />
+
+                  <PendingCaseInfo
+                    label="Encuesta realizada"
+                    value={
+                      existingOpenCase.encuestaRealizada
+                        ? 'Sí'
+                        : 'No'
+                    }
+                  />
+                </Box>
+              </Paper>
+            ) : null}
+
+            <Typography
+              component="p"
+              variant="body2"
+              color="text.secondary"
+              sx={{
+                textAlign:
+                  'center',
+              }}
+            >
+              Mientras este caso permanezca activo y la
+              encuesta no esté realizada, los botones
+              Continuar y Guardar estarán bloqueados.
+            </Typography>
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px:
+              3,
+
+            py:
+              2.5,
+
+            display:
+              'flex',
+
+            justifyContent:
+              'center',
+
+            flexWrap:
+              'wrap',
+
+            gap:
+              1,
+          }}
+        >
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setOpenPendingSurveyDialog(
+                false,
+              );
+
+              setActiveStep(
+                0,
+              );
+
+              window.requestAnimationFrame(
+                () => {
+                  cedulaInputRef
+                    .current
+                    ?.focus();
+
+                  cedulaInputRef
+                    .current
+                    ?.select();
+                },
+              );
+            }}
+          >
+            Cambiar cédula
+          </Button>
+
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={() => {
+              if (
+                !existingOpenCase
+              ) {
+                return;
+              }
+
+              router.push(
+                `/dashboard/callcenter/mis-registros/${existingOpenCase.id}`,
+              );
+            }}
+          >
+            Abrir caso pendiente
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={closeSnackbar}
+        open={
+          snackbar.open
+        }
+        autoHideDuration={
+          6000
+        }
+        onClose={
+          closeSnackbar
+        }
         anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right',
+          vertical:
+            'bottom',
+
+          horizontal:
+            'right',
         }}
       >
         <Alert
-          severity={snackbar.severity}
-          onClose={closeSnackbar}
+          severity={
+            snackbar.severity
+          }
+          onClose={
+            closeSnackbar
+          }
           sx={{
-            width: '100%',
+            width:
+              '100%',
           }}
         >
           {snackbar.message}
@@ -2404,38 +3465,97 @@ export default function CallCenterRegistroCompletoForm({
   );
 }
 
+function PendingCaseInfo({
+  label,
+  value,
+}: {
+  label:
+    string;
+
+  value:
+    string;
+}) {
+  return (
+    <Box
+      sx={{
+        textAlign:
+          'center',
+      }}
+    >
+      <Typography
+        component="p"
+        variant="caption"
+        color="text.secondary"
+      >
+        {label}
+      </Typography>
+
+      <Typography
+        component="p"
+        variant="h6"
+        sx={{
+          fontWeight:
+            900,
+
+          overflowWrap:
+            'anywhere',
+        }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
 type StepCommonProps = {
-  form: FormState;
+  form:
+    FormState;
 
   onChange:
     (
-      field: keyof FormState,
-      value: string,
+      field:
+        keyof FormState,
+
+      value:
+        string,
     ) => void;
 };
 
 type StepCiudadanoProps =
   StepCommonProps & {
-    barrios: SelectOption[];
+    barrios:
+      SelectOption[];
+
+    historicalManualRecord:
+      CallCenterResponse | null;
 
     existingOpenCase:
       CallCenterResponse | null;
 
-    searching: boolean;
+    searching:
+      boolean;
 
     cedulaInputRef:
-      RefObject<HTMLInputElement | null>;
+      RefObject<
+        HTMLInputElement | null
+      >;
 
     onSearch:
-      () => Promise<void> | void;
+      () =>
+        Promise<void>
+        | void;
 
     onOpenExistingCase:
-      (id: number) => void;
+      (
+        id:
+          number,
+      ) => void;
   };
 
 function StepCiudadano({
   form,
   barrios,
+  historicalManualRecord,
   existingOpenCase,
   searching,
   cedulaInputRef,
@@ -2451,9 +3571,14 @@ function StepCiudadano({
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2.5,
+        display:
+          'flex',
+
+        flexDirection:
+          'column',
+
+        gap:
+          2.5,
       }}
     >
       <Box>
@@ -2461,7 +3586,8 @@ function StepCiudadano({
           component="h2"
           variant="h6"
           sx={{
-            fontWeight: 900,
+            fontWeight:
+              900,
           }}
         >
           1. Ciudadano y solicitud
@@ -2472,23 +3598,28 @@ function StepCiudadano({
           variant="body2"
           color="text.secondary"
         >
-          Digita la cédula y presiona Enter. Si el ciudadano
-          existe en Ventanilla, sus datos se completarán
-          automáticamente. Si no existe, podrás continuar
-          como registro manual.
+          Digita la cédula. El sistema validará encuestas
+          pendientes, consultará Ventanilla y, cuando no exista
+          allí, recuperará los datos del último registro manual
+          activo.
         </Typography>
       </Box>
 
       <Box
         sx={{
-          display: 'grid',
+          display:
+            'grid',
 
           gridTemplateColumns: {
-            xs: '1fr',
-            md: 'repeat(2, minmax(0, 1fr))',
+            xs:
+              '1fr',
+
+            md:
+              'repeat(2, minmax(0, 1fr))',
           },
 
-          gap: 2,
+          gap:
+            2,
         }}
       >
         <TextField
@@ -2511,18 +3642,22 @@ function StepCiudadano({
             ) {
               event.preventDefault();
 
-              if (!searching) {
+              if (
+                !searching
+              ) {
                 void onSearch();
               }
             }
           }}
           required
           fullWidth
-          disabled={searching}
+          disabled={
+            searching
+          }
           helperText={
             searching
-              ? 'Consultando la cédula...'
-              : 'Presiona Enter para consultar en Ventanilla.'
+              ? 'Validando ciudadano y recuperando información...'
+              : 'La consulta se ejecuta automáticamente después de digitar la cédula.'
           }
           slotProps={{
             input: {
@@ -2537,7 +3672,9 @@ function StepCiudadano({
                   ? (
                     <InputAdornment position="end">
                       <CircularProgress
-                        size={20}
+                        size={
+                          20
+                        }
                       />
                     </InputAdornment>
                   )
@@ -2564,8 +3701,12 @@ function StepCiudadano({
           {TIPOS_SOLICITUD.map(
             (option) => (
               <MenuItem
-                key={option.value}
-                value={option.value}
+                key={
+                  option.value
+                }
+                value={
+                  option.value
+                }
               >
                 {option.label}
               </MenuItem>
@@ -2588,7 +3729,8 @@ function StepCiudadano({
           }}
           slotProps={{
             htmlInput: {
-              autoComplete: 'name',
+              autoComplete:
+                'name',
             },
           }}
           required
@@ -2646,9 +3788,13 @@ function StepCiudadano({
           {barrios.map(
             (option) => (
               <MenuItem
-                key={option.id}
+                key={
+                  option.id
+                }
                 value={
-                  String(option.id)
+                  String(
+                    option.id,
+                  )
                 }
               >
                 {option.label}
@@ -2667,11 +3813,32 @@ function StepCiudadano({
           </strong>
           .
         </Alert>
+      ) : historicalManualRecord ? (
+        <Alert
+          severity="success"
+          sx={{
+            '& .MuiAlert-message': {
+              width:
+                '100%',
+
+              textAlign:
+                'center',
+            },
+          }}
+        >
+          Se recuperaron los datos del último registro manual
+          activo, caso{' '}
+          <strong>
+            #{historicalManualRecord.id}
+          </strong>
+          . Puedes actualizar el nombre, teléfono, dirección
+          y barrio antes de continuar.
+        </Alert>
       ) : (
         <Alert severity="info">
-          Cuando la cédula no exista en Ventanilla, el origen
-          será manual y podrás diligenciar los datos del
-          ciudadano.
+          Cuando la cédula no exista en Ventanilla ni tenga
+          antecedentes manuales activos, podrás diligenciar
+          los datos del ciudadano.
         </Alert>
       )}
 
@@ -2688,12 +3855,20 @@ function StepCiudadano({
                 );
               }}
             >
-              Abrir caso
+              Abrir caso pendiente
             </Button>
           }
+          sx={{
+            fontWeight:
+              700,
+          }}
         >
-          Ya existe otra nueva encuesta activa y pendiente:
-          caso #{existingOpenCase.id}.
+          El ciudadano tiene una encuesta pendiente en el caso{' '}
+          <strong>
+            #{existingOpenCase.id}
+          </strong>
+          . Debe finalizar ese proceso antes de registrar otra
+          nueva encuesta.
         </Alert>
       ) : null}
 
@@ -2709,7 +3884,9 @@ function StepCiudadano({
           );
         }}
         multiline
-        minRows={3}
+        minRows={
+          3
+        }
         fullWidth
       />
     </Box>
@@ -2727,10 +3904,17 @@ type StepLlamadaProps =
     motivosNoDisposicion:
       SelectOption[];
 
-    isConnected: boolean;
-    isNotConnected: boolean;
-    requiresNoDisposition: boolean;
-    requiresCallReprogramming: boolean;
+    isConnected:
+      boolean;
+
+    isNotConnected:
+      boolean;
+
+    requiresNoDisposition:
+      boolean;
+
+    requiresCallReprogramming:
+      boolean;
   };
 
 function StepLlamada({
@@ -2747,9 +3931,14 @@ function StepLlamada({
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 3,
+        display:
+          'flex',
+
+        flexDirection:
+          'column',
+
+        gap:
+          3,
       }}
     >
       <Box>
@@ -2757,7 +3946,8 @@ function StepLlamada({
           component="h2"
           variant="h6"
           sx={{
-            fontWeight: 900,
+            fontWeight:
+              900,
           }}
         >
           2. Gestión telefónica
@@ -2780,14 +3970,19 @@ function StepLlamada({
 
       <Box
         sx={{
-          display: 'grid',
+          display:
+            'grid',
 
           gridTemplateColumns: {
-            xs: '1fr',
-            md: 'repeat(2, minmax(0, 1fr))',
+            xs:
+              '1fr',
+
+            md:
+              'repeat(2, minmax(0, 1fr))',
           },
 
-          gap: 2,
+          gap:
+            2,
         }}
       >
         <TextField
@@ -2796,17 +3991,18 @@ function StepLlamada({
           value={
             form.fechaLlamada
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'fechaLlamada',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
           slotProps={{
             inputLabel: {
-              shrink: true,
+              shrink:
+                true,
             },
           }}
         />
@@ -2817,17 +4013,18 @@ function StepLlamada({
           value={
             form.horaLlamada
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'horaLlamada',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
           slotProps={{
             inputLabel: {
-              shrink: true,
+              shrink:
+                true,
             },
           }}
         />
@@ -2838,12 +4035,12 @@ function StepLlamada({
           value={
             form.llamadaConectada
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'llamadaConectada',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
         >
@@ -2866,12 +4063,12 @@ function StepLlamada({
           value={
             form.resultadoLlamada
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'resultadoLlamada',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
         >
@@ -2882,8 +4079,12 @@ function StepLlamada({
           {resultados.map(
             (result) => (
               <MenuItem
-                key={result.id}
-                value={result.codigo}
+                key={
+                  result.id
+                }
+                value={
+                  result.codigo
+                }
               >
                 {result.nombre}
               </MenuItem>
@@ -2898,12 +4099,12 @@ function StepLlamada({
             value={
               form.motivoNoContactoId
             }
-            onChange={(event) =>
+            onChange={(event) => {
               onChange(
                 'motivoNoContactoId',
                 event.target.value,
-              )
-            }
+              );
+            }}
             required
             fullWidth
           >
@@ -2914,9 +4115,13 @@ function StepLlamada({
             {motivosNoContacto.map(
               (option) => (
                 <MenuItem
-                  key={option.id}
+                  key={
+                    option.id
+                  }
                   value={
-                    String(option.id)
+                    String(
+                      option.id,
+                    )
                   }
                 >
                   {option.label}
@@ -2933,12 +4138,12 @@ function StepLlamada({
             value={
               form.motivoNoDisposicionId
             }
-            onChange={(event) =>
+            onChange={(event) => {
               onChange(
                 'motivoNoDisposicionId',
                 event.target.value,
-              )
-            }
+              );
+            }}
             required
             fullWidth
           >
@@ -2949,9 +4154,13 @@ function StepLlamada({
             {motivosNoDisposicion.map(
               (option) => (
                 <MenuItem
-                  key={option.id}
+                  key={
+                    option.id
+                  }
                   value={
-                    String(option.id)
+                    String(
+                      option.id,
+                    )
                   }
                 >
                   {option.label}
@@ -2969,17 +4178,18 @@ function StepLlamada({
               value={
                 form.fechaReprogramacionLlamada
               }
-              onChange={(event) =>
+              onChange={(event) => {
                 onChange(
                   'fechaReprogramacionLlamada',
                   event.target.value,
-                )
-              }
+                );
+              }}
               required
               fullWidth
               slotProps={{
                 inputLabel: {
-                  shrink: true,
+                  shrink:
+                    true,
                 },
               }}
             />
@@ -2990,17 +4200,18 @@ function StepLlamada({
               value={
                 form.horaReprogramacionLlamada
               }
-              onChange={(event) =>
+              onChange={(event) => {
                 onChange(
                   'horaReprogramacionLlamada',
                   event.target.value,
-                )
-              }
+                );
+              }}
               required
               fullWidth
               slotProps={{
                 inputLabel: {
-                  shrink: true,
+                  shrink:
+                    true,
                 },
               }}
             />
@@ -3021,14 +4232,16 @@ function StepLlamada({
         value={
           form.observacionLlamada
         }
-        onChange={(event) =>
+        onChange={(event) => {
           onChange(
             'observacionLlamada',
             event.target.value,
-          )
-        }
+          );
+        }}
         multiline
-        minRows={3}
+        minRows={
+          3
+        }
         fullWidth
       />
     </Box>
@@ -3040,7 +4253,8 @@ type StepProgramacionProps =
     encuestadores:
       SelectOption[];
 
-    isNotConnected: boolean;
+    isNotConnected:
+      boolean;
   };
 
 function StepProgramacion({
@@ -3052,9 +4266,14 @@ function StepProgramacion({
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 3,
+        display:
+          'flex',
+
+        flexDirection:
+          'column',
+
+        gap:
+          3,
       }}
     >
       <Box>
@@ -3062,7 +4281,8 @@ function StepProgramacion({
           component="h2"
           variant="h6"
           sx={{
-            fontWeight: 900,
+            fontWeight:
+              900,
           }}
         >
           3. Programación de la visita
@@ -3087,14 +4307,19 @@ function StepProgramacion({
 
       <Box
         sx={{
-          display: 'grid',
+          display:
+            'grid',
 
           gridTemplateColumns: {
-            xs: '1fr',
-            md: 'repeat(3, minmax(0, 1fr))',
+            xs:
+              '1fr',
+
+            md:
+              'repeat(3, minmax(0, 1fr))',
           },
 
-          gap: 2,
+          gap:
+            2,
         }}
       >
         <TextField
@@ -3103,12 +4328,12 @@ function StepProgramacion({
           value={
             form.encuestadorId
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'encuestadorId',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
         >
@@ -3119,9 +4344,13 @@ function StepProgramacion({
           {encuestadores.map(
             (option) => (
               <MenuItem
-                key={option.id}
+                key={
+                  option.id
+                }
                 value={
-                  String(option.id)
+                  String(
+                    option.id,
+                  )
                 }
               >
                 {option.label}
@@ -3136,17 +4365,18 @@ function StepProgramacion({
           value={
             form.fechaProgramada
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'fechaProgramada',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
           slotProps={{
             inputLabel: {
-              shrink: true,
+              shrink:
+                true,
             },
           }}
         />
@@ -3157,17 +4387,18 @@ function StepProgramacion({
           value={
             form.horaProgramada
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'horaProgramada',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
           slotProps={{
             inputLabel: {
-              shrink: true,
+              shrink:
+                true,
             },
           }}
         />
@@ -3178,14 +4409,16 @@ function StepProgramacion({
         value={
           form.observacionVisita
         }
-        onChange={(event) =>
+        onChange={(event) => {
           onChange(
             'observacionVisita',
             event.target.value,
-          )
-        }
+          );
+        }}
         multiline
-        minRows={3}
+        minRows={
+          3
+        }
         fullWidth
       />
     </Box>
@@ -3197,7 +4430,8 @@ type StepConfirmacionesProps =
     motivosNoDisposicion:
       SelectOption[];
 
-    isConnected: boolean;
+    isConnected:
+      boolean;
   };
 
 function StepConfirmaciones({
@@ -3206,20 +4440,28 @@ function StepConfirmaciones({
   isConnected,
   onChange,
 }: StepConfirmacionesProps) {
-  if (!isConnected) {
+  if (
+    !isConnected
+  ) {
     return (
       <Box
         sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2,
+          display:
+            'flex',
+
+          flexDirection:
+            'column',
+
+          gap:
+            2,
         }}
       >
         <Typography
           component="h2"
           variant="h6"
           sx={{
-            fontWeight: 900,
+            fontWeight:
+              900,
           }}
         >
           4. Confirmaciones telefónicas
@@ -3237,9 +4479,14 @@ function StepConfirmaciones({
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 3,
+        display:
+          'flex',
+
+        flexDirection:
+          'column',
+
+        gap:
+          3,
       }}
     >
       <Box>
@@ -3247,7 +4494,8 @@ function StepConfirmaciones({
           component="h2"
           variant="h6"
           sx={{
-            fontWeight: 900,
+            fontWeight:
+              900,
           }}
         >
           4. Confirmaciones telefónicas
@@ -3265,14 +4513,19 @@ function StepConfirmaciones({
 
       <Box
         sx={{
-          display: 'grid',
+          display:
+            'grid',
 
           gridTemplateColumns: {
-            xs: '1fr',
-            md: 'repeat(2, minmax(0, 1fr))',
+            xs:
+              '1fr',
+
+            md:
+              'repeat(2, minmax(0, 1fr))',
           },
 
-          gap: 2,
+          gap:
+            2,
         }}
       >
         <TextField
@@ -3294,12 +4547,12 @@ function StepConfirmaciones({
           value={
             form.direccionTexto
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'direccionTexto',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
         />
@@ -3310,12 +4563,12 @@ function StepConfirmaciones({
           value={
             form.disposicionRecibirEncuesta
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'disposicionRecibirEncuesta',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
         >
@@ -3340,12 +4593,12 @@ function StepConfirmaciones({
             value={
               form.motivoNoDisposicionId
             }
-            onChange={(event) =>
+            onChange={(event) => {
               onChange(
                 'motivoNoDisposicionId',
                 event.target.value,
-              )
-            }
+              );
+            }}
             required
             fullWidth
           >
@@ -3356,9 +4609,13 @@ function StepConfirmaciones({
             {motivosNoDisposicion.map(
               (option) => (
                 <MenuItem
-                  key={option.id}
+                  key={
+                    option.id
+                  }
                   value={
-                    String(option.id)
+                    String(
+                      option.id,
+                    )
                   }
                 >
                   {option.label}
@@ -3374,17 +4631,18 @@ function StepConfirmaciones({
           value={
             form.fechaAplicacionInformada
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'fechaAplicacionInformada',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
           slotProps={{
             inputLabel: {
-              shrink: true,
+              shrink:
+                true,
             },
           }}
           helperText="Se carga inicialmente con la fecha programada de la visita."
@@ -3396,12 +4654,12 @@ function StepConfirmaciones({
           value={
             form.explicoInformanteCalificado
           }
-          onChange={(event) =>
+          onChange={(event) => {
             onChange(
               'explicoInformanteCalificado',
               event.target.value,
-            )
-          }
+            );
+          }}
           required
           fullWidth
         >
@@ -3423,13 +4681,26 @@ function StepConfirmaciones({
 }
 
 type StepResumenProps = {
-  form: FormState;
-  isEditMode: boolean;
-  resultLabel: string;
-  barrioLabel: string;
-  encuestadorLabel: string;
-  motivoNoContactoLabel: string;
-  motivoNoDisposicionLabel: string;
+  form:
+    FormState;
+
+  isEditMode:
+    boolean;
+
+  resultLabel:
+    string;
+
+  barrioLabel:
+    string;
+
+  encuestadorLabel:
+    string;
+
+  motivoNoContactoLabel:
+    string;
+
+  motivoNoDisposicionLabel:
+    string;
 };
 
 function StepResumen({
@@ -3442,14 +4713,20 @@ function StepResumen({
   motivoNoDisposicionLabel,
 }: StepResumenProps) {
   const connected =
-    form.llamadaConectada === 'SI';
+    form.llamadaConectada
+      === 'SI';
 
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2,
+        display:
+          'flex',
+
+        flexDirection:
+          'column',
+
+        gap:
+          2,
       }}
     >
       <Box>
@@ -3457,7 +4734,8 @@ function StepResumen({
           component="h2"
           variant="h6"
           sx={{
-            fontWeight: 900,
+            fontWeight:
+              900,
           }}
         >
           {isEditMode
@@ -3478,61 +4756,82 @@ function StepResumen({
 
       <Box
         sx={{
-          display: 'grid',
+          display:
+            'grid',
 
           gridTemplateColumns: {
-            xs: '1fr',
-            lg: 'repeat(2, minmax(0, 1fr))',
+            xs:
+              '1fr',
+
+            lg:
+              'repeat(2, minmax(0, 1fr))',
           },
 
-          gap: 2,
+          gap:
+            2,
         }}
       >
         <SummarySection
           title="Ciudadano"
           items={[
             {
-              label: 'Cédula',
+              label:
+                'Cédula',
+
               value:
                 form.cedulaSolicitante,
             },
             {
-              label: 'Nombre',
+              label:
+                'Nombre',
+
               value:
                 form.nombreCompleto,
             },
             {
-              label: 'Teléfono',
+              label:
+                'Teléfono',
+
               value:
                 form.telefono
                 || 'Sin teléfono',
             },
             {
-              label: 'Dirección',
+              label:
+                'Dirección',
+
               value:
                 form.direccionTexto,
             },
             {
-              label: 'Barrio',
+              label:
+                'Barrio',
+
               value:
                 barrioLabel,
             },
             {
-              label: 'Origen',
+              label:
+                'Origen',
+
               value:
                 formatLabel(
                   form.origenRegistro,
                 ),
             },
             {
-              label: 'Tipo de solicitud',
+              label:
+                'Tipo de solicitud',
+
               value:
                 formatLabel(
                   form.tipoSolicitudCallcenter,
                 ),
             },
             {
-              label: 'Observación del caso',
+              label:
+                'Observación del caso',
+
               value:
                 form.observacionCaso
                 || 'Sin observación',
@@ -3544,45 +4843,59 @@ function StepResumen({
           title="Llamada"
           items={[
             {
-              label: 'Fecha y hora',
+              label:
+                'Fecha y hora',
+
               value:
                 `${form.fechaLlamada} ${form.horaLlamada}`,
             },
             {
-              label: 'Conectada',
+              label:
+                'Conectada',
+
               value:
                 connected
                   ? 'Sí'
                   : 'No',
             },
             {
-              label: 'Resultado',
+              label:
+                'Resultado',
+
               value:
                 resultLabel,
             },
             {
-              label: 'Motivo no contacto',
+              label:
+                'Motivo no contacto',
+
               value:
                 form.motivoNoContactoId
                   ? motivoNoContactoLabel
                   : 'No aplica',
             },
             {
-              label: 'Motivo no disposición',
+              label:
+                'Motivo no disposición',
+
               value:
                 form.motivoNoDisposicionId
                   ? motivoNoDisposicionLabel
                   : 'No aplica',
             },
             {
-              label: 'Próximo intento',
+              label:
+                'Próximo intento',
+
               value:
                 form.fechaReprogramacionLlamada
                   ? `${form.fechaReprogramacionLlamada} ${form.horaReprogramacionLlamada}`
                   : 'No aplica',
             },
             {
-              label: 'Observación',
+              label:
+                'Observación',
+
               value:
                 form.observacionLlamada
                 || 'Sin observación',
@@ -3594,22 +4907,30 @@ function StepResumen({
           title="Programación"
           items={[
             {
-              label: 'Encuestador',
+              label:
+                'Encuestador',
+
               value:
                 encuestadorLabel,
             },
             {
-              label: 'Fecha',
+              label:
+                'Fecha',
+
               value:
                 form.fechaProgramada,
             },
             {
-              label: 'Hora',
+              label:
+                'Hora',
+
               value:
                 form.horaProgramada,
             },
             {
-              label: 'Observación',
+              label:
+                'Observación',
+
               value:
                 form.observacionVisita
                 || 'Sin observación',
@@ -3621,7 +4942,9 @@ function StepResumen({
           title="Confirmaciones"
           items={[
             {
-              label: 'Solicitó nueva encuesta',
+              label:
+                'Solicitó nueva encuesta',
+
               value:
                 normalizeCode(
                   form.tipoSolicitudCallcenter,
@@ -3630,7 +4953,9 @@ function StepResumen({
                   : 'No',
             },
             {
-              label: 'Disposición',
+              label:
+                'Disposición',
+
               value:
                 connected
                   ? formatYesNo(
@@ -3639,7 +4964,9 @@ function StepResumen({
                   : 'No confirmado',
             },
             {
-              label: 'Fecha informada',
+              label:
+                'Fecha informada',
+
               value:
                 connected
                   ? form.fechaAplicacionInformada
@@ -3647,7 +4974,9 @@ function StepResumen({
                   : 'No confirmada',
             },
             {
-              label: 'Informante calificado',
+              label:
+                'Informante calificado',
+
               value:
                 connected
                   ? formatYesNo(
@@ -3675,12 +5004,17 @@ function StepResumen({
 }
 
 type SummarySectionProps = {
-  title: string;
+  title:
+    string;
 
-  items: Array<{
-    label: string;
-    value: string;
-  }>;
+  items:
+    Array<{
+      label:
+        string;
+
+      value:
+        string;
+    }>;
 };
 
 function SummarySection({
@@ -3691,16 +5025,22 @@ function SummarySection({
     <Paper
       variant="outlined"
       sx={{
-        p: 2,
-        height: '100%',
+        p:
+          2,
+
+        height:
+          '100%',
       }}
     >
       <Typography
         component="h3"
         variant="subtitle1"
         sx={{
-          fontWeight: 900,
-          mb: 1.5,
+          fontWeight:
+            900,
+
+          mb:
+            1.5,
         }}
       >
         {title}
@@ -3708,19 +5048,31 @@ function SummarySection({
 
       <Box
         sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 1.2,
+          display:
+            'flex',
+
+          flexDirection:
+            'column',
+
+          gap:
+            1.2,
         }}
       >
         {items.map(
           (item) => (
             <Box
-              key={item.label}
+              key={
+                item.label
+              }
               sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 0.2,
+                display:
+                  'flex',
+
+                flexDirection:
+                  'column',
+
+                gap:
+                  0.2,
               }}
             >
               <Typography
@@ -3735,8 +5087,11 @@ function SummarySection({
                 component="p"
                 variant="body2"
                 sx={{
-                  fontWeight: 700,
-                  overflowWrap: 'anywhere',
+                  fontWeight:
+                    700,
+
+                  overflowWrap:
+                    'anywhere',
                 }}
               >
                 {item.value}
@@ -3750,14 +5105,21 @@ function SummarySection({
 }
 
 function getOptionLabel(
-  options: SelectOption[],
-  value: string,
-  fallback: string,
+  options:
+    SelectOption[],
+
+  value:
+    string,
+
+  fallback:
+    string,
 ) {
   const option =
     options.find(
       (item) =>
-        String(item.id) === value,
+        String(
+          item.id,
+        ) === value,
     );
 
   return option?.label
@@ -3765,13 +5127,18 @@ function getOptionLabel(
 }
 
 function formatYesNo(
-  value: YesNoValue,
+  value:
+    YesNoValue,
 ) {
-  if (value === 'SI') {
+  if (
+    value === 'SI'
+  ) {
     return 'Sí';
   }
 
-  if (value === 'NO') {
+  if (
+    value === 'NO'
+  ) {
     return 'No';
   }
 
@@ -3782,7 +5149,8 @@ function formatLabel(
   value?: string | null,
 ) {
   return String(
-    value ?? 'Sin dato',
+    value
+    ?? 'Sin dato',
   )
     .split('_')
     .join(' ')

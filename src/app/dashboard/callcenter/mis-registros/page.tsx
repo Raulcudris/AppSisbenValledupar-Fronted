@@ -810,10 +810,6 @@ export default function MisRegistrosCallCenterPage() {
                     </TableCell>
 
                     <TableCell>
-                      Solicitud
-                    </TableCell>
-
-                    <TableCell>
                       Estado
                     </TableCell>
 
@@ -939,19 +935,6 @@ export default function MisRegistrosCallCenterPage() {
                                     ? ` / ${record.comunaNombre}`
                                     : ''
                                 }`
-                              }
-                            />
-                          </TableCell>
-
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              variant="outlined"
-                              label={
-                                formatLabel(
-                                  record.tipoSolicitudCallcenter
-                                  || 'SIN_DATO',
-                                )
                               }
                             />
                           </TableCell>

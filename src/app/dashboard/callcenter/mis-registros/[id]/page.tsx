@@ -4,6 +4,7 @@ import AddIcCallIcon from '@mui/icons-material/AddIcCall';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import EditCalendarIcon from '@mui/icons-material/EditCalendar';
+import EditIcon from '@mui/icons-material/Edit';
 
 import {
   Alert,
@@ -90,55 +91,42 @@ type ChipColor =
   | 'success'
   | 'warning';
 
+type AlertSeverity =
+  | 'success'
+  | 'info'
+  | 'warning'
+  | 'error';
+
+type NextAction = {
+  severity: AlertSeverity;
+  title: string;
+  description: string;
+};
+
 const initialLlamadaForm:
   CallCenterGestionLlamadaRequest = {
-    llamadaConectada:
-      false,
-
-    resultadoLlamada:
-      '',
-
-    motivoNoContactoId:
-      null,
-
-    motivoNoDisposicionId:
-      null,
-
-    fechaReprogramacionLlamada:
-      null,
-
-    horaReprogramacionLlamada:
-      null,
-
-    observacion:
-      '',
+    llamadaConectada: false,
+    resultadoLlamada: '',
+    motivoNoContactoId: null,
+    motivoNoDisposicionId: null,
+    fechaReprogramacionLlamada: null,
+    horaReprogramacionLlamada: null,
+    observacion: '',
   };
 
 const initialVisitaForm:
   CallCenterVisitaAsignacionRequest = {
-    encuestadorId:
-      0,
-
-    fechaProgramada:
-      null,
-
-    horaProgramada:
-      null,
-
-    observacion:
-      '',
+    encuestadorId: 0,
+    fechaProgramada: null,
+    horaProgramada: null,
+    observacion: '',
   };
 
 const initialProgramacionForm:
   CallCenterVisitaProgramacionRequest = {
-    encuestadorId:
-      0,
-
-    fechaProgramada:
-      '',
-
-    horaProgramada:
-      null,
+    encuestadorId: 0,
+    fechaProgramada: '',
+    horaProgramada: null,
   };
 
 export default function PageCallCenterGestionCaso() {
@@ -156,14 +144,16 @@ export default function PageCallCenterGestionCaso() {
       return Array.isArray(value)
         ? value[0]
         : value;
-    }, [params]);
+    }, [
+      params,
+    ]);
 
   const [
     caso,
     setCaso,
-  ] = useState<
-    CallCenterResponse | null
-  >(null);
+  ] = useState<CallCenterResponse | null>(
+    null,
+  );
 
   const [
     loading,
@@ -209,23 +199,17 @@ export default function PageCallCenterGestionCaso() {
   const [
     encuestadores,
     setEncuestadores,
-  ] = useState<
-    SelectOption[]
-  >([]);
+  ] = useState<SelectOption[]>([]);
 
   const [
     motivosNoContacto,
     setMotivosNoContacto,
-  ] = useState<
-    SelectOption[]
-  >([]);
+  ] = useState<SelectOption[]>([]);
 
   const [
     motivosNoDisposicion,
     setMotivosNoDisposicion,
-  ] = useState<
-    SelectOption[]
-  >([]);
+  ] = useState<SelectOption[]>([]);
 
   const [
     openLlamada,
@@ -273,16 +257,16 @@ export default function PageCallCenterGestionCaso() {
   const [
     error,
     setError,
-  ] = useState<
-    string | null
-  >(null);
+  ] = useState<string | null>(
+    null,
+  );
 
   const [
     success,
     setSuccess,
-  ] = useState<
-    string | null
-  >(null);
+  ] = useState<string | null>(
+    null,
+  );
 
   const estadoCaso =
     caso
@@ -320,12 +304,129 @@ export default function PageCallCenterGestionCaso() {
       estadoCaso,
     );
 
+  const visitasPorRecencia =
+    useMemo(
+      () =>
+        [...visitas].sort(
+          (left, right) =>
+            right.id - left.id,
+        ),
+      [
+        visitas,
+      ],
+    );
+
+  const visitaVigente =
+    useMemo(
+      () =>
+        visitasPorRecencia.find(
+          (item) =>
+            item.activo !== false,
+        ) ?? null,
+      [
+        visitasPorRecencia,
+      ],
+    );
+
+  const visitasHistoricas =
+    useMemo(() => {
+      if (!visitaVigente) {
+        return visitasPorRecencia;
+      }
+
+      return visitasPorRecencia.filter(
+        (item) =>
+          item.id !== visitaVigente.id,
+      );
+    }, [
+      visitaVigente,
+      visitasPorRecencia,
+    ]);
+
+  const nextAction =
+    useMemo<NextAction>(() => {
+      if (finalState) {
+        return {
+          severity:
+            estadoCaso === 'CERRADO'
+              ? 'success'
+              : 'warning',
+
+          title:
+            'Caso finalizado',
+
+          description:
+            'La información permanece disponible únicamente para consulta y trazabilidad.',
+        };
+      }
+
+      if (callAllowed) {
+        return {
+          severity:
+            'info',
+
+          title:
+            'Registrar gestión telefónica',
+
+          description:
+            'El caso está en etapa de llamada. Registra el resultado del contacto para continuar.',
+        };
+      }
+
+      if (visitAssignmentAllowed) {
+        return {
+          severity:
+            'success',
+
+          title:
+            'Asignar visita',
+
+          description:
+            'La gestión telefónica terminó. Selecciona el encuestador y programa la visita.',
+        };
+      }
+
+      if (
+        visitaVigente
+        && isVisitProgrammingEditable(
+          visitaVigente,
+        )
+      ) {
+        return {
+          severity:
+            'info',
+
+          title:
+            'Esperar la visita o ajustar la programación',
+
+          description:
+            'La visita está asignada. La programación puede modificarse mientras no exista un resultado de campo.',
+        };
+      }
+
+      return {
+        severity:
+          'info',
+
+        title:
+          'Seguimiento del trabajo de campo',
+
+        description:
+          'El caso se encuentra en gestión del encuestador. Consulta la visita vigente y el resultado registrado.',
+      };
+    }, [
+      callAllowed,
+      estadoCaso,
+      finalState,
+      visitaVigente,
+      visitAssignmentAllowed,
+    ]);
+
   const selectedResultRequiresNoContact =
     requiresNoContactReason(
       llamadaForm.resultadoLlamada,
     )
-    || llamadaForm.llamadaConectada
-      === false;
+    || llamadaForm.llamadaConectada === false;
 
   const selectedResultRequiresNoDisposition =
     requiresNoDispositionReason(
@@ -415,7 +516,9 @@ export default function PageCallCenterGestionCaso() {
     void loadData();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId]);
+  }, [
+    caseId,
+  ]);
 
   function openRegistrarLlamada() {
     if (!callAllowed) {
@@ -474,6 +577,7 @@ export default function PageCallCenterGestionCaso() {
   ) {
     if (
       finalState
+      || visitaVigente?.id !== visita.id
       || !isVisitProgrammingEditable(
         visita,
       )
@@ -557,8 +661,7 @@ export default function PageCallCenterGestionCaso() {
 
         motivoNoContactoId:
           resultNeedsNoContact
-          || current.llamadaConectada
-            === false
+          || current.llamadaConectada === false
             ? current.motivoNoContactoId
             : null,
 
@@ -735,6 +838,8 @@ export default function PageCallCenterGestionCaso() {
 
     if (
       finalState
+      || visitaVigente?.id
+        !== selectedVisitaProgramacion.id
       || !isVisitProgrammingEditable(
         selectedVisitaProgramacion,
       )
@@ -805,20 +910,11 @@ export default function PageCallCenterGestionCaso() {
     return (
       <Box
         sx={{
-          minHeight:
-            320,
-
-          display:
-            'flex',
-
-          alignItems:
-            'center',
-
-          justifyContent:
-            'center',
-
-          flexDirection:
-            'column',
+          minHeight: 320,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
         }}
       >
         <CircularProgress />
@@ -826,8 +922,7 @@ export default function PageCallCenterGestionCaso() {
         <Typography
           component="p"
           sx={{
-            mt:
-              2,
+            mt: 2,
           }}
         >
           Cargando gestión del caso...
@@ -839,31 +934,21 @@ export default function PageCallCenterGestionCaso() {
   return (
     <Box
       sx={{
-        display:
-          'flex',
-
-        flexDirection:
-          'column',
-
-        gap:
-          2,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
       }}
     >
       <Box
         sx={{
-          display:
-            'flex',
+          display: 'flex',
 
           flexDirection: {
-            xs:
-              'column',
-
-            md:
-              'row',
+            xs: 'column',
+            md: 'row',
           },
 
-          gap:
-            1.5,
+          gap: 1.5,
 
           justifyContent:
             'space-between',
@@ -874,8 +959,7 @@ export default function PageCallCenterGestionCaso() {
             component="h1"
             variant="h5"
             sx={{
-              fontWeight:
-                800,
+              fontWeight: 800,
             }}
           >
             Gestión caso Call Center #{caseId ?? ''}
@@ -886,26 +970,22 @@ export default function PageCallCenterGestionCaso() {
             variant="body2"
             color="text.secondary"
           >
-            Gestión telefónica, programación de visitas y
-            trazabilidad del caso.
+            Consulta el ciudadano, registra la gestión
+            telefónica, administra la visita vigente y revisa
+            la trazabilidad del caso.
           </Typography>
         </Box>
 
         <Box
           sx={{
-            display:
-              'flex',
+            display: 'flex',
 
             flexDirection: {
-              xs:
-                'column',
-
-              sm:
-                'row',
+              xs: 'column',
+              sm: 'row',
             },
 
-            gap:
-              1,
+            gap: 1,
           }}
         >
           <Button
@@ -922,112 +1002,67 @@ export default function PageCallCenterGestionCaso() {
             Volver
           </Button>
 
-          <Button
-            variant="contained"
-            startIcon={
-              <AddIcCallIcon />
-            }
-            onClick={
-              openRegistrarLlamada
-            }
-            disabled={
-              !callAllowed
-            }
-          >
-            Registrar llamada
-          </Button>
+          {!finalState ? (
+            <Button
+              variant="outlined"
+              startIcon={
+                <EditIcon />
+              }
+              onClick={() => {
+                if (!caseId) {
+                  return;
+                }
 
-          <Button
-            variant="contained"
-            startIcon={
-              <AssignmentIndIcon />
-            }
-            onClick={
-              openAsignarVisita
-            }
-            disabled={
-              !visitAssignmentAllowed
-            }
-          >
-            Asignar visita
-          </Button>
+                router.push(
+                  `/dashboard/callcenter/registros/nuevo?id=${caseId}`,
+                );
+              }}
+            >
+              Corregir registro
+            </Button>
+          ) : null}
         </Box>
       </Box>
 
-      {finalState ? (
-        <Alert
-          severity={
-            estadoCaso === 'CERRADO'
-              ? 'success'
-              : 'warning'
-          }
+      <Alert
+        severity={
+          nextAction.severity
+        }
+      >
+        <Typography
+          component="p"
+          variant="body2"
+          sx={{
+            fontWeight: 800,
+          }}
         >
-          Este caso se encuentra{' '}
-          <strong>
-            {formatLabel(
-              estadoCaso,
-            )}
-          </strong>
-          . No permite registrar nuevas llamadas, asignar
-          visitas ni modificar programaciones.
-        </Alert>
-      ) : null}
+          Próxima acción: {nextAction.title}
+        </Typography>
 
-      {!finalState
-      && !callAllowed
-      && !visitAssignmentAllowed ? (
-        <Alert severity="info">
-          El caso está en estado{' '}
-          <strong>
-            {formatLabel(
-              estadoCaso,
-            )}
-          </strong>
-          . Revisa las visitas existentes para continuar la
-          gestión o modificar su programación.
-        </Alert>
-      ) : null}
-
-      {!finalState
-      && callAllowed
-      && !visitAssignmentAllowed ? (
-        <Alert severity="info">
-          El caso está en etapa telefónica. Registra el
-          resultado de la llamada antes de asignar una visita.
-        </Alert>
-      ) : null}
-
-      {!finalState
-      && visitAssignmentAllowed ? (
-        <Alert severity="success">
-          El caso está listo para asignar una visita a un
-          encuestador.
-        </Alert>
-      ) : null}
+        <Typography
+          component="p"
+          variant="body2"
+        >
+          {nextAction.description}
+        </Typography>
+      </Alert>
 
       <Card>
         <CardContent>
           <Box
             sx={{
-              display:
-                'flex',
+              display: 'flex',
 
               flexDirection: {
-                xs:
-                  'column',
-
-                md:
-                  'row',
+                xs: 'column',
+                md: 'row',
               },
 
               justifyContent:
                 'space-between',
 
-              gap:
-                2,
-
-              mb:
-                2,
+              gap: 2,
+              mb: 2,
             }}
           >
             <Box>
@@ -1035,11 +1070,10 @@ export default function PageCallCenterGestionCaso() {
                 component="h2"
                 variant="h6"
                 sx={{
-                  fontWeight:
-                    800,
+                  fontWeight: 800,
                 }}
               >
-                Datos principales del ciudadano
+                Resumen del caso
               </Typography>
 
               <Typography
@@ -1047,20 +1081,16 @@ export default function PageCallCenterGestionCaso() {
                 variant="body2"
                 color="text.secondary"
               >
-                Información base para realizar la gestión.
+                Información principal del ciudadano y del
+                estado operativo.
               </Typography>
             </Box>
 
             <Box
               sx={{
-                display:
-                  'flex',
-
-                gap:
-                  1,
-
-                flexWrap:
-                  'wrap',
+                display: 'flex',
+                gap: 1,
+                flexWrap: 'wrap',
               }}
             >
               <Chip
@@ -1093,35 +1123,27 @@ export default function PageCallCenterGestionCaso() {
 
           <Divider
             sx={{
-              mb:
-                2,
+              mb: 2,
             }}
           />
 
           {!caso ? (
             <Alert severity="warning">
-              No fue posible encontrar la información principal
-              del caso.
+              No fue posible encontrar la información
+              principal del caso.
             </Alert>
           ) : (
             <Box
               sx={{
-                display:
-                  'grid',
+                display: 'grid',
 
                 gridTemplateColumns: {
-                  xs:
-                    '1fr',
-
-                  sm:
-                    '1fr 1fr',
-
-                  lg:
-                    '1fr 1fr 1fr 1fr',
+                  xs: '1fr',
+                  sm: '1fr 1fr',
+                  lg: '1fr 1fr 1fr 1fr',
                 },
 
-                gap:
-                  2,
+                gap: 2,
               }}
             >
               <InfoItem
@@ -1181,11 +1203,29 @@ export default function PageCallCenterGestionCaso() {
               />
 
               <InfoItem
-                label="Encuestador"
+                label="Encuestador vigente"
                 value={
-                  caso.encuestadorAsignadoNombre
+                  visitaVigente?.encuestadorNombre
+                  || caso.encuestadorAsignadoNombre
                   || caso.encuestadorProgramadoNombre
                   || 'Sin asignar'
+                }
+              />
+
+              <InfoItem
+                label="Fecha programada"
+                value={
+                  visitaVigente?.fechaProgramada
+                  || caso.fechaEncuestaProgramada
+                  || 'Sin fecha programada'
+                }
+              />
+
+              <InfoItem
+                label="Hora programada"
+                value={
+                  visitaVigente?.horaProgramada
+                  || 'Sin hora programada'
                 }
               />
 
@@ -1223,36 +1263,32 @@ export default function PageCallCenterGestionCaso() {
 
       <Box
         sx={{
-          display:
-            'grid',
+          display: 'grid',
 
           gridTemplateColumns: {
-            xs:
-              '1fr',
-
-            lg:
-              '7fr 5fr',
+            xs: '1fr',
+            lg: '7fr 5fr',
           },
 
-          gap:
-            2,
+          gap: 2,
         }}
       >
         <Card>
           <CardContent>
             <Box
               sx={{
-                display:
-                  'flex',
+                display: 'flex',
+
+                flexDirection: {
+                  xs: 'column',
+                  sm: 'row',
+                },
 
                 justifyContent:
                   'space-between',
 
-                gap:
-                  1,
-
-                mb:
-                  2,
+                gap: 1,
+                mb: 2,
               }}
             >
               <Box>
@@ -1260,11 +1296,10 @@ export default function PageCallCenterGestionCaso() {
                   component="h2"
                   variant="h6"
                   sx={{
-                    fontWeight:
-                      800,
+                    fontWeight: 800,
                   }}
                 >
-                  Historial de llamadas
+                  Gestión telefónica
                 </Typography>
 
                 <Typography
@@ -1272,20 +1307,45 @@ export default function PageCallCenterGestionCaso() {
                   variant="body2"
                   color="text.secondary"
                 >
-                  Registro de intentos y resultados de contacto.
+                  Historial de intentos y resultados de
+                  contacto.
                 </Typography>
               </Box>
 
-              <Chip
-                size="small"
-                label={`${llamadas.length} llamada(s)`}
-              />
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                }}
+              >
+                <Chip
+                  size="small"
+                  label={`${llamadas.length} llamada(s)`}
+                />
+
+                {callAllowed ? (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={
+                      <AddIcCallIcon />
+                    }
+                    onClick={
+                      openRegistrarLlamada
+                    }
+                  >
+                    Registrar llamada
+                  </Button>
+                ) : null}
+              </Box>
             </Box>
 
             <Divider
               sx={{
-                mb:
-                  2,
+                mb: 2,
               }}
             />
 
@@ -1296,14 +1356,9 @@ export default function PageCallCenterGestionCaso() {
             ) : (
               <Box
                 sx={{
-                  display:
-                    'flex',
-
-                  flexDirection:
-                    'column',
-
-                  gap:
-                    1.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1.5,
                 }}
               >
                 {llamadas.map(
@@ -1317,25 +1372,20 @@ export default function PageCallCenterGestionCaso() {
                       <CardContent>
                         <Box
                           sx={{
-                            display:
-                              'flex',
-
+                            display: 'flex',
                             justifyContent:
                               'space-between',
-
-                            gap:
-                              1,
+                            gap: 1,
                           }}
                         >
                           <Box>
                             <Typography
                               component="p"
                               sx={{
-                                fontWeight:
-                                  800,
+                                fontWeight: 800,
                               }}
                             >
-                              Intento #{item.intentoNumero} -{' '}
+                              Intento #{item.intentoNumero} —{' '}
                               {formatLabel(
                                 item.resultadoLlamada,
                               )}
@@ -1382,8 +1432,7 @@ export default function PageCallCenterGestionCaso() {
                             component="p"
                             variant="body2"
                             sx={{
-                              mt:
-                                1,
+                              mt: 1,
                             }}
                           >
                             Motivo no contacto:{' '}
@@ -1396,12 +1445,25 @@ export default function PageCallCenterGestionCaso() {
                             component="p"
                             variant="body2"
                             sx={{
-                              mt:
-                                1,
+                              mt: 1,
                             }}
                           >
                             Motivo no disposición:{' '}
                             {item.motivoNoDisposicionNombre}
+                          </Typography>
+                        ) : null}
+
+                        {item.fechaReprogramacionLlamada ? (
+                          <Typography
+                            component="p"
+                            variant="body2"
+                            sx={{
+                              mt: 1,
+                            }}
+                          >
+                            Próximo intento:{' '}
+                            {item.fechaReprogramacionLlamada}{' '}
+                            {item.horaReprogramacionLlamada ?? ''}
                           </Typography>
                         ) : null}
 
@@ -1410,8 +1472,7 @@ export default function PageCallCenterGestionCaso() {
                             component="p"
                             variant="body2"
                             sx={{
-                              mt:
-                                1,
+                              mt: 1,
                             }}
                           >
                             {item.observacion}
@@ -1430,17 +1491,18 @@ export default function PageCallCenterGestionCaso() {
           <CardContent>
             <Box
               sx={{
-                display:
-                  'flex',
+                display: 'flex',
+
+                flexDirection: {
+                  xs: 'column',
+                  sm: 'row',
+                },
 
                 justifyContent:
                   'space-between',
 
-                gap:
-                  1,
-
-                mb:
-                  2,
+                gap: 1,
+                mb: 2,
               }}
             >
               <Box>
@@ -1448,11 +1510,10 @@ export default function PageCallCenterGestionCaso() {
                   component="h2"
                   variant="h6"
                   sx={{
-                    fontWeight:
-                      800,
+                    fontWeight: 800,
                   }}
                 >
-                  Visitas de encuestadores
+                  Programación y visitas
                 </Typography>
 
                 <Typography
@@ -1460,20 +1521,45 @@ export default function PageCallCenterGestionCaso() {
                   variant="body2"
                   color="text.secondary"
                 >
-                  Seguimiento y programación de visitas.
+                  Visita vigente e historial del trabajo de
+                  campo.
                 </Typography>
               </Box>
 
-              <Chip
-                size="small"
-                label={`${visitas.length} visita(s)`}
-              />
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                }}
+              >
+                <Chip
+                  size="small"
+                  label={`${visitas.length} visita(s)`}
+                />
+
+                {visitAssignmentAllowed ? (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={
+                      <AssignmentIndIcon />
+                    }
+                    onClick={
+                      openAsignarVisita
+                    }
+                  >
+                    Asignar visita
+                  </Button>
+                ) : null}
+              </Box>
             </Box>
 
             <Divider
               sx={{
-                mb:
-                  2,
+                mb: 2,
               }}
             />
 
@@ -1484,182 +1570,89 @@ export default function PageCallCenterGestionCaso() {
             ) : (
               <Box
                 sx={{
-                  display:
-                    'flex',
-
-                  flexDirection:
-                    'column',
-
-                  gap:
-                    1.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1.5,
                 }}
               >
-                {visitas.map(
-                  (item) => {
-                    const programmingEditable =
-                      !finalState
-                      && isVisitProgrammingEditable(
-                        item,
-                      );
+                {visitaVigente ? (
+                  <>
+                    <Typography
+                      component="h3"
+                      variant="subtitle2"
+                      sx={{
+                        fontWeight: 900,
+                      }}
+                    >
+                      Visita vigente
+                    </Typography>
 
-                    return (
-                      <Card
-                        key={
-                          item.id
-                        }
-                        variant="outlined"
+                    <VisitCard
+                      visita={
+                        visitaVigente
+                      }
+                      current
+                      editable={
+                        !finalState
+                        && isVisitProgrammingEditable(
+                          visitaVigente,
+                        )
+                      }
+                      onEdit={
+                        openModificarProgramacion
+                      }
+                    />
+                  </>
+                ) : null}
+
+                {visitasHistoricas.length > 0 ? (
+                  <>
+                    <Divider />
+
+                    <Box>
+                      <Typography
+                        component="h3"
+                        variant="subtitle2"
+                        sx={{
+                          fontWeight: 900,
+                        }}
                       >
-                        <CardContent>
-                          <Box
-                            sx={{
-                              display:
-                                'flex',
+                        Historial de visitas
+                      </Typography>
 
-                              justifyContent:
-                                'space-between',
+                      <Typography
+                        component="p"
+                        variant="caption"
+                        color="text.secondary"
+                      >
+                        Registros anteriores disponibles solo
+                        para consulta.
+                      </Typography>
+                    </Box>
 
-                              gap:
-                                1,
-                            }}
-                          >
-                            <Box>
-                              <Typography
-                                component="p"
-                                sx={{
-                                  fontWeight:
-                                    800,
-                                }}
-                              >
-                                {item.encuestadorNombre
-                                  ?? 'Encuestador no disponible'}
-                              </Typography>
-
-                              <Typography
-                                component="p"
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                Programada:{' '}
-                                {item.fechaProgramada
-                                  ?? 'Sin fecha'}{' '}
-                                {item.horaProgramada
-                                  ?? ''}
-                              </Typography>
-
-                              {item.fechaReprogramacion ? (
-                                <Typography
-                                  component="p"
-                                  variant="body2"
-                                  color="text.secondary"
-                                >
-                                  Reprogramación registrada:{' '}
-                                  {item.fechaReprogramacion}
-                                </Typography>
-                              ) : null}
-                            </Box>
-
-                            <Chip
-                              size="small"
-                              label={
-                                formatLabel(
-                                  item.estadoVisita,
-                                )
-                              }
-                              color={
-                                getStatusColor(
-                                  item.estadoVisita,
-                                )
-                              }
-                            />
-                          </Box>
-
-                          {item.encuestaRealizada !== null
-                          && item.encuestaRealizada
-                            !== undefined ? (
-                              <Typography
-                                component="p"
-                                variant="body2"
-                                sx={{
-                                  mt:
-                                    1,
-                                }}
-                              >
-                                Encuesta realizada:{' '}
-                                {item.encuestaRealizada
-                                  ? 'Sí'
-                                  : 'No'}
-                              </Typography>
-                            ) : null}
-
-                          {item.observacionEncuestador ? (
-                            <Typography
-                              component="p"
-                              variant="body2"
-                              sx={{
-                                mt:
-                                  1,
-                              }}
-                            >
-                              {item.observacionEncuestador}
-                            </Typography>
-                          ) : null}
-
-                          <Box
-                            sx={{
-                              display:
-                                'flex',
-
-                              justifyContent:
-                                'flex-end',
-
-                              mt:
-                                1.5,
-                            }}
-                          >
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={
-                                <EditCalendarIcon />
-                              }
-                              disabled={
-                                !programmingEditable
-                              }
-                              onClick={() => {
-                                openModificarProgramacion(
-                                  item,
-                                );
-                              }}
-                            >
-                              Modificar programación
-                            </Button>
-                          </Box>
-
-                          {!programmingEditable ? (
-                            <Typography
-                              component="p"
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{
-                                display:
-                                  'block',
-
-                                mt:
-                                  0.5,
-
-                                textAlign:
-                                  'right',
-                              }}
-                            >
-                              La programación ya no admite
-                              modificaciones.
-                            </Typography>
-                          ) : null}
-                        </CardContent>
-                      </Card>
-                    );
-                  },
-                )}
+                    {visitasHistoricas.map(
+                      (item) => (
+                        <VisitCard
+                          key={
+                            item.id
+                          }
+                          visita={
+                            item
+                          }
+                          current={
+                            false
+                          }
+                          editable={
+                            false
+                          }
+                          onEdit={
+                            openModificarProgramacion
+                          }
+                        />
+                      ),
+                    )}
+                  </>
+                ) : null}
               </Box>
             )}
           </CardContent>
@@ -1687,17 +1680,10 @@ export default function PageCallCenterGestionCaso() {
         <DialogContent>
           <Box
             sx={{
-              display:
-                'flex',
-
-              flexDirection:
-                'column',
-
-              gap:
-                2,
-
-              mt:
-                1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              mt: 1,
             }}
           >
             <FormControlLabel
@@ -1892,8 +1878,7 @@ export default function PageCallCenterGestionCaso() {
               }}
               slotProps={{
                 inputLabel: {
-                  shrink:
-                    true,
+                  shrink: true,
                 },
               }}
               fullWidth
@@ -1919,8 +1904,7 @@ export default function PageCallCenterGestionCaso() {
               }}
               slotProps={{
                 inputLabel: {
-                  shrink:
-                    true,
+                  shrink: true,
                 },
               }}
               fullWidth
@@ -2001,17 +1985,10 @@ export default function PageCallCenterGestionCaso() {
         <DialogContent>
           <Box
             sx={{
-              display:
-                'flex',
-
-              flexDirection:
-                'column',
-
-              gap:
-                2,
-
-              mt:
-                1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              mt: 1,
             }}
           >
             <FormControl
@@ -2083,8 +2060,7 @@ export default function PageCallCenterGestionCaso() {
               }}
               slotProps={{
                 inputLabel: {
-                  shrink:
-                    true,
+                  shrink: true,
                 },
               }}
               fullWidth
@@ -2110,8 +2086,7 @@ export default function PageCallCenterGestionCaso() {
               }}
               slotProps={{
                 inputLabel: {
-                  shrink:
-                    true,
+                  shrink: true,
                 },
               }}
               fullWidth
@@ -2190,17 +2165,10 @@ export default function PageCallCenterGestionCaso() {
         <DialogContent>
           <Box
             sx={{
-              display:
-                'flex',
-
-              flexDirection:
-                'column',
-
-              gap:
-                2,
-
-              mt:
-                1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              mt: 1,
             }}
           >
             {selectedVisitaProgramacion ? (
@@ -2281,8 +2249,7 @@ export default function PageCallCenterGestionCaso() {
               }}
               slotProps={{
                 inputLabel: {
-                  shrink:
-                    true,
+                  shrink: true,
                 },
               }}
               required
@@ -2309,8 +2276,7 @@ export default function PageCallCenterGestionCaso() {
               }}
               slotProps={{
                 inputLabel: {
-                  shrink:
-                    true,
+                  shrink: true,
                 },
               }}
               fullWidth
@@ -2358,6 +2324,10 @@ export default function PageCallCenterGestionCaso() {
             null,
           );
         }}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
       >
         <Alert
           severity="error"
@@ -2381,6 +2351,10 @@ export default function PageCallCenterGestionCaso() {
             null,
           );
         }}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
       >
         <Alert
           severity="success"
@@ -2397,15 +2371,197 @@ export default function PageCallCenterGestionCaso() {
   );
 }
 
+function VisitCard({
+  visita,
+  current,
+  editable,
+  onEdit,
+}: {
+  visita: CallCenterVisitaResponse;
+  current: boolean;
+  editable: boolean;
+  onEdit:
+    (
+      visita:
+        CallCenterVisitaResponse,
+    ) => void;
+}) {
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent:
+              'space-between',
+            gap: 1,
+          }}
+        >
+          <Box>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 0.75,
+              }}
+            >
+              <Typography
+                component="p"
+                sx={{
+                  fontWeight: 800,
+                }}
+              >
+                {visita.encuestadorNombre
+                  ?? 'Encuestador no disponible'}
+              </Typography>
+
+              <Chip
+                size="small"
+                color={
+                  current
+                    ? 'primary'
+                    : 'default'
+                }
+                variant={
+                  current
+                    ? 'filled'
+                    : 'outlined'
+                }
+                label={
+                  current
+                    ? 'Visita vigente'
+                    : 'Histórica'
+                }
+              />
+            </Box>
+
+            <Typography
+              component="p"
+              variant="body2"
+              color="text.secondary"
+            >
+              Programada:{' '}
+              {visita.fechaProgramada
+                ?? 'Sin fecha'}{' '}
+              {visita.horaProgramada
+                ?? ''}
+            </Typography>
+
+            {visita.fechaReprogramacion ? (
+              <Typography
+                component="p"
+                variant="body2"
+                color="text.secondary"
+              >
+                Reprogramación:{' '}
+                {visita.fechaReprogramacion}
+              </Typography>
+            ) : null}
+          </Box>
+
+          <Chip
+            size="small"
+            label={
+              formatLabel(
+                visita.estadoVisita,
+              )
+            }
+            color={
+              getStatusColor(
+                visita.estadoVisita,
+              )
+            }
+          />
+        </Box>
+
+        {visita.encuestaRealizada !== null
+        && visita.encuestaRealizada
+          !== undefined ? (
+            <Typography
+              component="p"
+              variant="body2"
+              sx={{
+                mt: 1,
+              }}
+            >
+              Encuesta realizada:{' '}
+              {visita.encuestaRealizada
+                ? 'Sí'
+                : 'No'}
+            </Typography>
+          ) : null}
+
+        {visita.motivoNoEncuesta ? (
+          <Typography
+            component="p"
+            variant="body2"
+            sx={{
+              mt: 1,
+            }}
+          >
+            Motivo:{' '}
+            {visita.motivoNoEncuesta}
+          </Typography>
+        ) : null}
+
+        {visita.observacionEncuestador ? (
+          <Typography
+            component="p"
+            variant="body2"
+            sx={{
+              mt: 1,
+            }}
+          >
+            {visita.observacionEncuestador}
+          </Typography>
+        ) : null}
+
+        {current ? (
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              mt: 1.5,
+            }}
+          >
+            {editable ? (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={
+                  <EditCalendarIcon />
+                }
+                onClick={() => {
+                  onEdit(
+                    visita,
+                  );
+                }}
+              >
+                Modificar programación
+              </Button>
+            ) : (
+              <Typography
+                component="p"
+                variant="caption"
+                color="text.secondary"
+              >
+                La programación ya no admite modificaciones.
+              </Typography>
+            )}
+          </Box>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function InfoItem({
   label,
   value,
 }: {
-  label:
-    string;
-
-  value:
-    string;
+  label: string;
+  value: string;
 }) {
   return (
     <Box>
@@ -2421,8 +2577,7 @@ function InfoItem({
         component="p"
         variant="body2"
         sx={{
-          fontWeight:
-            700,
+          fontWeight: 700,
         }}
       >
         {value}
@@ -2434,7 +2589,6 @@ function InfoItem({
 function getStringField(
   record:
     CallCenterResponse,
-
   field:
     string,
 ) {
@@ -2538,7 +2692,6 @@ function isVisitProgrammingEditable(
 function getErrorMessage(
   exception:
     unknown,
-
   fallback:
     string,
 ) {
@@ -2546,8 +2699,7 @@ function getErrorMessage(
     exception
     && typeof exception === 'object'
     && 'message' in exception
-    && typeof exception.message
-      === 'string'
+    && typeof exception.message === 'string'
   ) {
     return exception.message;
   }

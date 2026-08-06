@@ -8,12 +8,13 @@ import FactCheckIcon from '@mui/icons-material/FactCheck';
 import FilterAltOffIcon from '@mui/icons-material/FilterAltOff';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
-import PersonIcon from '@mui/icons-material/Person';
 import PhoneIcon from '@mui/icons-material/Phone';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ReplayIcon from '@mui/icons-material/Replay';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import SearchIcon from '@mui/icons-material/Search';
+import ViewListIcon from '@mui/icons-material/ViewList';
+import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 
 import {
@@ -33,6 +34,7 @@ import {
   FormControl,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   Snackbar,
   TablePagination,
@@ -41,10 +43,10 @@ import {
 } from '@mui/material';
 
 import {
+  type ReactNode,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from 'react';
 
 import {
@@ -67,12 +69,24 @@ type ChipColor =
   | 'success'
   | 'warning';
 
+type ViewMode =
+  | 'CARDS'
+  | 'LIST';
+
 type VisitaFilterState = {
   q: string;
   estadoVisita: string;
   condicion: string;
   fechaDesde: string;
   fechaHasta: string;
+};
+
+type AssignmentItemProps = {
+  item: CallCenterVisitaResponse;
+
+  onOpenResultado: (
+    item: CallCenterVisitaResponse,
+  ) => void;
 };
 
 const ESTADOS_VISITA: CallCenterEstadoVisita[] = [
@@ -94,20 +108,21 @@ const ESTADOS_VISITA_FILTRO = [
 const initialFilters: VisitaFilterState = {
   q: '',
   estadoVisita: 'TODOS',
-  condicion: 'TODAS',
+  condicion: 'ABIERTAS',
   fechaDesde: '',
   fechaHasta: '',
 };
 
-const initialResultadoForm: CallCenterVisitaResultadoRequest = {
-  estadoVisita: 'REALIZADA',
-  fechaVisitaReal: null,
-  horaVisitaReal: null,
-  encuestaRealizada: true,
-  motivoNoEncuesta: '',
-  fechaReprogramacion: null,
-  observacionEncuestador: '',
-};
+const initialResultadoForm:
+  CallCenterVisitaResultadoRequest = {
+    estadoVisita: 'REALIZADA',
+    fechaVisitaReal: null,
+    horaVisitaReal: null,
+    encuestaRealizada: true,
+    motivoNoEncuesta: '',
+    fechaReprogramacion: null,
+    observacionEncuestador: '',
+  };
 
 export default function PageMisAsignacionesCallCenter() {
   const [
@@ -152,12 +167,16 @@ export default function PageMisAsignacionesCallCenter() {
   const [
     estadoVisitaFiltro,
     setEstadoVisitaFiltro,
-  ] = useState('TODOS');
+  ] = useState(
+    initialFilters.estadoVisita,
+  );
 
   const [
     condicionFiltro,
     setCondicionFiltro,
-  ] = useState('TODAS');
+  ] = useState(
+    initialFilters.condicion,
+  );
 
   const [
     fechaDesde,
@@ -177,6 +196,13 @@ export default function PageMisAsignacionesCallCenter() {
   );
 
   const [
+    viewMode,
+    setViewMode,
+  ] = useState<ViewMode>(
+    'CARDS',
+  );
+
+  const [
     loading,
     setLoading,
   ] = useState(true);
@@ -189,45 +215,60 @@ export default function PageMisAsignacionesCallCenter() {
   const [
     error,
     setError,
-  ] = useState<string | null>(null);
+  ] = useState<string | null>(
+    null,
+  );
 
   const [
     resultError,
     setResultError,
-  ] = useState<string | null>(null);
+  ] = useState<string | null>(
+    null,
+  );
 
   const [
     success,
     setSuccess,
-  ] = useState<string | null>(null);
+  ] = useState<string | null>(
+    null,
+  );
 
   const visitasFinalizadas = useMemo(
     () =>
       items.filter(
-        (item) => isVisitLocked(item),
+        (item) =>
+          isVisitLocked(item),
       ).length,
-    [items],
+    [
+      items,
+    ],
   );
 
   const visitasAbiertas = useMemo(
     () =>
       items.filter(
-        (item) => !isVisitLocked(item),
+        (item) =>
+          !isVisitLocked(item),
       ).length,
-    [items],
+    [
+      items,
+    ],
   );
 
   const hasActiveFilters = Boolean(
     searchText.trim()
-    || estadoVisitaFiltro !== 'TODOS'
-    || condicionFiltro !== 'TODAS'
+    || estadoVisitaFiltro
+      !== initialFilters.estadoVisita
+    || condicionFiltro
+      !== initialFilters.condicion
     || fechaDesde
     || fechaHasta,
   );
 
-  const resultImpact = getResultadoImpacto(
-    form.estadoVisita,
-  );
+  const resultImpact =
+    getResultadoImpacto(
+      form.estadoVisita,
+    );
 
   async function loadData(
     nextPage = page,
@@ -243,13 +284,18 @@ export default function PageMisAsignacionesCallCenter() {
           nextPage,
           nextSize,
           {
-            q: filters.q,
+            q:
+              filters.q,
+
             estadoVisita:
               filters.estadoVisita,
+
             condicion:
               filters.condicion,
+
             fechaDesde:
               filters.fechaDesde,
+
             fechaHasta:
               filters.fechaHasta,
           },
@@ -260,7 +306,9 @@ export default function PageMisAsignacionesCallCenter() {
           response,
         );
 
-      setItems(content);
+      setItems(
+        content,
+      );
 
       setTotal(
         getTotalElements(
@@ -303,34 +351,77 @@ export default function PageMisAsignacionesCallCenter() {
   }
 
   function handleSearch() {
-    const nextFilters: VisitaFilterState = {
-      q: searchText.trim(),
-      estadoVisita:
-        estadoVisitaFiltro,
-      condicion:
-        condicionFiltro,
-      fechaDesde,
-      fechaHasta,
-    };
+    const nextFilters:
+      VisitaFilterState = {
+        q:
+          searchText.trim(),
+
+        estadoVisita:
+          estadoVisitaFiltro,
+
+        condicion:
+          condicionFiltro,
+
+        fechaDesde,
+        fechaHasta,
+      };
 
     setPage(0);
-    setAppliedFilters(nextFilters);
+
+    setAppliedFilters(
+      nextFilters,
+    );
   }
 
   function clearFilters() {
     setSearchText('');
-    setEstadoVisitaFiltro('TODOS');
-    setCondicionFiltro('TODAS');
+
+    setEstadoVisitaFiltro(
+      initialFilters.estadoVisita,
+    );
+
+    setCondicionFiltro(
+      initialFilters.condicion,
+    );
+
     setFechaDesde('');
     setFechaHasta('');
     setPage(0);
-    setAppliedFilters(initialFilters);
+
+    setAppliedFilters(
+      initialFilters,
+    );
+  }
+
+  function selectAssignmentView(
+    condicion:
+      | 'ABIERTAS'
+      | 'FINALIZADAS',
+  ) {
+    const nextFilters:
+      VisitaFilterState = {
+        ...appliedFilters,
+        condicion,
+      };
+
+    setCondicionFiltro(
+      condicion,
+    );
+
+    setPage(0);
+
+    setAppliedFilters(
+      nextFilters,
+    );
   }
 
   function handleOpenResultado(
-    item: CallCenterVisitaResponse,
+    item:
+      CallCenterVisitaResponse,
   ) {
-    if (isVisitLocked(item)) {
+    if (
+      isVisitLocked(item)
+    ) {
       setError(
         'Esta visita ya está finalizada o pertenece a un caso cerrado o cancelado.',
       );
@@ -338,10 +429,16 @@ export default function PageMisAsignacionesCallCenter() {
       return;
     }
 
-    const now = new Date();
+    const now =
+      new Date();
 
-    setSelected(item);
-    setResultError(null);
+    setSelected(
+      item,
+    );
+
+    setResultError(
+      null,
+    );
 
     setForm({
       estadoVisita:
@@ -368,35 +465,48 @@ export default function PageMisAsignacionesCallCenter() {
   }
 
   function handleCloseResultado() {
-    setSelected(null);
-    setResultError(null);
-    setForm(initialResultadoForm);
+    setSelected(
+      null,
+    );
+
+    setResultError(
+      null,
+    );
+
+    setForm(
+      initialResultadoForm,
+    );
   }
 
   function handleChangeEstadoVisita(
-    estado: CallCenterEstadoVisita,
+    estado:
+      CallCenterEstadoVisita,
   ) {
-    setResultError(null);
+    setResultError(
+      null,
+    );
 
-    setForm((current) => ({
-      ...current,
+    setForm(
+      (current) => ({
+        ...current,
 
-      estadoVisita:
-        estado,
+        estadoVisita:
+          estado,
 
-      encuestaRealizada:
-        estado === 'REALIZADA',
+        encuestaRealizada:
+          estado === 'REALIZADA',
 
-      motivoNoEncuesta:
-        estado === 'REALIZADA'
-          ? ''
-          : current.motivoNoEncuesta,
+        motivoNoEncuesta:
+          estado === 'REALIZADA'
+            ? ''
+            : current.motivoNoEncuesta,
 
-      fechaReprogramacion:
-        estado === 'REPROGRAMADA'
-          ? current.fechaReprogramacion
-          : null,
-    }));
+        fechaReprogramacion:
+          estado === 'REPROGRAMADA'
+            ? current.fechaReprogramacion
+            : null,
+      }),
+    );
   }
 
   async function handleSaveResultado() {
@@ -404,9 +514,13 @@ export default function PageMisAsignacionesCallCenter() {
       return;
     }
 
-    setResultError(null);
+    setResultError(
+      null,
+    );
 
-    if (isVisitLocked(selected)) {
+    if (
+      isVisitLocked(selected)
+    ) {
       setResultError(
         'Esta visita ya está finalizada o pertenece a un caso cerrado o cancelado.',
       );
@@ -437,7 +551,9 @@ export default function PageMisAsignacionesCallCenter() {
     }
 
     try {
-      setSaving(true);
+      setSaving(
+        true,
+      );
 
       await actualizarCallCenterResultadoVisita(
         selected.id,
@@ -445,7 +561,8 @@ export default function PageMisAsignacionesCallCenter() {
       );
 
       const reprogramada =
-        form.estadoVisita === 'REPROGRAMADA';
+        form.estadoVisita
+        === 'REPROGRAMADA';
 
       handleCloseResultado();
 
@@ -468,7 +585,9 @@ export default function PageMisAsignacionesCallCenter() {
         ),
       );
     } finally {
-      setSaving(false);
+      setSaving(
+        false,
+      );
     }
   }
 
@@ -490,7 +609,7 @@ export default function PageMisAsignacionesCallCenter() {
         <CircularProgress />
 
         <Typography component="p">
-          Cargando asignaciones...
+          Cargando agenda de visitas...
         </Typography>
       </Box>
     );
@@ -521,8 +640,7 @@ export default function PageMisAsignacionesCallCenter() {
           justifyContent:
             'space-between',
 
-          gap:
-            1.5,
+          gap: 1.5,
         }}
       >
         <Box>
@@ -533,7 +651,7 @@ export default function PageMisAsignacionesCallCenter() {
               fontWeight: 900,
             }}
           >
-            Mis asignaciones
+            Agenda de visitas
           </Typography>
 
           <Typography
@@ -541,8 +659,9 @@ export default function PageMisAsignacionesCallCenter() {
             variant="body2"
             color="text.secondary"
           >
-            Consulta tus visitas y registra el resultado
-            del trabajo de campo.
+            Consulta primero las visitas pendientes y registra
+            el resultado del trabajo de campo. Las visitas
+            finalizadas permanecen disponibles en el historial.
           </Typography>
         </Box>
 
@@ -551,8 +670,12 @@ export default function PageMisAsignacionesCallCenter() {
           startIcon={
             <RefreshIcon />
           }
-          onClick={refresh}
-          disabled={loading}
+          onClick={
+            refresh
+          }
+          disabled={
+            loading
+          }
         >
           Actualizar
         </Button>
@@ -567,28 +690,219 @@ export default function PageMisAsignacionesCallCenter() {
             sm: 'repeat(3, 1fr)',
           },
 
-          gap:
-            1.25,
+          gap: 1.25,
         }}
       >
         <SummaryCard
-          label="Visitas cargadas"
-          value={items.length}
+          label="Visitas en la vista"
+          value={
+            items.length
+          }
           color="primary.main"
         />
 
         <SummaryCard
-          label="Pendientes"
-          value={visitasAbiertas}
+          label="Pendientes en la vista"
+          value={
+            visitasAbiertas
+          }
           color="warning.main"
         />
 
         <SummaryCard
-          label="Finalizadas"
-          value={visitasFinalizadas}
+          label="Finalizadas en la vista"
+          value={
+            visitasFinalizadas
+          }
           color="success.main"
         />
       </Box>
+
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 1.5,
+          borderRadius: 2.5,
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+
+            flexDirection: {
+              xs: 'column',
+              lg: 'row',
+            },
+
+            alignItems: {
+              xs: 'stretch',
+              lg: 'center',
+            },
+
+            justifyContent:
+              'space-between',
+
+            gap: 2,
+          }}
+        >
+          <Box>
+            <Typography
+              component="h2"
+              variant="subtitle2"
+              sx={{
+                fontWeight: 900,
+              }}
+            >
+              Vista de trabajo
+            </Typography>
+
+            <Typography
+              component="p"
+              variant="caption"
+              color="text.secondary"
+            >
+              Selecciona las visitas que deseas consultar y
+              cambia su presentación entre tarjetas y lista.
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              display: 'flex',
+
+              flexDirection: {
+                xs: 'column',
+                sm: 'row',
+              },
+
+              alignItems: {
+                xs: 'stretch',
+                sm: 'flex-end',
+              },
+
+              gap: 2,
+            }}
+          >
+            <Box>
+              <Typography
+                component="p"
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  mb: 0.5,
+                }}
+              >
+                Estado de trabajo
+              </Typography>
+
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 1,
+                }}
+              >
+                <Button
+                  size="small"
+                  variant={
+                    appliedFilters.condicion
+                      === 'ABIERTAS'
+                      ? 'contained'
+                      : 'outlined'
+                  }
+                  onClick={() => {
+                    selectAssignmentView(
+                      'ABIERTAS',
+                    );
+                  }}
+                >
+                  Pendientes
+                </Button>
+
+                <Button
+                  size="small"
+                  variant={
+                    appliedFilters.condicion
+                      === 'FINALIZADAS'
+                      ? 'contained'
+                      : 'outlined'
+                  }
+                  onClick={() => {
+                    selectAssignmentView(
+                      'FINALIZADAS',
+                    );
+                  }}
+                >
+                  Historial
+                </Button>
+              </Box>
+            </Box>
+
+            <Box>
+              <Typography
+                component="p"
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  mb: 0.5,
+                }}
+              >
+                Presentación
+              </Typography>
+
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 1,
+                }}
+              >
+                <Button
+                  size="small"
+                  variant={
+                    viewMode === 'CARDS'
+                      ? 'contained'
+                      : 'outlined'
+                  }
+                  startIcon={
+                    <ViewModuleIcon />
+                  }
+                  aria-pressed={
+                    viewMode === 'CARDS'
+                  }
+                  onClick={() => {
+                    setViewMode(
+                      'CARDS',
+                    );
+                  }}
+                >
+                  Tarjetas
+                </Button>
+
+                <Button
+                  size="small"
+                  variant={
+                    viewMode === 'LIST'
+                      ? 'contained'
+                      : 'outlined'
+                  }
+                  startIcon={
+                    <ViewListIcon />
+                  }
+                  aria-pressed={
+                    viewMode === 'LIST'
+                  }
+                  onClick={() => {
+                    setViewMode(
+                      'LIST',
+                    );
+                  }}
+                >
+                  Lista
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Paper>
 
       <Card
         variant="outlined"
@@ -626,7 +940,7 @@ export default function PageMisAsignacionesCallCenter() {
                   fontWeight: 900,
                 }}
               >
-                Buscar asignaciones
+                Buscar visitas
               </Typography>
 
               <Typography
@@ -648,20 +962,23 @@ export default function PageMisAsignacionesCallCenter() {
                   xl: '2fr 1fr 1fr 1fr 1fr',
                 },
 
-                gap:
-                  1.25,
+                gap: 1.25,
               }}
             >
               <TextField
                 label="Buscar ciudadano o caso"
-                value={searchText}
+                value={
+                  searchText
+                }
                 onChange={(event) => {
                   setSearchText(
                     event.target.value,
                   );
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
+                  if (
+                    event.key === 'Enter'
+                  ) {
                     handleSearch();
                   }
                 }}
@@ -680,7 +997,9 @@ export default function PageMisAsignacionesCallCenter() {
 
                 <Select
                   label="Estado visita"
-                  value={estadoVisitaFiltro}
+                  value={
+                    estadoVisitaFiltro
+                  }
                   onChange={(event) => {
                     setEstadoVisitaFiltro(
                       String(
@@ -696,10 +1015,16 @@ export default function PageMisAsignacionesCallCenter() {
                   {ESTADOS_VISITA_FILTRO.map(
                     (estado) => (
                       <MenuItem
-                        key={estado}
-                        value={estado}
+                        key={
+                          estado
+                        }
+                        value={
+                          estado
+                        }
                       >
-                        {formatLabel(estado)}
+                        {formatLabel(
+                          estado,
+                        )}
                       </MenuItem>
                     ),
                   )}
@@ -716,7 +1041,9 @@ export default function PageMisAsignacionesCallCenter() {
 
                 <Select
                   label="Condición"
-                  value={condicionFiltro}
+                  value={
+                    condicionFiltro
+                  }
                   onChange={(event) => {
                     setCondicionFiltro(
                       String(
@@ -750,7 +1077,9 @@ export default function PageMisAsignacionesCallCenter() {
               <TextField
                 label="Fecha desde"
                 type="date"
-                value={fechaDesde}
+                value={
+                  fechaDesde
+                }
                 onChange={(event) => {
                   setFechaDesde(
                     event.target.value,
@@ -768,7 +1097,9 @@ export default function PageMisAsignacionesCallCenter() {
               <TextField
                 label="Fecha hasta"
                 type="date"
-                value={fechaHasta}
+                value={
+                  fechaHasta
+                }
                 onChange={(event) => {
                   setFechaHasta(
                     event.target.value,
@@ -801,8 +1132,7 @@ export default function PageMisAsignacionesCallCenter() {
                 justifyContent:
                   'space-between',
 
-                gap:
-                  1,
+                gap: 1,
               }}
             >
               <Typography
@@ -827,8 +1157,12 @@ export default function PageMisAsignacionesCallCenter() {
                   startIcon={
                     <SearchIcon />
                   }
-                  onClick={handleSearch}
-                  disabled={loading}
+                  onClick={
+                    handleSearch
+                  }
+                  disabled={
+                    loading
+                  }
                 >
                   Buscar
                 </Button>
@@ -839,7 +1173,9 @@ export default function PageMisAsignacionesCallCenter() {
                   startIcon={
                     <FilterAltOffIcon />
                   }
-                  onClick={clearFilters}
+                  onClick={
+                    clearFilters
+                  }
                   disabled={
                     !hasActiveFilters
                     || loading
@@ -853,18 +1189,6 @@ export default function PageMisAsignacionesCallCenter() {
         </CardContent>
       </Card>
 
-      {visitasFinalizadas > 0 ? (
-        <Alert
-          severity="info"
-          sx={{
-            py: 0.5,
-          }}
-        >
-          Las visitas finalizadas permanecen visibles para
-          consulta y no admiten nuevos resultados.
-        </Alert>
-      ) : null}
-
       {items.length === 0 ? (
         <Alert severity="info">
           No tienes visitas asignadas con los filtros
@@ -873,17 +1197,27 @@ export default function PageMisAsignacionesCallCenter() {
       ) : (
         <Box
           sx={{
-            display: 'grid',
+            display:
+              viewMode === 'CARDS'
+                ? 'grid'
+                : 'flex',
 
-            gridTemplateColumns: {
-              xs: '1fr',
-              md: 'repeat(2, minmax(0, 1fr))',
-              lg: 'repeat(3, minmax(0, 1fr))',
-              xl: 'repeat(4, minmax(0, 1fr))',
-            },
+            flexDirection:
+              viewMode === 'LIST'
+                ? 'column'
+                : undefined,
 
-            gap:
-              1.5,
+            gridTemplateColumns:
+              viewMode === 'CARDS'
+                ? {
+                  xs: '1fr',
+                  md: 'repeat(2, minmax(0, 1fr))',
+                  lg: 'repeat(3, minmax(0, 1fr))',
+                  xl: 'repeat(4, minmax(0, 1fr))',
+                }
+                : undefined,
+
+            gap: 1.5,
 
             opacity:
               loading
@@ -899,469 +1233,55 @@ export default function PageMisAsignacionesCallCenter() {
               'opacity 180ms ease',
           }}
         >
-          {items.map((item) => {
-            const locked =
-              isVisitLocked(item);
-
-            const estadoCaso =
-              getOptionalStringField(
-                item,
-                'estadoCaso',
-              );
-
-            const tipoSolicitud =
-              getOptionalStringField(
-                item,
-                'tipoSolicitudCallcenter',
-              );
-
-            const reprogramada =
-              normalizeCode(
-                item.estadoVisita,
-              ) === 'REPROGRAMADA';
-
-            return (
-              <Card
-                key={item.id}
-                variant="outlined"
-                sx={{
-                  position: 'relative',
-                  overflow: 'hidden',
-                  height: '100%',
-                  borderRadius: 2.5,
-
-                  borderColor:
-                    locked
-                      ? 'divider'
-                      : getCardAccent(
-                        item.estadoVisita,
-                      ),
-
-                  backgroundColor:
-                    locked
-                      ? 'action.hover'
-                      : 'background.paper',
-
-                  transition: (
-                    theme,
-                  ) =>
-                    theme.transitions.create(
-                      [
-                        'transform',
-                        'box-shadow',
-                        'border-color',
-                      ],
-                      {
-                        duration:
-                          theme.transitions
-                            .duration.short,
-                      },
-                    ),
-
-                  '&:hover': {
-                    transform:
-                      'translateY(-4px)',
-
-                    boxShadow:
-                      locked
-                        ? 2
-                        : 6,
-
-                    borderColor:
-                      getCardAccent(
-                        item.estadoVisita,
-                      ),
-                  },
-                }}
-              >
-                <Box
-                  sx={{
-                    height: 4,
-                    bgcolor:
-                      getCardAccent(
-                        item.estadoVisita,
-                      ),
-                  }}
+          {items.map(
+            (item) =>
+              viewMode === 'CARDS' ? (
+                <AssignmentCard
+                  key={
+                    item.id
+                  }
+                  item={
+                    item
+                  }
+                  onOpenResultado={
+                    handleOpenResultado
+                  }
                 />
-
-                <CardContent
-                  sx={{
-                    p: 1.75,
-
-                    '&:last-child': {
-                      pb: 1.75,
-                    },
-                  }}
-                >
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 1.25,
-                      height: '100%',
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        justifyContent:
-                          'space-between',
-                        gap: 1,
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 1,
-                          minWidth: 0,
-                        }}
-                      >
-                        <Avatar
-                          sx={{
-                            width: 36,
-                            height: 36,
-                            bgcolor:
-                              getCardAccent(
-                                item.estadoVisita,
-                              ),
-                          }}
-                        >
-                          {getVisitIcon(item)}
-                        </Avatar>
-
-                        <Box
-                          sx={{
-                            minWidth: 0,
-                          }}
-                        >
-                          <Typography
-                            component="p"
-                            variant="subtitle2"
-                            sx={{
-                              fontWeight: 900,
-                            }}
-                          >
-                            Caso #{item.callCenterRegistroId}
-                          </Typography>
-
-                          <Typography
-                            component="p"
-                            variant="caption"
-                            color="text.secondary"
-                          >
-                            Visita #{item.id}
-                          </Typography>
-                        </Box>
-                      </Box>
-
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'flex-end',
-                          gap: 0.5,
-                        }}
-                      >
-                        <Chip
-                          size="small"
-                          label={
-                            formatLabel(
-                              item.estadoVisita,
-                            )
-                          }
-                          color={
-                            getStatusColor(
-                              item.estadoVisita,
-                            )
-                          }
-                        />
-
-                        {estadoCaso ? (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={
-                              formatLabel(
-                                estadoCaso,
-                              )
-                            }
-                            color={
-                              getStatusColor(
-                                estadoCaso,
-                              )
-                            }
-                          />
-                        ) : null}
-                      </Box>
-                    </Box>
-
-                    <Divider />
-
-                    <Box
-                      sx={{
-                        minWidth: 0,
-                      }}
-                    >
-                      <Typography
-                        component="p"
-                        variant="subtitle2"
-                        noWrap
-                        sx={{
-                          fontWeight: 900,
-                        }}
-                      >
-                        {item.nombreCompleto
-                          ?? 'Ciudadano sin nombre'}
-                      </Typography>
-
-                      <Typography
-                        component="p"
-                        variant="caption"
-                        color="text.secondary"
-                      >
-                        C.C.{' '}
-                        {item.cedulaSolicitante
-                          ?? 'Sin cédula'}
-                      </Typography>
-                    </Box>
-
-                    <Box
-                      sx={{
-                        display: 'grid',
-                        gridTemplateColumns:
-                          'repeat(2, minmax(0, 1fr))',
-                        gap: 1,
-                      }}
-                    >
-                      <CompactInfoItem
-                        icon={
-                          <PhoneIcon fontSize="small" />
-                        }
-                        label="Teléfono"
-                        value={
-                          item.telefono
-                          ?? 'Sin teléfono'
-                        }
-                      />
-
-                      <CompactInfoItem
-                        icon={
-                          <CalendarMonthIcon fontSize="small" />
-                        }
-                        label="Programada"
-                        value={
-                          formatVisitSchedule(
-                            item.fechaProgramada,
-                            item.horaProgramada,
-                          )
-                        }
-                      />
-                    </Box>
-
-                    <CompactInfoItem
-                      icon={
-                        <LocationOnIcon fontSize="small" />
-                      }
-                      label="Dirección"
-                      value={
-                        item.direccionTexto
-                        ?? 'Sin dirección'
-                      }
-                    />
-
-                    <CompactInfoItem
-                      icon={
-                        <HomeWorkIcon fontSize="small" />
-                      }
-                      label="Barrio / comuna"
-                      value={
-                        `${item.barrioNombre ?? 'Sin barrio'} / ${item.comunaNombre ?? 'Sin comuna'}`
-                      }
-                    />
-
-                    {tipoSolicitud ? (
-                      <CompactInfoItem
-                        icon={
-                          <AssignmentIndIcon fontSize="small" />
-                        }
-                        label="Solicitud"
-                        value={
-                          formatLabel(
-                            tipoSolicitud,
-                          )
-                        }
-                      />
-                    ) : null}
-
-                    {item.fechaReprogramacion ? (
-                      <Alert
-                        severity="warning"
-                        icon={
-                          <ReplayIcon fontSize="small" />
-                        }
-                        sx={{
-                          py: 0.25,
-
-                          '& .MuiAlert-message': {
-                            py: 0.25,
-                          },
-                        }}
-                      >
-                        Nueva fecha:{' '}
-                        <strong>
-                          {formatDate(
-                            item.fechaReprogramacion,
-                          )}
-                        </strong>
-                      </Alert>
-                    ) : null}
-
-                    {item.motivoNoEncuesta ? (
-                      <Box
-                        sx={{
-                          p: 1,
-                          borderRadius: 1.5,
-                          bgcolor:
-                            'action.hover',
-                        }}
-                      >
-                        <Typography
-                          component="p"
-                          variant="caption"
-                          color="text.secondary"
-                        >
-                          Motivo registrado
-                        </Typography>
-
-                        <Typography
-                          component="p"
-                          variant="body2"
-                          sx={{
-                            fontWeight: 700,
-                            overflowWrap:
-                              'anywhere',
-                          }}
-                        >
-                          {item.motivoNoEncuesta}
-                        </Typography>
-                      </Box>
-                    ) : null}
-
-                    {item.observacionEncuestador ? (
-                      <Box
-                        sx={{
-                          p: 1,
-                          borderRadius: 1.5,
-                          bgcolor:
-                            'action.hover',
-                        }}
-                      >
-                        <Typography
-                          component="p"
-                          variant="caption"
-                          color="text.secondary"
-                        >
-                          Observación
-                        </Typography>
-
-                        <Typography
-                          component="p"
-                          variant="body2"
-                          sx={{
-                            display:
-                              '-webkit-box',
-
-                            WebkitBoxOrient:
-                              'vertical',
-
-                            WebkitLineClamp:
-                              2,
-
-                            overflow:
-                              'hidden',
-                          }}
-                        >
-                          {item.observacionEncuestador}
-                        </Typography>
-                      </Box>
-                    ) : null}
-
-                    <Box
-                      sx={{
-                        mt: 'auto',
-                        pt: 0.5,
-                      }}
-                    >
-                      <Button
-                        variant={
-                          locked
-                            ? 'outlined'
-                            : 'contained'
-                        }
-                        color={
-                          locked
-                            ? 'inherit'
-                            : 'primary'
-                        }
-                        startIcon={
-                          locked
-                            ? <CheckCircleIcon />
-                            : reprogramada
-                              ? <ReplayIcon />
-                              : <FactCheckIcon />
-                        }
-                        onClick={() => {
-                          handleOpenResultado(
-                            item,
-                          );
-                        }}
-                        disabled={locked}
-                        fullWidth
-                        size="small"
-                      >
-                        {locked
-                          ? 'Caso finalizado'
-                          : reprogramada
-                            ? 'Actualizar resultado'
-                            : 'Registrar resultado'}
-                      </Button>
-
-                      <Typography
-                        component="p"
-                        variant="caption"
-                        color="text.secondary"
-                        align="center"
-                        sx={{
-                          mt: 0.5,
-                        }}
-                      >
-                        {locked
-                          ? 'Solo disponible para consulta'
-                          : reprogramada
-                            ? 'Pendiente de la nueva visita'
-                            : 'Completa el resultado de campo'}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            );
-          })}
+              ) : (
+                <AssignmentListItem
+                  key={
+                    item.id
+                  }
+                  item={
+                    item
+                  }
+                  onOpenResultado={
+                    handleOpenResultado
+                  }
+                />
+              ),
+          )}
         </Box>
       )}
 
       <TablePagination
         component="div"
-        count={total}
-        page={page}
-        rowsPerPage={size}
+        count={
+          total
+        }
+        page={
+          page
+        }
+        rowsPerPage={
+          size
+        }
         onPageChange={(
           _,
           newPage,
         ) => {
-          setPage(newPage);
+          setPage(
+            newPage,
+          );
         }}
         onRowsPerPageChange={(event) => {
           setSize(
@@ -1370,7 +1290,9 @@ export default function PageMisAsignacionesCallCenter() {
             ),
           );
 
-          setPage(0);
+          setPage(
+            0,
+          );
         }}
         rowsPerPageOptions={[
           10,
@@ -1392,7 +1314,9 @@ export default function PageMisAsignacionesCallCenter() {
       />
 
       <Dialog
-        open={Boolean(selected)}
+        open={
+          Boolean(selected)
+        }
         onClose={() => {
           if (!saving) {
             handleCloseResultado();
@@ -1413,7 +1337,12 @@ export default function PageMisAsignacionesCallCenter() {
               fontWeight: 900,
             }}
           >
-            Registrar resultado de visita
+            {selected
+            && normalizeCode(
+              selected.estadoVisita,
+            ) === 'REPROGRAMADA'
+              ? 'Registrar resultado de visita reprogramada'
+              : 'Registrar resultado de visita'}
           </Typography>
 
           {selected ? (
@@ -1477,7 +1406,9 @@ export default function PageMisAsignacionesCallCenter() {
 
               <Select
                 label="Resultado de la visita"
-                value={form.estadoVisita}
+                value={
+                  form.estadoVisita
+                }
                 onChange={(event) => {
                   handleChangeEstadoVisita(
                     event.target
@@ -1488,8 +1419,12 @@ export default function PageMisAsignacionesCallCenter() {
                 {ESTADOS_VISITA.map(
                   (estado) => (
                     <MenuItem
-                      key={estado}
-                      value={estado}
+                      key={
+                        estado
+                      }
+                      value={
+                        estado
+                      }
                     >
                       {getResultadoOptionLabel(
                         estado,
@@ -1509,8 +1444,7 @@ export default function PageMisAsignacionesCallCenter() {
                   sm: 'repeat(2, minmax(0, 1fr))',
                 },
 
-                gap:
-                  1.5,
+                gap: 1.5,
               }}
             >
               <TextField
@@ -1521,13 +1455,15 @@ export default function PageMisAsignacionesCallCenter() {
                   ?? ''
                 }
                 onChange={(event) => {
-                  setForm((current) => ({
-                    ...current,
+                  setForm(
+                    (current) => ({
+                      ...current,
 
-                    fechaVisitaReal:
-                      event.target.value
-                      || null,
-                  }));
+                      fechaVisitaReal:
+                        event.target.value
+                        || null,
+                    }),
+                  );
                 }}
                 size="small"
                 slotProps={{
@@ -1546,13 +1482,15 @@ export default function PageMisAsignacionesCallCenter() {
                   ?? ''
                 }
                 onChange={(event) => {
-                  setForm((current) => ({
-                    ...current,
+                  setForm(
+                    (current) => ({
+                      ...current,
 
-                    horaVisitaReal:
-                      event.target.value
-                      || null,
-                  }));
+                      horaVisitaReal:
+                        event.target.value
+                        || null,
+                    }),
+                  );
                 }}
                 size="small"
                 slotProps={{
@@ -1567,9 +1505,11 @@ export default function PageMisAsignacionesCallCenter() {
             {form.estadoVisita !== 'REALIZADA' ? (
               <TextField
                 label={
-                  form.estadoVisita === 'REPROGRAMADA'
+                  form.estadoVisita
+                    === 'REPROGRAMADA'
                     ? 'Motivo de la reprogramación'
-                    : form.estadoVisita === 'CANCELADA'
+                    : form.estadoVisita
+                      === 'CANCELADA'
                       ? 'Motivo de la cancelación'
                       : 'Motivo de visita no atendida'
                 }
@@ -1578,12 +1518,14 @@ export default function PageMisAsignacionesCallCenter() {
                   ?? ''
                 }
                 onChange={(event) => {
-                  setForm((current) => ({
-                    ...current,
+                  setForm(
+                    (current) => ({
+                      ...current,
 
-                    motivoNoEncuesta:
-                      event.target.value,
-                  }));
+                      motivoNoEncuesta:
+                        event.target.value,
+                    }),
+                  );
                 }}
                 required
                 size="small"
@@ -1601,13 +1543,15 @@ export default function PageMisAsignacionesCallCenter() {
                   ?? ''
                 }
                 onChange={(event) => {
-                  setForm((current) => ({
-                    ...current,
+                  setForm(
+                    (current) => ({
+                      ...current,
 
-                    fechaReprogramacion:
-                      event.target.value
-                      || null,
-                  }));
+                      fechaReprogramacion:
+                        event.target.value
+                        || null,
+                    }),
+                  );
                 }}
                 size="small"
                 slotProps={{
@@ -1628,12 +1572,14 @@ export default function PageMisAsignacionesCallCenter() {
                 ?? ''
               }
               onChange={(event) => {
-                setForm((current) => ({
-                  ...current,
+                setForm(
+                  (current) => ({
+                    ...current,
 
-                  observacionEncuestador:
-                    event.target.value,
-                }));
+                    observacionEncuestador:
+                      event.target.value,
+                  }),
+                );
               }}
               multiline
               minRows={3}
@@ -1654,7 +1600,9 @@ export default function PageMisAsignacionesCallCenter() {
             onClick={
               handleCloseResultado
             }
-            disabled={saving}
+            disabled={
+              saving
+            }
           >
             Cancelar
           </Button>
@@ -1685,10 +1633,14 @@ export default function PageMisAsignacionesCallCenter() {
       </Dialog>
 
       <Snackbar
-        open={Boolean(error)}
+        open={
+          Boolean(error)
+        }
         autoHideDuration={6000}
         onClose={() => {
-          setError(null);
+          setError(
+            null,
+          );
         }}
         anchorOrigin={{
           vertical: 'bottom',
@@ -1698,7 +1650,9 @@ export default function PageMisAsignacionesCallCenter() {
         <Alert
           severity="error"
           onClose={() => {
-            setError(null);
+            setError(
+              null,
+            );
           }}
         >
           {error}
@@ -1706,10 +1660,14 @@ export default function PageMisAsignacionesCallCenter() {
       </Snackbar>
 
       <Snackbar
-        open={Boolean(success)}
+        open={
+          Boolean(success)
+        }
         autoHideDuration={5000}
         onClose={() => {
-          setSuccess(null);
+          setSuccess(
+            null,
+          );
         }}
         anchorOrigin={{
           vertical: 'bottom',
@@ -1719,13 +1677,913 @@ export default function PageMisAsignacionesCallCenter() {
         <Alert
           severity="success"
           onClose={() => {
-            setSuccess(null);
+            setSuccess(
+              null,
+            );
           }}
         >
           {success}
         </Alert>
       </Snackbar>
     </Box>
+  );
+}
+
+function AssignmentCard({
+  item,
+  onOpenResultado,
+}: AssignmentItemProps) {
+  const locked =
+    isVisitLocked(
+      item,
+    );
+
+  const estadoCaso =
+    getOptionalStringField(
+      item,
+      'estadoCaso',
+    );
+
+  const tipoSolicitud =
+    getOptionalStringField(
+      item,
+      'tipoSolicitudCallcenter',
+    );
+
+  const reprogramada =
+    normalizeCode(
+      item.estadoVisita,
+    ) === 'REPROGRAMADA';
+
+  return (
+    <Card
+      variant="outlined"
+      sx={{
+        position: 'relative',
+        overflow: 'hidden',
+        height: '100%',
+        borderRadius: 2.5,
+
+        borderColor:
+          locked
+            ? 'divider'
+            : getCardAccent(
+              item.estadoVisita,
+            ),
+
+        backgroundColor:
+          locked
+            ? 'action.hover'
+            : 'background.paper',
+
+        transition: (
+          theme,
+        ) =>
+          theme.transitions.create(
+            [
+              'transform',
+              'box-shadow',
+              'border-color',
+            ],
+            {
+              duration:
+                theme.transitions
+                  .duration.short,
+            },
+          ),
+
+        '&:hover': {
+          transform:
+            'translateY(-4px)',
+
+          boxShadow:
+            locked
+              ? 2
+              : 6,
+
+          borderColor:
+            getCardAccent(
+              item.estadoVisita,
+            ),
+        },
+      }}
+    >
+      <Box
+        sx={{
+          height: 4,
+
+          bgcolor:
+            getCardAccent(
+              item.estadoVisita,
+            ),
+        }}
+      />
+
+      <CardContent
+        sx={{
+          p: 1.75,
+
+          '&:last-child': {
+            pb: 1.75,
+          },
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.25,
+            height: '100%',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'flex-start',
+
+              justifyContent:
+                'space-between',
+
+              gap: 1,
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                minWidth: 0,
+              }}
+            >
+              <Avatar
+                sx={{
+                  width: 36,
+                  height: 36,
+
+                  bgcolor:
+                    getCardAccent(
+                      item.estadoVisita,
+                    ),
+                }}
+              >
+                {getVisitIcon(
+                  item,
+                )}
+              </Avatar>
+
+              <Box
+                sx={{
+                  minWidth: 0,
+                }}
+              >
+                <Typography
+                  component="p"
+                  variant="subtitle2"
+                  sx={{
+                    fontWeight: 900,
+                  }}
+                >
+                  Caso #{item.callCenterRegistroId}
+                </Typography>
+
+                <Typography
+                  component="p"
+                  variant="caption"
+                  color="text.secondary"
+                >
+                  Visita #{item.id}
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                gap: 0.5,
+              }}
+            >
+              <Chip
+                size="small"
+                label={
+                  formatLabel(
+                    item.estadoVisita,
+                  )
+                }
+                color={
+                  getStatusColor(
+                    item.estadoVisita,
+                  )
+                }
+              />
+
+              {estadoCaso ? (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={
+                    formatLabel(
+                      estadoCaso,
+                    )
+                  }
+                  color={
+                    getStatusColor(
+                      estadoCaso,
+                    )
+                  }
+                />
+              ) : null}
+            </Box>
+          </Box>
+
+          <Divider />
+
+          <Box
+            sx={{
+              minWidth: 0,
+            }}
+          >
+            <Typography
+              component="p"
+              variant="subtitle2"
+              noWrap
+              sx={{
+                fontWeight: 900,
+              }}
+            >
+              {item.nombreCompleto
+                ?? 'Ciudadano sin nombre'}
+            </Typography>
+
+            <Typography
+              component="p"
+              variant="caption"
+              color="text.secondary"
+            >
+              C.C.{' '}
+              {item.cedulaSolicitante
+                ?? 'Sin cédula'}
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              display: 'grid',
+
+              gridTemplateColumns:
+                'repeat(2, minmax(0, 1fr))',
+
+              gap: 1,
+            }}
+          >
+            <CompactInfoItem
+              icon={
+                <PhoneIcon fontSize="small" />
+              }
+              label="Teléfono"
+              value={
+                item.telefono
+                ?? 'Sin teléfono'
+              }
+            />
+
+            <CompactInfoItem
+              icon={
+                <CalendarMonthIcon fontSize="small" />
+              }
+              label="Programada"
+              value={
+                formatVisitSchedule(
+                  item.fechaProgramada,
+                  item.horaProgramada,
+                )
+              }
+            />
+          </Box>
+
+          <CompactInfoItem
+            icon={
+              <LocationOnIcon fontSize="small" />
+            }
+            label="Dirección"
+            value={
+              item.direccionTexto
+              ?? 'Sin dirección'
+            }
+          />
+
+          <CompactInfoItem
+            icon={
+              <HomeWorkIcon fontSize="small" />
+            }
+            label="Barrio / comuna"
+            value={
+              `${item.barrioNombre ?? 'Sin barrio'} / ${item.comunaNombre ?? 'Sin comuna'}`
+            }
+          />
+
+          {tipoSolicitud ? (
+            <CompactInfoItem
+              icon={
+                <AssignmentIndIcon fontSize="small" />
+              }
+              label="Solicitud"
+              value={
+                formatLabel(
+                  tipoSolicitud,
+                )
+              }
+            />
+          ) : null}
+
+          {item.fechaReprogramacion ? (
+            <Alert
+              severity="warning"
+              icon={
+                <ReplayIcon fontSize="small" />
+              }
+              sx={{
+                py: 0.25,
+
+                '& .MuiAlert-message': {
+                  py: 0.25,
+                },
+              }}
+            >
+              Nueva fecha:{' '}
+              <strong>
+                {formatDate(
+                  item.fechaReprogramacion,
+                )}
+              </strong>
+            </Alert>
+          ) : null}
+
+          {item.motivoNoEncuesta ? (
+            <Box
+              sx={{
+                p: 1,
+                borderRadius: 1.5,
+                bgcolor: 'action.hover',
+              }}
+            >
+              <Typography
+                component="p"
+                variant="caption"
+                color="text.secondary"
+              >
+                Motivo registrado
+              </Typography>
+
+              <Typography
+                component="p"
+                variant="body2"
+                sx={{
+                  fontWeight: 700,
+
+                  overflowWrap:
+                    'anywhere',
+                }}
+              >
+                {item.motivoNoEncuesta}
+              </Typography>
+            </Box>
+          ) : null}
+
+          {item.observacionEncuestador ? (
+            <Box
+              sx={{
+                p: 1,
+                borderRadius: 1.5,
+                bgcolor: 'action.hover',
+              }}
+            >
+              <Typography
+                component="p"
+                variant="caption"
+                color="text.secondary"
+              >
+                Observación
+              </Typography>
+
+              <Typography
+                component="p"
+                variant="body2"
+                sx={{
+                  display:
+                    '-webkit-box',
+
+                  WebkitBoxOrient:
+                    'vertical',
+
+                  WebkitLineClamp: 2,
+
+                  overflow:
+                    'hidden',
+                }}
+              >
+                {item.observacionEncuestador}
+              </Typography>
+            </Box>
+          ) : null}
+
+          <Box
+            sx={{
+              mt: 'auto',
+              pt: 0.5,
+            }}
+          >
+            {locked ? (
+              <Alert
+                severity={
+                  normalizeCode(
+                    item.estadoVisita,
+                  ) === 'CANCELADA'
+                    ? 'error'
+                    : 'info'
+                }
+                icon={
+                  <CheckCircleIcon fontSize="small" />
+                }
+                sx={{
+                  py: 0.25,
+
+                  '& .MuiAlert-message': {
+                    py: 0.25,
+                  },
+                }}
+              >
+                Visita finalizada. Disponible únicamente para
+                consulta.
+              </Alert>
+            ) : (
+              <>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={
+                    reprogramada
+                      ? <ReplayIcon />
+                      : <FactCheckIcon />
+                  }
+                  onClick={() => {
+                    onOpenResultado(
+                      item,
+                    );
+                  }}
+                  fullWidth
+                  size="small"
+                >
+                  {reprogramada
+                    ? 'Registrar resultado de nueva visita'
+                    : 'Registrar resultado'}
+                </Button>
+
+                <Typography
+                  component="p"
+                  variant="caption"
+                  color="text.secondary"
+                  align="center"
+                  sx={{
+                    mt: 0.5,
+                  }}
+                >
+                  {reprogramada
+                    ? 'Pendiente de la fecha reprogramada'
+                    : 'Completa el resultado del trabajo de campo'}
+                </Typography>
+              </>
+            )}
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AssignmentListItem({
+  item,
+  onOpenResultado,
+}: AssignmentItemProps) {
+  const locked =
+    isVisitLocked(
+      item,
+    );
+
+  const estadoCaso =
+    getOptionalStringField(
+      item,
+      'estadoCaso',
+    );
+
+  const tipoSolicitud =
+    getOptionalStringField(
+      item,
+      'tipoSolicitudCallcenter',
+    );
+
+  const reprogramada =
+    normalizeCode(
+      item.estadoVisita,
+    ) === 'REPROGRAMADA';
+
+  const cancelada =
+    normalizeCode(
+      item.estadoVisita,
+    ) === 'CANCELADA';
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        p: {
+          xs: 1.5,
+          md: 2,
+        },
+
+        borderRadius: 2,
+        borderLeftWidth: 5,
+        borderLeftStyle: 'solid',
+
+        borderLeftColor:
+          getCardAccent(
+            item.estadoVisita,
+          ),
+
+        bgcolor:
+          locked
+            ? 'action.hover'
+            : 'background.paper',
+
+        transition: (
+          theme,
+        ) =>
+          theme.transitions.create(
+            [
+              'box-shadow',
+              'border-color',
+            ],
+            {
+              duration:
+                theme.transitions
+                  .duration.short,
+            },
+          ),
+
+        '&:hover': {
+          boxShadow: 3,
+
+          borderColor:
+            getCardAccent(
+              item.estadoVisita,
+            ),
+        },
+      }}
+    >
+      <Box
+        sx={{
+          display: 'grid',
+
+          gridTemplateColumns: {
+            xs: '1fr',
+            md: 'minmax(210px, 1.1fr) minmax(180px, 0.8fr) minmax(260px, 1.4fr) minmax(210px, auto)',
+          },
+
+          alignItems: {
+            xs: 'stretch',
+            md: 'center',
+          },
+
+          gap: 2,
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.25,
+            minWidth: 0,
+          }}
+        >
+          <Avatar
+            sx={{
+              width: 42,
+              height: 42,
+
+              bgcolor:
+                getCardAccent(
+                  item.estadoVisita,
+                ),
+            }}
+          >
+            {getVisitIcon(
+              item,
+            )}
+          </Avatar>
+
+          <Box
+            sx={{
+              minWidth: 0,
+            }}
+          >
+            <Typography
+              component="p"
+              variant="subtitle2"
+              sx={{
+                fontWeight: 900,
+              }}
+            >
+              Caso #{item.callCenterRegistroId}
+            </Typography>
+
+            <Typography
+              component="p"
+              variant="body2"
+              noWrap
+              sx={{
+                fontWeight: 800,
+              }}
+            >
+              {item.nombreCompleto
+                ?? 'Ciudadano sin nombre'}
+            </Typography>
+
+            <Typography
+              component="p"
+              variant="caption"
+              color="text.secondary"
+            >
+              C.C.{' '}
+              {item.cedulaSolicitante
+                ?? 'Sin cédula'}
+              {' · '}
+              Visita #{item.id}
+            </Typography>
+          </Box>
+        </Box>
+
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1,
+          }}
+        >
+          <CompactInfoItem
+            icon={
+              <CalendarMonthIcon fontSize="small" />
+            }
+            label="Programada"
+            value={
+              formatVisitSchedule(
+                item.fechaProgramada,
+                item.horaProgramada,
+              )
+            }
+          />
+
+          <CompactInfoItem
+            icon={
+              <PhoneIcon fontSize="small" />
+            }
+            label="Teléfono"
+            value={
+              item.telefono
+              ?? 'Sin teléfono'
+            }
+          />
+        </Box>
+
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1,
+            minWidth: 0,
+          }}
+        >
+          <CompactInfoItem
+            icon={
+              <LocationOnIcon fontSize="small" />
+            }
+            label="Dirección"
+            value={
+              item.direccionTexto
+              ?? 'Sin dirección'
+            }
+          />
+
+          <CompactInfoItem
+            icon={
+              <HomeWorkIcon fontSize="small" />
+            }
+            label="Barrio / comuna"
+            value={
+              `${item.barrioNombre ?? 'Sin barrio'} / ${item.comunaNombre ?? 'Sin comuna'}`
+            }
+          />
+
+          {tipoSolicitud ? (
+            <CompactInfoItem
+              icon={
+                <AssignmentIndIcon fontSize="small" />
+              }
+              label="Solicitud"
+              value={
+                formatLabel(
+                  tipoSolicitud,
+                )
+              }
+            />
+          ) : null}
+        </Box>
+
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+
+            alignItems: {
+              xs: 'stretch',
+              md: 'flex-end',
+            },
+
+            gap: 1,
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+
+              justifyContent: {
+                xs: 'flex-start',
+                md: 'flex-end',
+              },
+
+              gap: 0.75,
+            }}
+          >
+            <Chip
+              size="small"
+              label={
+                formatLabel(
+                  item.estadoVisita,
+                )
+              }
+              color={
+                getStatusColor(
+                  item.estadoVisita,
+                )
+              }
+            />
+
+            {estadoCaso ? (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={
+                  formatLabel(
+                    estadoCaso,
+                  )
+                }
+                color={
+                  getStatusColor(
+                    estadoCaso,
+                  )
+                }
+              />
+            ) : null}
+          </Box>
+
+          {item.fechaReprogramacion ? (
+            <Chip
+              size="small"
+              variant="outlined"
+              color="warning"
+              icon={
+                <ReplayIcon />
+              }
+              label={
+                `Nueva fecha: ${formatDate(
+                  item.fechaReprogramacion,
+                )}`
+              }
+            />
+          ) : null}
+
+          {locked ? (
+            <Chip
+              size="small"
+              variant="outlined"
+              color={
+                cancelada
+                  ? 'error'
+                  : 'default'
+              }
+              icon={
+                cancelada
+                  ? <CancelIcon />
+                  : <CheckCircleIcon />
+              }
+              label="Finalizada · solo consulta"
+            />
+          ) : (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={
+                reprogramada
+                  ? <ReplayIcon />
+                  : <FactCheckIcon />
+              }
+              onClick={() => {
+                onOpenResultado(
+                  item,
+                );
+              }}
+              sx={{
+                minWidth: 190,
+              }}
+            >
+              {reprogramada
+                ? 'Resultado de nueva visita'
+                : 'Registrar resultado'}
+            </Button>
+          )}
+        </Box>
+      </Box>
+
+      {item.motivoNoEncuesta
+      || item.observacionEncuestador ? (
+        <>
+          <Divider
+            sx={{
+              my: 1.5,
+            }}
+          />
+
+          <Box
+            sx={{
+              display: 'grid',
+
+              gridTemplateColumns: {
+                xs: '1fr',
+                md: 'repeat(2, minmax(0, 1fr))',
+              },
+
+              gap: 1.5,
+            }}
+          >
+            {item.motivoNoEncuesta ? (
+              <Box>
+                <Typography
+                  component="p"
+                  variant="caption"
+                  color="text.secondary"
+                >
+                  Motivo registrado
+                </Typography>
+
+                <Typography
+                  component="p"
+                  variant="body2"
+                  sx={{
+                    fontWeight: 700,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {item.motivoNoEncuesta}
+                </Typography>
+              </Box>
+            ) : null}
+
+            {item.observacionEncuestador ? (
+              <Box>
+                <Typography
+                  component="p"
+                  variant="caption"
+                  color="text.secondary"
+                >
+                  Observación
+                </Typography>
+
+                <Typography
+                  component="p"
+                  variant="body2"
+                  sx={{
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {item.observacionEncuestador}
+                </Typography>
+              </Box>
+            ) : null}
+          </Box>
+        </>
+      ) : null}
+    </Paper>
   );
 }
 
@@ -1862,7 +2720,8 @@ function CompactInfoItem({
 }
 
 function getPageContent<T>(
-  pageResponse: unknown,
+  pageResponse:
+    unknown,
 ): T[] {
   const data =
     pageResponse as {
@@ -1880,8 +2739,10 @@ function getPageContent<T>(
 }
 
 function getTotalElements(
-  pageResponse: unknown,
-  fallback: number,
+  pageResponse:
+    unknown,
+  fallback:
+    number,
 ) {
   const data =
     pageResponse as {
@@ -1901,8 +2762,10 @@ function getTotalElements(
 }
 
 function getOptionalStringField(
-  item: CallCenterVisitaResponse,
-  field: string,
+  item:
+    CallCenterVisitaResponse,
+  field:
+    string,
 ) {
   const data =
     item as unknown as Record<
@@ -1928,7 +2791,8 @@ function getOptionalStringField(
 }
 
 function isVisitLocked(
-  item: CallCenterVisitaResponse,
+  item:
+    CallCenterVisitaResponse,
 ) {
   const estadoVisita =
     normalizeCode(
@@ -1954,7 +2818,8 @@ function isVisitLocked(
 }
 
 function getVisitIcon(
-  item: CallCenterVisitaResponse,
+  item:
+    CallCenterVisitaResponse,
 ) {
   const estadoVisita =
     normalizeCode(
@@ -2008,55 +2873,85 @@ function getVisitIcon(
 }
 
 function getResultadoImpacto(
-  estado: CallCenterEstadoVisita,
+  estado:
+    CallCenterEstadoVisita,
 ) {
-  if (estado === 'REALIZADA') {
+  if (
+    estado === 'REALIZADA'
+  ) {
     return {
-      severity: 'success' as const,
-      title: 'La encuesta fue realizada',
+      severity:
+        'success' as const,
+
+      title:
+        'La encuesta fue realizada',
+
       description:
         'Al guardar, la visita y el caso quedarán finalizados.',
     };
   }
 
-  if (estado === 'NO_ATENDIDA') {
+  if (
+    estado === 'NO_ATENDIDA'
+  ) {
     return {
-      severity: 'warning' as const,
-      title: 'La visita no fue atendida',
+      severity:
+        'warning' as const,
+
+      title:
+        'La visita no fue atendida',
+
       description:
         'Debes registrar el motivo. Al guardar, el caso quedará finalizado.',
     };
   }
 
-  if (estado === 'CANCELADA') {
+  if (
+    estado === 'CANCELADA'
+  ) {
     return {
-      severity: 'error' as const,
-      title: 'La visita será cancelada',
+      severity:
+        'error' as const,
+
+      title:
+        'La visita será cancelada',
+
       description:
         'Debes registrar el motivo. Al guardar, el caso quedará cancelado y finalizado.',
     };
   }
 
   return {
-    severity: 'info' as const,
-    title: 'La visita será reprogramada',
+    severity:
+      'info' as const,
+
+    title:
+      'La visita será reprogramada',
+
     description:
       'Debes seleccionar una nueva fecha. El caso continuará abierto.',
   };
 }
 
 function getResultadoOptionLabel(
-  estado: CallCenterEstadoVisita,
+  estado:
+    CallCenterEstadoVisita,
 ) {
-  if (estado === 'REALIZADA') {
+  if (
+    estado === 'REALIZADA'
+  ) {
     return 'Realizada — finaliza el caso';
   }
 
-  if (estado === 'NO_ATENDIDA') {
+  if (
+    estado === 'NO_ATENDIDA'
+  ) {
     return 'No atendida — finaliza el caso';
   }
 
-  if (estado === 'CANCELADA') {
+  if (
+    estado === 'CANCELADA'
+  ) {
     return 'Cancelada — cancela el caso';
   }
 
@@ -2064,36 +2959,67 @@ function getResultadoOptionLabel(
 }
 
 function getResultadoSaveLabel(
-  estado: CallCenterEstadoVisita,
+  estado:
+    CallCenterEstadoVisita,
 ) {
-  return estado === 'REPROGRAMADA'
-    ? 'Guardar reprogramación'
-    : 'Guardar y finalizar caso';
+  if (
+    estado === 'REALIZADA'
+  ) {
+    return 'Confirmar visita realizada';
+  }
+
+  if (
+    estado === 'NO_ATENDIDA'
+  ) {
+    return 'Confirmar visita no atendida';
+  }
+
+  if (
+    estado === 'CANCELADA'
+  ) {
+    return 'Confirmar cancelación';
+  }
+
+  return 'Guardar reprogramación';
 }
 
 function getCardAccent(
-  value?: string | null,
+  value?:
+    | string
+    | null,
 ) {
   const normalized =
-    normalizeCode(value);
+    normalizeCode(
+      value,
+    );
 
-  if (normalized === 'REALIZADA') {
+  if (
+    normalized === 'REALIZADA'
+  ) {
     return 'success.main';
   }
 
-  if (normalized === 'NO_ATENDIDA') {
+  if (
+    normalized === 'NO_ATENDIDA'
+  ) {
     return 'warning.main';
   }
 
-  if (normalized === 'REPROGRAMADA') {
+  if (
+    normalized === 'REPROGRAMADA'
+  ) {
     return 'info.main';
   }
 
-  if (normalized === 'CANCELADA') {
+  if (
+    normalized === 'CANCELADA'
+  ) {
     return 'error.main';
   }
 
-  if (normalized === 'PROGRAMADA') {
+  if (
+    normalized === 'PROGRAMADA'
+  ) {
     return 'primary.main';
   }
 
@@ -2101,16 +3027,23 @@ function getCardAccent(
 }
 
 function normalizeCode(
-  value?: string | number | null,
+  value?:
+    | string
+    | number
+    | null,
 ) {
-  return String(value ?? '')
+  return String(
+    value ?? '',
+  )
     .trim()
     .toUpperCase();
 }
 
 function getErrorMessage(
-  exception: unknown,
-  fallback: string,
+  exception:
+    unknown,
+  fallback:
+    string,
 ) {
   if (
     exception
@@ -2125,7 +3058,9 @@ function getErrorMessage(
 }
 
 function formatLabel(
-  value?: string | null,
+  value?:
+    | string
+    | null,
 ) {
   return String(
     value ?? 'Sin estado',
@@ -2141,36 +3076,58 @@ function formatLabel(
 }
 
 function getStatusColor(
-  value?: string | null,
+  value?:
+    | string
+    | null,
 ): ChipColor {
   const normalized =
-    normalizeCode(value);
+    normalizeCode(
+      value,
+    );
 
   if (
-    normalized.includes('REALIZADA')
-    || normalized.includes('CERRADO')
+    normalized.includes(
+      'REALIZADA',
+    )
+    || normalized.includes(
+      'CERRADO',
+    )
   ) {
     return 'success';
   }
 
   if (
-    normalized.includes('PENDIENTE')
-    || normalized.includes('PROGRAMADA')
-    || normalized.includes('ASIGNADO')
+    normalized.includes(
+      'PENDIENTE',
+    )
+    || normalized.includes(
+      'PROGRAMADA',
+    )
+    || normalized.includes(
+      'ASIGNADO',
+    )
   ) {
     return 'info';
   }
 
   if (
-    normalized.includes('REPROGRAMADA')
-    || normalized.includes('NO_ATENDIDA')
+    normalized.includes(
+      'REPROGRAMADA',
+    )
+    || normalized.includes(
+      'NO_ATENDIDA',
+    )
   ) {
     return 'warning';
   }
 
   if (
-    normalized.includes('CANCELADA')
-    || normalized.includes('CANCELADO')
+    normalized.includes(
+      'CANCELADA',
+    )
+    || normalized.includes(
+      'CANCELADO',
+    )
   ) {
     return 'error';
   }
@@ -2179,7 +3136,8 @@ function getStatusColor(
 }
 
 function getLocalDateISO(
-  date = new Date(),
+  date =
+    new Date(),
 ) {
   const year =
     date.getFullYear();
@@ -2187,34 +3145,49 @@ function getLocalDateISO(
   const month =
     String(
       date.getMonth() + 1,
-    ).padStart(2, '0');
+    ).padStart(
+      2,
+      '0',
+    );
 
   const day =
     String(
       date.getDate(),
-    ).padStart(2, '0');
+    ).padStart(
+      2,
+      '0',
+    );
 
   return `${year}-${month}-${day}`;
 }
 
 function getLocalTime(
-  date = new Date(),
+  date =
+    new Date(),
 ) {
   const hours =
     String(
       date.getHours(),
-    ).padStart(2, '0');
+    ).padStart(
+      2,
+      '0',
+    );
 
   const minutes =
     String(
       date.getMinutes(),
-    ).padStart(2, '0');
+    ).padStart(
+      2,
+      '0',
+    );
 
   return `${hours}:${minutes}`;
 }
 
 function formatDate(
-  value?: string | null,
+  value?:
+    | string
+    | null,
 ) {
   if (!value) {
     return 'Sin fecha';
@@ -2223,7 +3196,9 @@ function formatDate(
   const parts =
     value.split('-');
 
-  if (parts.length !== 3) {
+  if (
+    parts.length !== 3
+  ) {
     return value;
   }
 
@@ -2231,24 +3206,37 @@ function formatDate(
 }
 
 function formatTime(
-  value?: string | null,
+  value?:
+    | string
+    | null,
 ) {
   if (!value) {
     return '';
   }
 
-  return value.slice(0, 5);
+  return value.slice(
+    0,
+    5,
+  );
 }
 
 function formatVisitSchedule(
-  fecha?: string | null,
-  hora?: string | null,
+  fecha?:
+    | string
+    | null,
+  hora?:
+    | string
+    | null,
 ) {
   const date =
-    formatDate(fecha);
+    formatDate(
+      fecha,
+    );
 
   const time =
-    formatTime(hora);
+    formatTime(
+      hora,
+    );
 
   return time
     ? `${date} · ${time}`

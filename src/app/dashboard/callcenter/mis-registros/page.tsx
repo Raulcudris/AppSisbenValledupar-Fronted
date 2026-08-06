@@ -44,10 +44,10 @@ import { useRouter } from 'next/navigation';
 
 import {
   type ChangeEvent,
+  type ReactNode,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from 'react';
 
 import {
@@ -65,7 +65,6 @@ import type {
 type SnackbarState = {
   open: boolean;
   message: string;
-
   severity:
     | 'success'
     | 'error'
@@ -120,15 +119,14 @@ const TIPOS_SOLICITUD_FILTRO = [
 ];
 
 export default function MisRegistrosCallCenterPage() {
-  const router =
-    useRouter();
+  const router = useRouter();
 
   const [
     pageData,
     setPageData,
-  ] = useState<
-    PageResponse<CallCenterResponse> | null
-  >(null);
+  ] = useState<PageResponse<CallCenterResponse> | null>(
+    null,
+  );
 
   const [
     loading,
@@ -256,10 +254,8 @@ export default function MisRegistrosCallCenterPage() {
           q: filters.q,
           estadoCaso:
             filters.estadoCaso,
-
           tipoSolicitudCallcenter:
             filters.tipoSolicitud,
-
           condicion:
             filters.condicion,
         });
@@ -403,20 +399,11 @@ export default function MisRegistrosCallCenterPage() {
     return (
       <Box
         sx={{
-          minHeight:
-            320,
-
-          display:
-            'flex',
-
-          alignItems:
-            'center',
-
-          justifyContent:
-            'center',
-
-          flexDirection:
-            'column',
+          minHeight: 320,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
         }}
       >
         <CircularProgress />
@@ -437,31 +424,21 @@ export default function MisRegistrosCallCenterPage() {
     <Box>
       <Box
         sx={{
-          display:
-            'flex',
-
-          flexDirection:
-            'column',
-
-          gap:
-            3,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 3,
         }}
       >
         <Box
           sx={{
-            display:
-              'flex',
+            display: 'flex',
 
             flexDirection: {
-              xs:
-                'column',
-
-              md:
-                'row',
+              xs: 'column',
+              md: 'row',
             },
 
-            gap:
-              2,
+            gap: 2,
 
             justifyContent:
               'space-between',
@@ -472,8 +449,7 @@ export default function MisRegistrosCallCenterPage() {
               component="h1"
               variant="h5"
               sx={{
-                fontWeight:
-                  800,
+                fontWeight: 800,
               }}
             >
               Mis registros Call Center
@@ -484,9 +460,10 @@ export default function MisRegistrosCallCenterPage() {
               variant="body2"
               color="text.secondary"
             >
-              Casos asignados a tu cuenta para gestionar
-              llamadas, coordinar visitas y actualizar los
-              datos generales del ciudadano.
+              Consulta los casos asignados a tu cuenta. Abre
+              un caso para continuar su gestión operativa o
+              utiliza la corrección integral cuando necesites
+              ajustar información ya registrada.
             </Typography>
           </Box>
 
@@ -504,22 +481,15 @@ export default function MisRegistrosCallCenterPage() {
 
         <Box
           sx={{
-            display:
-              'grid',
+            display: 'grid',
 
             gridTemplateColumns: {
-              xs:
-                '1fr',
-
-              sm:
-                '1fr 1fr',
-
-              lg:
-                '1fr 1fr 1fr 1fr',
+              xs: '1fr',
+              sm: '1fr 1fr',
+              lg: '1fr 1fr 1fr 1fr',
             },
 
-            gap:
-              1.5,
+            gap: 1.5,
           }}
         >
           <SummaryCard
@@ -547,14 +517,9 @@ export default function MisRegistrosCallCenterPage() {
           <CardContent>
             <Box
               sx={{
-                display:
-                  'flex',
-
-                flexDirection:
-                  'column',
-
-                gap:
-                  2,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
               }}
             >
               <Box>
@@ -562,8 +527,7 @@ export default function MisRegistrosCallCenterPage() {
                   component="h2"
                   variant="h6"
                   sx={{
-                    fontWeight:
-                      800,
+                    fontWeight: 800,
                   }}
                 >
                   Filtros de búsqueda
@@ -581,22 +545,15 @@ export default function MisRegistrosCallCenterPage() {
 
               <Box
                 sx={{
-                  display:
-                    'grid',
+                  display: 'grid',
 
                   gridTemplateColumns: {
-                    xs:
-                      '1fr',
-
-                    md:
-                      '2fr 1fr 1fr',
-
-                    lg:
-                      '2fr 1fr 1fr 1fr',
+                    xs: '1fr',
+                    md: '2fr 1fr 1fr',
+                    lg: '2fr 1fr 1fr 1fr',
                   },
 
-                  gap:
-                    1.5,
+                  gap: 1.5,
                 }}
               >
                 <TextField
@@ -609,8 +566,7 @@ export default function MisRegistrosCallCenterPage() {
                   }}
                   onKeyDown={(event) => {
                     if (
-                      event.key
-                      === 'Enter'
+                      event.key === 'Enter'
                     ) {
                       handleSearch();
                     }
@@ -732,22 +688,17 @@ export default function MisRegistrosCallCenterPage() {
 
               <Box
                 sx={{
-                  display:
-                    'flex',
+                  display: 'flex',
 
                   justifyContent:
                     'space-between',
 
                   flexDirection: {
-                    xs:
-                      'column',
-
-                    sm:
-                      'row',
+                    xs: 'column',
+                    sm: 'row',
                   },
 
-                  gap:
-                    1,
+                  gap: 1,
                 }}
               >
                 <Typography
@@ -762,18 +713,12 @@ export default function MisRegistrosCallCenterPage() {
 
                 <Box
                   sx={{
-                    display:
-                      'flex',
-
-                    gap:
-                      1,
+                    display: 'flex',
+                    gap: 1,
 
                     justifyContent: {
-                      xs:
-                        'stretch',
-
-                      sm:
-                        'flex-end',
+                      xs: 'stretch',
+                      sm: 'flex-end',
                     },
                   }}
                 >
@@ -814,17 +759,17 @@ export default function MisRegistrosCallCenterPage() {
         </Card>
 
         <Alert severity="info">
-          Usa <strong>Gestionar</strong> para registrar
-          llamadas o asignar visitas. Usa{' '}
-          <strong>Editar datos</strong> para corregir
-          información general del ciudadano en casos abiertos.
+          Usa <strong>Abrir caso</strong> para registrar
+          llamadas, asignar visitas o revisar la trazabilidad.
+          Usa <strong>Corregir registro</strong> únicamente
+          para modificar información existente del ciudadano,
+          la llamada inicial y la programación.
         </Alert>
 
         {records.length === 0 ? (
           <Paper
             sx={{
-              p:
-                3,
+              p: 3,
             }}
           >
             <Alert severity="info">
@@ -891,10 +836,8 @@ export default function MisRegistrosCallCenterPage() {
                         );
 
                       const encuestadorNombre =
-                        record
-                          .encuestadorAsignadoNombre
-                        || record
-                          .encuestadorProgramadoNombre
+                        record.encuestadorAsignadoNombre
+                        || record.encuestadorProgramadoNombre
                         || 'Sin asignar';
 
                       return (
@@ -907,23 +850,15 @@ export default function MisRegistrosCallCenterPage() {
                           <TableCell>
                             <Box
                               sx={{
-                                display:
-                                  'flex',
-
-                                alignItems:
-                                  'center',
-
-                                gap:
-                                  1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
                               }}
                             >
                               <Avatar
                                 sx={{
-                                  width:
-                                    34,
-
-                                  height:
-                                    34,
+                                  width: 34,
+                                  height: 34,
                                 }}
                               >
                                 {getRecordIcon(
@@ -936,8 +871,7 @@ export default function MisRegistrosCallCenterPage() {
                                   component="p"
                                   variant="body2"
                                   sx={{
-                                    fontWeight:
-                                      800,
+                                    fontWeight: 800,
                                   }}
                                 >
                                   Caso #{record.id}
@@ -984,8 +918,7 @@ export default function MisRegistrosCallCenterPage() {
                               }
                               subtitle={
                                 getCallConnectionLabel(
-                                  record
-                                    .llamadaConectada,
+                                  record.llamadaConectada,
                                 )
                               }
                             />
@@ -1016,8 +949,7 @@ export default function MisRegistrosCallCenterPage() {
                               variant="outlined"
                               label={
                                 formatLabel(
-                                  record
-                                    .tipoSolicitudCallcenter
+                                  record.tipoSolicitudCallcenter
                                   || 'SIN_DATO',
                                 )
                               }
@@ -1027,31 +959,22 @@ export default function MisRegistrosCallCenterPage() {
                           <TableCell>
                             <Box
                               sx={{
-                                display:
-                                  'flex',
-
-                                flexDirection:
-                                  'column',
-
-                                gap:
-                                  0.5,
-
-                                alignItems:
-                                  'flex-start',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 0.5,
+                                alignItems: 'flex-start',
                               }}
                             >
                               <Chip
                                 size="small"
                                 color={
                                   getStatusColor(
-                                    record
-                                      .estadoCaso,
+                                    record.estadoCaso,
                                   )
                                 }
                                 label={
                                   formatLabel(
-                                    record
-                                      .estadoCaso
+                                    record.estadoCaso
                                     || 'SIN_ESTADO',
                                   )
                                 }
@@ -1078,8 +1001,7 @@ export default function MisRegistrosCallCenterPage() {
                                 encuestadorNombre
                               }
                               subtitle={
-                                record
-                                  .fechaEncuestaProgramada
+                                record.fechaEncuestaProgramada
                                 || 'Sin fecha programada'
                               }
                             />
@@ -1088,25 +1010,16 @@ export default function MisRegistrosCallCenterPage() {
                           <TableCell align="right">
                             <Box
                               sx={{
-                                display:
-                                  'flex',
-
-                                justifyContent:
-                                  'flex-end',
-
-                                flexWrap:
-                                  'wrap',
-
-                                gap:
-                                  0.75,
-
-                                minWidth:
-                                  230,
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                flexWrap: 'wrap',
+                                gap: 0.75,
+                                minWidth: 250,
                               }}
                             >
                               <Button
                                 size="small"
-                                variant="outlined"
+                                variant="contained"
                                 startIcon={
                                   <VisibilityIcon />
                                 }
@@ -1116,20 +1029,20 @@ export default function MisRegistrosCallCenterPage() {
                                   );
                                 }}
                               >
-                                Gestionar
+                                Abrir caso
                               </Button>
 
                               <Button
                                 size="small"
-                                variant="contained"
+                                variant="outlined"
                                 startIcon={
                                   <EditIcon />
                                 }
                                 disabled={closed}
                                 title={
                                   closed
-                                    ? 'Los casos cerrados o cancelados no pueden editarse.'
-                                    : 'Editar datos generales del caso.'
+                                    ? 'Los casos cerrados o cancelados no pueden corregirse.'
+                                    : 'Corregir la información existente del registro.'
                                 }
                                 onClick={() => {
                                   openEditRecord(
@@ -1137,7 +1050,7 @@ export default function MisRegistrosCallCenterPage() {
                                   );
                                 }}
                               >
-                                Editar datos
+                                Corregir registro
                               </Button>
                             </Box>
                           </TableCell>
@@ -1186,11 +1099,8 @@ export default function MisRegistrosCallCenterPage() {
           closeSnackbar
         }
         anchorOrigin={{
-          vertical:
-            'bottom',
-
-          horizontal:
-            'right',
+          vertical: 'bottom',
+          horizontal: 'right',
         }}
       >
         <Alert
@@ -1201,8 +1111,7 @@ export default function MisRegistrosCallCenterPage() {
             closeSnackbar
           }
           sx={{
-            width:
-              '100%',
+            width: '100%',
           }}
         >
           {snackbar.message}
@@ -1234,8 +1143,7 @@ function SummaryCard({
           component="p"
           variant="h5"
           sx={{
-            fontWeight:
-              900,
+            fontWeight: 900,
           }}
         >
           {value}
@@ -1257,23 +1165,15 @@ function InfoCell({
   return (
     <Box
       sx={{
-        display:
-          'flex',
-
-        alignItems:
-          'flex-start',
-
-        gap:
-          1,
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 1,
       }}
     >
       <Box
         sx={{
-          color:
-            'text.secondary',
-
-          mt:
-            0.2,
+          color: 'text.secondary',
+          mt: 0.2,
         }}
       >
         {icon}
@@ -1284,8 +1184,7 @@ function InfoCell({
           component="p"
           variant="body2"
           sx={{
-            fontWeight:
-              700,
+            fontWeight: 700,
           }}
         >
           {title}

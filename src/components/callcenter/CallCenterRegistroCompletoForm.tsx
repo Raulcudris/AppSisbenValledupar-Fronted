@@ -2064,9 +2064,9 @@ export default function CallCenterRegistroCompletoForm({
               fontWeight: 900,
             }}
           >
-            {isEditMode
-              ? `Modificar registro Call Center #${registroId}`
-              : 'Registrar caso Call Center'}
+           {isEditMode
+            ? `Corregir registro completo #${registroId}`
+            : 'Registrar caso Call Center'}
           </Typography>
 
           <Typography
@@ -2074,9 +2074,9 @@ export default function CallCenterRegistroCompletoForm({
             variant="body2"
             color="text.secondary"
           >
-            {isEditMode
-              ? 'Modifica los datos del ciudadano, la llamada, las confirmaciones y la programación de la visita.'
-              : 'Registra el ciudadano, la llamada y la programación de la visita en una sola operación.'}
+           {isEditMode
+            ? 'Corrige los datos existentes del ciudadano, la llamada inicial, las confirmaciones y la programación vigente.'
+            : 'Registra el ciudadano, la llamada y la programación de la visita en una sola operación.'}
           </Typography>
         </Box>
 
@@ -2130,9 +2130,9 @@ export default function CallCenterRegistroCompletoForm({
 
       {isEditMode ? (
         <Alert severity="warning">
-          La edición conserva los identificadores de la llamada
-          y de la visita. No se crearán nuevos registros de
-          historial.
+          Esta pantalla corrige información existente del caso.
+          No debe utilizarse para registrar un nuevo intento de
+          llamada ni un nuevo resultado del trabajo de campo.
         </Alert>
       ) : null}
 
@@ -2374,7 +2374,7 @@ export default function CallCenterRegistroCompletoForm({
                   ? 'Actualizando...'
                   : 'Guardando...'
                 : isEditMode
-                  ? 'Actualizar registro completo'
+                  ? 'Guardar corrección'
                   : 'Confirmar y guardar'}
             </Button>
           )}

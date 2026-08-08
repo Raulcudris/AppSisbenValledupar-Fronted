@@ -196,7 +196,6 @@ export async function actualizarCallCenterProgramacionVisita(
 export async function getMisCallCenterVisitas(
   page = 0,
   size = 20,
-
   filter:
     CallCenterVisitaFilterRequest = {},
 ): Promise<
@@ -209,7 +208,9 @@ export async function getMisCallCenterVisitas(
       `/api/callcenter/visitas/mis-asignaciones${toQueryString({
         page,
         size,
-        q: filter.q,
+
+        q:
+          filter.q,
 
         estadoVisita:
           normalizeFilterValue(
@@ -234,6 +235,9 @@ export async function getMisCallCenterVisitas(
 
         fechaHasta:
           filter.fechaHasta,
+
+        encuestadorId:
+          filter.encuestadorId,
 
         _t:
           Date.now(),

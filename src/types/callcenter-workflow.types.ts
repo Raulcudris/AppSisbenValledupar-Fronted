@@ -222,4 +222,5 @@ export type CallCenterVisitaFilterRequest = {
   condicion?: string | null;
   fechaDesde?: string | null;
   fechaHasta?: string | null;
+  encuestadorId?: number | null;
 };

@@ -71,17 +71,51 @@ const CALLCENTER_FUNCIONARIO_ROLES: AppRole[] = [
   'FUNCIONARIO_CALLCENTER',
 ];
 
+/**
+ * Roles autorizados para registrar formalmente
+ * el resultado de una visita.
+ */
 const CALLCENTER_ENCUESTADOR_ROLES: AppRole[] = [
   'ADMIN',
   'FUNCIONARIO_ENCUESTADOR',
 ];
 
 /**
- * Estas rutas deben coincidir exactamente.
+ * Roles que pueden ingresar a la pantalla
+ * Mis asignaciones.
  *
- * Evita que permitir /registros habilite automáticamente
- * subrutas administrativas como cargar-ventanilla.
+ * ADMIN, COORDINADOR_CALLCENTER y FUNCIONARIO_CALLCENTER
+ * pueden utilizarla como consulta administrativa.
+ *
+ * FUNCIONARIO_ENCUESTADOR continúa utilizando la pantalla
+ * como agenda operativa propia.
  */
+const CALLCENTER_MIS_ASIGNACIONES_ROLES: AppRole[] = [
+  'ADMIN',
+  'COORDINADOR_CALLCENTER',
+  'FUNCIONARIO_CALLCENTER',
+  'FUNCIONARIO_ENCUESTADOR',
+];
+
+/**
+ * Roles que pueden seleccionar un encuestador
+ * dentro del filtro de Mis asignaciones.
+ *
+ * FUNCIONARIO_ENCUESTADOR se excluye para impedir
+ * que seleccione asignaciones de otro encuestador.
+ */
+const CALLCENTER_MIS_ASIGNACIONES_FILTER_ROLES: AppRole[] = [
+  'ADMIN',
+  'COORDINADOR_CALLCENTER',
+  'FUNCIONARIO_CALLCENTER',
+];
+
+const CALLCENTER_AGENDA_VISITAS_ROLES: AppRole[] = [
+  'ADMIN',
+  'COORDINADOR_CALLCENTER',
+  'FUNCIONARIO_CALLCENTER',
+];
+
 const EXACT_ONLY_PATHS = [
   '/dashboard',
   '/dashboard/ventanilla',
@@ -148,10 +182,16 @@ export const dashboardMenuItems: DashboardMenuItem[] = [
     roles: CALLCENTER_FUNCIONARIO_ROLES,
   },
   {
+    label: 'Agenda de visitas',
+    href: '/dashboard/callcenter/agenda-visitas',
+    iconKey: 'encuestador',
+    roles: CALLCENTER_AGENDA_VISITAS_ROLES,
+  },
+  {
     label: 'Mis asignaciones',
     href: '/dashboard/callcenter/mis-asignaciones',
     iconKey: 'encuestador',
-    roles: CALLCENTER_ENCUESTADOR_ROLES,
+    roles: CALLCENTER_MIS_ASIGNACIONES_ROLES,
   },
   {
     label: 'Call Center',
@@ -293,13 +333,23 @@ export const dashboardActions: DashboardActionItem[] = [
     primary: true,
   },
   {
+    title: 'Agenda de visitas',
+    description:
+      'Consulta las personas programadas para visitar por encuestador y fecha.',
+    href: '/dashboard/callcenter/agenda-visitas',
+    buttonLabel: 'Consultar agenda',
+    iconKey: 'encuestador',
+    roles: CALLCENTER_AGENDA_VISITAS_ROLES,
+    primary: true,
+  },
+  {
     title: 'Mis asignaciones',
     description:
-      'Consulta tus visitas asignadas y registra el resultado de campo.',
+      'Consulta las visitas asignadas y el estado del trabajo de campo.',
     href: '/dashboard/callcenter/mis-asignaciones',
     buttonLabel: 'Abrir asignaciones',
     iconKey: 'encuestador',
-    roles: CALLCENTER_ENCUESTADOR_ROLES,
+    roles: CALLCENTER_MIS_ASIGNACIONES_ROLES,
     primary: true,
   },
   {
@@ -391,6 +441,7 @@ const allowedDashboardPathsByRole: Record<
     '/dashboard/callcenter/asignar-funcionarios',
     '/dashboard/callcenter/mis-registros',
     '/dashboard/callcenter/mis-asignaciones',
+    '/dashboard/callcenter/agenda-visitas',
     '/dashboard/territory/barrios',
     '/dashboard/territory/comunas',
     '/dashboard/auditoria',
@@ -424,6 +475,8 @@ const allowedDashboardPathsByRole: Record<
     '/dashboard/callcenter/registros/nuevo',
     '/dashboard/callcenter/registros/cargar-ventanilla',
     '/dashboard/callcenter/asignar-funcionarios',
+    '/dashboard/callcenter/mis-asignaciones',
+    '/dashboard/callcenter/agenda-visitas',
     '/dashboard/cuenta/cambiar-password',
   ],
 
@@ -446,6 +499,8 @@ const allowedDashboardPathsByRole: Record<
     '/dashboard/callcenter/registros',
     '/dashboard/callcenter/registros/nuevo',
     '/dashboard/callcenter/mis-registros',
+    '/dashboard/callcenter/mis-asignaciones',
+    '/dashboard/callcenter/agenda-visitas',
     '/dashboard/cuenta/cambiar-password',
   ],
 
@@ -636,7 +691,9 @@ export function canWriteVentanilla(
     'ADMIN',
     'SUPERVISOR',
     'FUNCIONARIO_VENTANILLA',
-  ].includes(normalizedRole);
+  ].includes(
+    normalizedRole,
+  );
 }
 
 export function canDeleteVentanilla(
@@ -652,7 +709,9 @@ export function canDeleteVentanilla(
     'ADMIN',
     'SUPERVISOR',
     'FUNCIONARIO_VENTANILLA',
-  ].includes(normalizedRole);
+  ].includes(
+    normalizedRole,
+  );
 }
 
 export function canWriteDmc(
@@ -668,7 +727,9 @@ export function canWriteDmc(
     'ADMIN',
     'SUPERVISOR',
     'FUNCIONARIO_DMC',
-  ].includes(normalizedRole);
+  ].includes(
+    normalizedRole,
+  );
 }
 
 export function canExport(
@@ -683,7 +744,9 @@ export function canExport(
   return [
     'ADMIN',
     'SUPERVISOR',
-  ].includes(normalizedRole);
+  ].includes(
+    normalizedRole,
+  );
 }
 
 export function canViewAudit(
@@ -698,7 +761,9 @@ export function canViewAudit(
   return [
     'ADMIN',
     'SUPERVISOR',
-  ].includes(normalizedRole);
+  ].includes(
+    normalizedRole,
+  );
 }
 
 export function canManageVentanillaStatus(
@@ -707,8 +772,9 @@ export function canManageVentanillaStatus(
     | null
     | undefined = currentRole(),
 ) {
-  return normalizeRole(role)
-    === 'ADMIN';
+  return normalizeRole(
+    role,
+  ) === 'ADMIN';
 }
 
 export function canHardDeleteVentanilla(
@@ -717,8 +783,9 @@ export function canHardDeleteVentanilla(
     | null
     | undefined = currentRole(),
 ) {
-  return normalizeRole(role)
-    === 'ADMIN';
+  return normalizeRole(
+    role,
+  ) === 'ADMIN';
 }
 
 export function canManageUsers(
@@ -727,8 +794,9 @@ export function canManageUsers(
     | null
     | undefined = currentRole(),
 ) {
-  return normalizeRole(role)
-    === 'ADMIN';
+  return normalizeRole(
+    role,
+  ) === 'ADMIN';
 }
 
 export function canViewUserHistory(
@@ -737,8 +805,9 @@ export function canViewUserHistory(
     | null
     | undefined = currentRole(),
 ) {
-  return normalizeRole(role)
-    === 'ADMIN';
+  return normalizeRole(
+    role,
+  ) === 'ADMIN';
 }
 
 export function canManageTerritory(
@@ -747,8 +816,9 @@ export function canManageTerritory(
     | null
     | undefined = currentRole(),
 ) {
-  return normalizeRole(role)
-    === 'ADMIN';
+  return normalizeRole(
+    role,
+  ) === 'ADMIN';
 }
 
 export function canWriteCallCenter(
@@ -758,7 +828,9 @@ export function canWriteCallCenter(
     | undefined = currentRole(),
 ) {
   const normalizedRole =
-    normalizeRole(role);
+    normalizeRole(
+      role,
+    );
 
   return CALLCENTER_ADMIN_ROLES.includes(
     normalizedRole as AppRole,
@@ -772,19 +844,15 @@ export function canManageCallCenterStatus(
     | undefined = currentRole(),
 ) {
   const normalizedRole =
-    normalizeRole(role);
+    normalizeRole(
+      role,
+    );
 
   return CALLCENTER_ADMIN_ROLES.includes(
     normalizedRole as AppRole,
   );
 }
 
-/**
- * Se conserva porque todavía puede ser utilizada
- * internamente por el flujo especial de última hora.
- *
- * Ya no genera un elemento en el navbar.
- */
 export function canAssignCallCenterFuncionario(
   role:
     | string
@@ -792,7 +860,9 @@ export function canAssignCallCenterFuncionario(
     | undefined = currentRole(),
 ) {
   const normalizedRole =
-    normalizeRole(role);
+    normalizeRole(
+      role,
+    );
 
   return CALLCENTER_ADMIN_ROLES.includes(
     normalizedRole as AppRole,
@@ -806,13 +876,23 @@ export function canViewMisRegistrosCallCenter(
     | undefined = currentRole(),
 ) {
   const normalizedRole =
-    normalizeRole(role);
+    normalizeRole(
+      role,
+    );
 
   return normalizedRole === 'ADMIN'
     || normalizedRole
       === 'FUNCIONARIO_CALLCENTER';
 }
 
+/**
+ * Permite ingresar a la pantalla Mis asignaciones.
+ *
+ * ADMIN, COORDINADOR_CALLCENTER y FUNCIONARIO_CALLCENTER
+ * la utilizan como consulta administrativa.
+ *
+ * FUNCIONARIO_ENCUESTADOR conserva su flujo operativo.
+ */
 export function canViewMisAsignacionesEncuestador(
   role:
     | string
@@ -820,13 +900,60 @@ export function canViewMisAsignacionesEncuestador(
     | undefined = currentRole(),
 ) {
   const normalizedRole =
-    normalizeRole(role);
+    normalizeRole(
+      role,
+    );
 
-  return normalizedRole === 'ADMIN'
-    || normalizedRole
-      === 'FUNCIONARIO_ENCUESTADOR';
+  return CALLCENTER_MIS_ASIGNACIONES_ROLES.includes(
+    normalizedRole as AppRole,
+  );
 }
 
+/**
+ * Permite utilizar el filtro de encuestador
+ * dentro de Mis asignaciones.
+ *
+ * El encuestador operativo queda expresamente excluido.
+ */
+export function canFilterMisAsignacionesByEncuestador(
+  role:
+    | string
+    | null
+    | undefined = currentRole(),
+) {
+  const normalizedRole =
+    normalizeRole(
+      role,
+    );
+
+  return CALLCENTER_MIS_ASIGNACIONES_FILTER_ROLES.includes(
+    normalizedRole as AppRole,
+  );
+}
+
+export function canViewCallCenterAgendaVisitas(
+  role:
+    | string
+    | null
+    | undefined = currentRole(),
+) {
+  const normalizedRole =
+    normalizeRole(
+      role,
+    );
+
+  return CALLCENTER_AGENDA_VISITAS_ROLES.includes(
+    normalizedRole as AppRole,
+  );
+}
+
+/**
+ * Mantiene separada la capacidad de consulta
+ * de la capacidad de registrar resultados.
+ *
+ * COORDINADOR_CALLCENTER y FUNCIONARIO_CALLCENTER pueden
+ * consultar Mis asignaciones, pero no registrar resultados.
+ */
 export function canUpdateEncuestadorVisit(
   role:
     | string
@@ -834,9 +961,11 @@ export function canUpdateEncuestadorVisit(
     | undefined = currentRole(),
 ) {
   const normalizedRole =
-    normalizeRole(role);
+    normalizeRole(
+      role,
+    );
 
-  return normalizedRole === 'ADMIN'
-    || normalizedRole
-      === 'FUNCIONARIO_ENCUESTADOR';
+  return CALLCENTER_ENCUESTADOR_ROLES.includes(
+    normalizedRole as AppRole,
+  );
 }

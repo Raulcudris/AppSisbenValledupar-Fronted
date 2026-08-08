@@ -50,9 +50,22 @@ import {
 } from 'react';
 
 import {
+  canUpdateEncuestadorVisit,
+  currentRole,
+} from '@/lib/roleAccess';
+
+import {
+  getCallCenterEncuestadoresOptions,
+} from '@/services/callcenter.service';
+
+import {
   actualizarCallCenterResultadoVisita,
   getMisCallCenterVisitas,
 } from '@/services/callcenter-workflow.service';
+
+import type {
+  SelectOption,
+} from '@/types/catalog.types';
 
 import type {
   CallCenterEstadoVisita,
@@ -79,22 +92,26 @@ type VisitaFilterState = {
   condicion: string;
   fechaDesde: string;
   fechaHasta: string;
+  encuestadorId: string;
 };
 
 type AssignmentItemProps = {
   item: CallCenterVisitaResponse;
+
+  canUpdateResultado: boolean;
 
   onOpenResultado: (
     item: CallCenterVisitaResponse,
   ) => void;
 };
 
-const ESTADOS_VISITA: CallCenterEstadoVisita[] = [
-  'REALIZADA',
-  'NO_ATENDIDA',
-  'REPROGRAMADA',
-  'CANCELADA',
-];
+const ESTADOS_VISITA:
+  CallCenterEstadoVisita[] = [
+    'REALIZADA',
+    'NO_ATENDIDA',
+    'REPROGRAMADA',
+    'CANCELADA',
+  ];
 
 const ESTADOS_VISITA_FILTRO = [
   'PENDIENTE',
@@ -105,42 +122,75 @@ const ESTADOS_VISITA_FILTRO = [
   'CANCELADA',
 ];
 
-const initialFilters: VisitaFilterState = {
-  q: '',
-  estadoVisita: 'TODOS',
-  condicion: 'ABIERTAS',
-  fechaDesde: '',
-  fechaHasta: '',
-};
+const initialFilters:
+  VisitaFilterState = {
+    q: '',
+    estadoVisita: 'TODOS',
+    condicion: 'ABIERTAS',
+    fechaDesde: '',
+    fechaHasta: '',
+    encuestadorId: '',
+  };
 
 const initialResultadoForm:
   CallCenterVisitaResultadoRequest = {
-    estadoVisita: 'REALIZADA',
-    fechaVisitaReal: null,
-    horaVisitaReal: null,
-    encuestaRealizada: true,
-    motivoNoEncuesta: '',
-    fechaReprogramacion: null,
-    observacionEncuestador: '',
+    estadoVisita:
+      'REALIZADA',
+
+    fechaVisitaReal:
+      null,
+
+    horaVisitaReal:
+      null,
+
+    encuestaRealizada:
+      true,
+
+    motivoNoEncuesta:
+      '',
+
+    fechaReprogramacion:
+      null,
+
+    observacionEncuestador:
+      '',
   };
 
 export default function PageMisAsignacionesCallCenter() {
+  const role =
+    currentRole();
+
+  const canFilterByEncuestador =
+    role === 'ADMIN'
+    || role === 'COORDINADOR_CALLCENTER'
+    || role === 'FUNCIONARIO_CALLCENTER';
+
+  const canUpdateResultado =
+    canUpdateEncuestadorVisit(
+      role,
+    );
+
   const [
     items,
     setItems,
-  ] = useState<CallCenterVisitaResponse[]>([]);
+  ] = useState<
+    CallCenterVisitaResponse[]
+  >([]);
 
   const [
     selected,
     setSelected,
-  ] = useState<CallCenterVisitaResponse | null>(
-    null,
-  );
+  ] = useState<
+    CallCenterVisitaResponse
+    | null
+  >(null);
 
   const [
     form,
     setForm,
-  ] = useState<CallCenterVisitaResultadoRequest>(
+  ] = useState<
+    CallCenterVisitaResultadoRequest
+  >(
     initialResultadoForm,
   );
 
@@ -168,14 +218,16 @@ export default function PageMisAsignacionesCallCenter() {
     estadoVisitaFiltro,
     setEstadoVisitaFiltro,
   ] = useState(
-    initialFilters.estadoVisita,
+    initialFilters
+      .estadoVisita,
   );
 
   const [
     condicionFiltro,
     setCondicionFiltro,
   ] = useState(
-    initialFilters.condicion,
+    initialFilters
+      .condicion,
   );
 
   const [
@@ -189,16 +241,37 @@ export default function PageMisAsignacionesCallCenter() {
   ] = useState('');
 
   const [
+    encuestadorIdFiltro,
+    setEncuestadorIdFiltro,
+  ] = useState('');
+
+  const [
+    encuestadores,
+    setEncuestadores,
+  ] = useState<
+    SelectOption[]
+  >([]);
+
+  const [
+    loadingEncuestadores,
+    setLoadingEncuestadores,
+  ] = useState(false);
+
+  const [
     appliedFilters,
     setAppliedFilters,
-  ] = useState<VisitaFilterState>(
+  ] = useState<
+    VisitaFilterState
+  >(
     initialFilters,
   );
 
   const [
     viewMode,
     setViewMode,
-  ] = useState<ViewMode>(
+  ] = useState<
+    ViewMode
+  >(
     'CARDS',
   );
 
@@ -215,69 +288,158 @@ export default function PageMisAsignacionesCallCenter() {
   const [
     error,
     setError,
-  ] = useState<string | null>(
-    null,
-  );
+  ] = useState<
+    string | null
+  >(null);
 
   const [
     resultError,
     setResultError,
-  ] = useState<string | null>(
-    null,
-  );
+  ] = useState<
+    string | null
+  >(null);
 
   const [
     success,
     setSuccess,
-  ] = useState<string | null>(
-    null,
-  );
+  ] = useState<
+    string | null
+  >(null);
 
-  const visitasFinalizadas = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          isVisitLocked(item),
-      ).length,
-    [
-      items,
-    ],
-  );
+  const visitasFinalizadas =
+    useMemo(
+      () =>
+        items.filter(
+          (item) =>
+            isVisitLocked(
+              item,
+            ),
+        ).length,
+      [
+        items,
+      ],
+    );
 
-  const visitasAbiertas = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          !isVisitLocked(item),
-      ).length,
-    [
-      items,
-    ],
-  );
+  const visitasAbiertas =
+    useMemo(
+      () =>
+        items.filter(
+          (item) =>
+            !isVisitLocked(
+              item,
+            ),
+        ).length,
+      [
+        items,
+      ],
+    );
 
-  const hasActiveFilters = Boolean(
-    searchText.trim()
-    || estadoVisitaFiltro
-      !== initialFilters.estadoVisita
-    || condicionFiltro
-      !== initialFilters.condicion
-    || fechaDesde
-    || fechaHasta,
-  );
+  const hasActiveFilters =
+    Boolean(
+      searchText.trim()
+      || estadoVisitaFiltro
+        !== initialFilters
+          .estadoVisita
+      || condicionFiltro
+        !== initialFilters
+          .condicion
+      || fechaDesde
+      || fechaHasta
+      || (
+        canFilterByEncuestador
+        && encuestadorIdFiltro
+      ),
+    );
 
   const resultImpact =
     getResultadoImpacto(
       form.estadoVisita,
     );
 
+  useEffect(() => {
+    if (
+      !canFilterByEncuestador
+    ) {
+      setEncuestadores(
+        [],
+      );
+
+      setEncuestadorIdFiltro(
+        '',
+      );
+
+      return;
+    }
+
+    let active =
+      true;
+
+    async function loadEncuestadores() {
+      try {
+        setLoadingEncuestadores(
+          true,
+        );
+
+        const response =
+          await getCallCenterEncuestadoresOptions();
+
+        if (!active) {
+          return;
+        }
+
+        setEncuestadores(
+          response,
+        );
+      } catch (
+        exception
+      ) {
+        if (!active) {
+          return;
+        }
+
+        setError(
+          getErrorMessage(
+            exception,
+            'No fue posible cargar el catálogo de encuestadores.',
+          ),
+        );
+      } finally {
+        if (active) {
+          setLoadingEncuestadores(
+            false,
+          );
+        }
+      }
+    }
+
+    void loadEncuestadores();
+
+    return () => {
+      active =
+        false;
+    };
+  }, [
+    canFilterByEncuestador,
+  ]);
+
   async function loadData(
-    nextPage = page,
-    nextSize = size,
-    filters = appliedFilters,
+    nextPage =
+      page,
+
+    nextSize =
+      size,
+
+    filters =
+      appliedFilters,
   ) {
     try {
-      setLoading(true);
-      setError(null);
+      setLoading(
+        true,
+      );
+
+      setError(
+        null,
+      );
 
       const response =
         await getMisCallCenterVisitas(
@@ -288,21 +450,37 @@ export default function PageMisAsignacionesCallCenter() {
               filters.q,
 
             estadoVisita:
-              filters.estadoVisita,
+              filters
+                .estadoVisita,
 
             condicion:
-              filters.condicion,
+              filters
+                .condicion,
 
             fechaDesde:
-              filters.fechaDesde,
+              filters
+                .fechaDesde,
 
             fechaHasta:
-              filters.fechaHasta,
+              filters
+                .fechaHasta,
+
+            encuestadorId:
+              canFilterByEncuestador
+              && filters
+                .encuestadorId
+                ? Number(
+                  filters
+                    .encuestadorId,
+                )
+                : undefined,
           },
         );
 
       const content =
-        getPageContent<CallCenterVisitaResponse>(
+        getPageContent<
+          CallCenterVisitaResponse
+        >(
           response,
         );
 
@@ -316,7 +494,9 @@ export default function PageMisAsignacionesCallCenter() {
           content.length,
         ),
       );
-    } catch (exception) {
+    } catch (
+      exception
+    ) {
       setError(
         getErrorMessage(
           exception,
@@ -324,7 +504,9 @@ export default function PageMisAsignacionesCallCenter() {
         ),
       );
     } finally {
-      setLoading(false);
+      setLoading(
+        false,
+      );
     }
   }
 
@@ -354,7 +536,8 @@ export default function PageMisAsignacionesCallCenter() {
     const nextFilters:
       VisitaFilterState = {
         q:
-          searchText.trim(),
+          searchText
+            .trim(),
 
         estadoVisita:
           estadoVisitaFiltro,
@@ -363,10 +546,18 @@ export default function PageMisAsignacionesCallCenter() {
           condicionFiltro,
 
         fechaDesde,
+
         fechaHasta,
+
+        encuestadorId:
+          canFilterByEncuestador
+            ? encuestadorIdFiltro
+            : '',
       };
 
-    setPage(0);
+    setPage(
+      0,
+    );
 
     setAppliedFilters(
       nextFilters,
@@ -374,19 +565,35 @@ export default function PageMisAsignacionesCallCenter() {
   }
 
   function clearFilters() {
-    setSearchText('');
+    setSearchText(
+      '',
+    );
 
     setEstadoVisitaFiltro(
-      initialFilters.estadoVisita,
+      initialFilters
+        .estadoVisita,
     );
 
     setCondicionFiltro(
-      initialFilters.condicion,
+      initialFilters
+        .condicion,
     );
 
-    setFechaDesde('');
-    setFechaHasta('');
-    setPage(0);
+    setFechaDesde(
+      '',
+    );
+
+    setFechaHasta(
+      '',
+    );
+
+    setEncuestadorIdFiltro(
+      '',
+    );
+
+    setPage(
+      0,
+    );
 
     setAppliedFilters(
       initialFilters,
@@ -408,7 +615,9 @@ export default function PageMisAsignacionesCallCenter() {
       condicion,
     );
 
-    setPage(0);
+    setPage(
+      0,
+    );
 
     setAppliedFilters(
       nextFilters,
@@ -420,7 +629,19 @@ export default function PageMisAsignacionesCallCenter() {
       CallCenterVisitaResponse,
   ) {
     if (
-      isVisitLocked(item)
+      !canUpdateResultado
+    ) {
+      setError(
+        'Tu perfil tiene acceso de consulta y no puede registrar resultados de visita.',
+      );
+
+      return;
+    }
+
+    if (
+      isVisitLocked(
+        item,
+      )
     ) {
       setError(
         'Esta visita ya está finalizada o pertenece a un caso cerrado o cancelado.',
@@ -445,10 +666,14 @@ export default function PageMisAsignacionesCallCenter() {
         'REALIZADA',
 
       fechaVisitaReal:
-        getLocalDateISO(now),
+        getLocalDateISO(
+          now,
+        ),
 
       horaVisitaReal:
-        getLocalTime(now),
+        getLocalTime(
+          now,
+        ),
 
       encuestaRealizada:
         true,
@@ -494,23 +719,40 @@ export default function PageMisAsignacionesCallCenter() {
           estado,
 
         encuestaRealizada:
-          estado === 'REALIZADA',
+          estado
+            === 'REALIZADA',
 
         motivoNoEncuesta:
-          estado === 'REALIZADA'
+          estado
+            === 'REALIZADA'
             ? ''
-            : current.motivoNoEncuesta,
+            : current
+              .motivoNoEncuesta,
 
         fechaReprogramacion:
-          estado === 'REPROGRAMADA'
-            ? current.fechaReprogramacion
+          estado
+            === 'REPROGRAMADA'
+            ? current
+              .fechaReprogramacion
             : null,
       }),
     );
   }
 
   async function handleSaveResultado() {
-    if (!selected) {
+    if (
+      !selected
+    ) {
+      return;
+    }
+
+    if (
+      !canUpdateResultado
+    ) {
+      setResultError(
+        'Tu perfil no tiene permiso para registrar resultados de visita.',
+      );
+
       return;
     }
 
@@ -519,7 +761,9 @@ export default function PageMisAsignacionesCallCenter() {
     );
 
     if (
-      isVisitLocked(selected)
+      isVisitLocked(
+        selected,
+      )
     ) {
       setResultError(
         'Esta visita ya está finalizada o pertenece a un caso cerrado o cancelado.',
@@ -529,8 +773,11 @@ export default function PageMisAsignacionesCallCenter() {
     }
 
     if (
-      form.estadoVisita !== 'REALIZADA'
-      && !form.motivoNoEncuesta?.trim()
+      form.estadoVisita
+        !== 'REALIZADA'
+      && !form
+        .motivoNoEncuesta
+        ?.trim()
     ) {
       setResultError(
         'Debes registrar el motivo cuando la visita no queda realizada.',
@@ -540,8 +787,10 @@ export default function PageMisAsignacionesCallCenter() {
     }
 
     if (
-      form.estadoVisita === 'REPROGRAMADA'
-      && !form.fechaReprogramacion
+      form.estadoVisita
+        === 'REPROGRAMADA'
+      && !form
+        .fechaReprogramacion
     ) {
       setResultError(
         'Debes seleccionar la nueva fecha de la visita.',
@@ -577,7 +826,9 @@ export default function PageMisAsignacionesCallCenter() {
         size,
         appliedFilters,
       );
-    } catch (exception) {
+    } catch (
+      exception
+    ) {
       setResultError(
         getErrorMessage(
           exception,
@@ -593,23 +844,38 @@ export default function PageMisAsignacionesCallCenter() {
 
   if (
     loading
-    && items.length === 0
+    && items.length
+      === 0
   ) {
     return (
       <Box
         sx={{
-          minHeight: 320,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'column',
-          gap: 2,
+          minHeight:
+            320,
+
+          display:
+            'flex',
+
+          alignItems:
+            'center',
+
+          justifyContent:
+            'center',
+
+          flexDirection:
+            'column',
+
+          gap:
+            2,
         }}
       >
         <CircularProgress />
 
-        <Typography component="p">
-          Cargando agenda de visitas...
+        <Typography
+          component="p"
+          color="text.secondary"
+        >
+          Cargando asignaciones...
         </Typography>
       </Box>
     );
@@ -618,29 +884,42 @@ export default function PageMisAsignacionesCallCenter() {
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2,
+        display:
+          'flex',
+
+        flexDirection:
+          'column',
+
+        gap:
+          2.5,
       }}
     >
       <Box
         sx={{
-          display: 'flex',
+          display:
+            'flex',
 
           flexDirection: {
-            xs: 'column',
-            md: 'row',
-          },
+            xs:
+              'column',
 
-          alignItems: {
-            xs: 'stretch',
-            md: 'flex-start',
+            md:
+              'row',
           },
 
           justifyContent:
             'space-between',
 
-          gap: 1.5,
+          alignItems: {
+            xs:
+              'stretch',
+
+            md:
+              'center',
+          },
+
+          gap:
+            2,
         }}
       >
         <Box>
@@ -648,225 +927,221 @@ export default function PageMisAsignacionesCallCenter() {
             component="h1"
             variant="h5"
             sx={{
-              fontWeight: 900,
+              fontWeight:
+                900,
             }}
           >
-            Agenda de visitas
+            Mis asignaciones
           </Typography>
 
           <Typography
             component="p"
             variant="body2"
             color="text.secondary"
+            sx={{
+              mt:
+                0.5,
+            }}
           >
-            Consulta primero las visitas pendientes y registra
-            el resultado del trabajo de campo. Las visitas
-            finalizadas permanecen disponibles en el historial.
+            Consulta las visitas asignadas, su programación
+            y el estado del trabajo de campo.
           </Typography>
         </Box>
 
-        <Button
-          variant="outlined"
-          startIcon={
-            <RefreshIcon />
-          }
-          onClick={
-            refresh
-          }
-          disabled={
-            loading
-          }
+        <Box
+          sx={{
+            display:
+              'flex',
+
+            alignItems:
+              'center',
+
+            gap:
+              1,
+
+            flexWrap:
+              'wrap',
+          }}
         >
-          Actualizar
-        </Button>
+          <Button
+            variant={
+              appliedFilters
+                .condicion
+                === 'ABIERTAS'
+                ? 'contained'
+                : 'outlined'
+            }
+            size="small"
+            onClick={() => {
+              selectAssignmentView(
+                'ABIERTAS',
+              );
+            }}
+          >
+            Pendientes
+          </Button>
+
+          <Button
+            variant={
+              appliedFilters
+                .condicion
+                === 'FINALIZADAS'
+                ? 'contained'
+                : 'outlined'
+            }
+            size="small"
+            onClick={() => {
+              selectAssignmentView(
+                'FINALIZADAS',
+              );
+            }}
+          >
+            Historial
+          </Button>
+
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={
+              <RefreshIcon />
+            }
+            onClick={
+              refresh
+            }
+            disabled={
+              loading
+            }
+          >
+            Actualizar
+          </Button>
+        </Box>
       </Box>
+
+      {!canUpdateResultado ? (
+        <Alert
+          severity="info"
+        >
+          Tu perfil tiene acceso de consulta. La actualización
+          del resultado de una visita permanece restringida a
+          los perfiles autorizados.
+        </Alert>
+      ) : null}
 
       <Box
         sx={{
-          display: 'grid',
+          display:
+            'grid',
 
           gridTemplateColumns: {
-            xs: '1fr',
-            sm: 'repeat(3, 1fr)',
+            xs:
+              '1fr',
+
+            sm:
+              'repeat(3, minmax(0, 1fr))',
           },
 
-          gap: 1.25,
+          gap:
+            1.5,
         }}
       >
         <SummaryCard
-          label="Visitas en la vista"
+          label="Visitas cargadas"
           value={
             items.length
           }
-          color="primary.main"
         />
 
         <SummaryCard
-          label="Pendientes en la vista"
+          label="Abiertas"
           value={
             visitasAbiertas
           }
-          color="warning.main"
         />
 
         <SummaryCard
-          label="Finalizadas en la vista"
+          label="Finalizadas"
           value={
             visitasFinalizadas
           }
-          color="success.main"
         />
       </Box>
 
-      <Paper
+      <Card
         variant="outlined"
-        sx={{
-          p: 1.5,
-          borderRadius: 2.5,
-        }}
       >
-        <Box
-          sx={{
-            display: 'flex',
-
-            flexDirection: {
-              xs: 'column',
-              lg: 'row',
-            },
-
-            alignItems: {
-              xs: 'stretch',
-              lg: 'center',
-            },
-
-            justifyContent:
-              'space-between',
-
-            gap: 2,
-          }}
-        >
-          <Box>
-            <Typography
-              component="h2"
-              variant="subtitle2"
-              sx={{
-                fontWeight: 900,
-              }}
-            >
-              Vista de trabajo
-            </Typography>
-
-            <Typography
-              component="p"
-              variant="caption"
-              color="text.secondary"
-            >
-              Selecciona las visitas que deseas consultar y
-              cambia su presentación entre tarjetas y lista.
-            </Typography>
-          </Box>
-
+        <CardContent>
           <Box
             sx={{
-              display: 'flex',
+              display:
+                'flex',
 
-              flexDirection: {
-                xs: 'column',
-                sm: 'row',
-              },
+              flexDirection:
+                'column',
 
-              alignItems: {
-                xs: 'stretch',
-                sm: 'flex-end',
-              },
-
-              gap: 2,
+              gap:
+                2,
             }}
           >
-            <Box>
-              <Typography
-                component="p"
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  mb: 0.5,
-                }}
-              >
-                Estado de trabajo
-              </Typography>
+            <Box
+              sx={{
+                display:
+                  'flex',
 
-              <Box
-                sx={{
-                  display: 'flex',
-                  gap: 1,
-                }}
-              >
-                <Button
-                  size="small"
-                  variant={
-                    appliedFilters.condicion
-                      === 'ABIERTAS'
-                      ? 'contained'
-                      : 'outlined'
-                  }
-                  onClick={() => {
-                    selectAssignmentView(
-                      'ABIERTAS',
-                    );
+                flexDirection: {
+                  xs:
+                    'column',
+
+                  sm:
+                    'row',
+                },
+
+                justifyContent:
+                  'space-between',
+
+                gap:
+                  1,
+              }}
+            >
+              <Box>
+                <Typography
+                  component="h2"
+                  variant="h6"
+                  sx={{
+                    fontWeight:
+                      900,
                   }}
                 >
-                  Pendientes
-                </Button>
+                  Filtros de búsqueda
+                </Typography>
 
-                <Button
-                  size="small"
-                  variant={
-                    appliedFilters.condicion
-                      === 'FINALIZADAS'
-                      ? 'contained'
-                      : 'outlined'
-                  }
-                  onClick={() => {
-                    selectAssignmentView(
-                      'FINALIZADAS',
-                    );
-                  }}
+                <Typography
+                  component="p"
+                  variant="body2"
+                  color="text.secondary"
                 >
-                  Historial
-                </Button>
+                  Selecciona los criterios y pulsa Buscar.
+                </Typography>
               </Box>
-            </Box>
-
-            <Box>
-              <Typography
-                component="p"
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  mb: 0.5,
-                }}
-              >
-                Presentación
-              </Typography>
 
               <Box
                 sx={{
-                  display: 'flex',
-                  gap: 1,
+                  display:
+                    'flex',
+
+                  gap:
+                    0.5,
                 }}
               >
                 <Button
                   size="small"
                   variant={
-                    viewMode === 'CARDS'
+                    viewMode
+                      === 'CARDS'
                       ? 'contained'
                       : 'outlined'
                   }
                   startIcon={
                     <ViewModuleIcon />
-                  }
-                  aria-pressed={
-                    viewMode === 'CARDS'
                   }
                   onClick={() => {
                     setViewMode(
@@ -880,15 +1155,13 @@ export default function PageMisAsignacionesCallCenter() {
                 <Button
                   size="small"
                   variant={
-                    viewMode === 'LIST'
+                    viewMode
+                      === 'LIST'
                       ? 'contained'
                       : 'outlined'
                   }
                   startIcon={
                     <ViewListIcon />
-                  }
-                  aria-pressed={
-                    viewMode === 'LIST'
                   }
                   onClick={() => {
                     setViewMode(
@@ -900,69 +1173,29 @@ export default function PageMisAsignacionesCallCenter() {
                 </Button>
               </Box>
             </Box>
-          </Box>
-        </Box>
-      </Paper>
 
-      <Card
-        variant="outlined"
-        sx={{
-          borderRadius: 2.5,
-        }}
-      >
-        <CardContent
-          sx={{
-            p: {
-              xs: 1.5,
-              md: 2,
-            },
-
-            '&:last-child': {
-              pb: {
-                xs: 1.5,
-                md: 2,
-              },
-            },
-          }}
-        >
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 1.5,
-            }}
-          >
-            <Box>
-              <Typography
-                component="h2"
-                variant="subtitle1"
-                sx={{
-                  fontWeight: 900,
-                }}
-              >
-                Buscar visitas
-              </Typography>
-
-              <Typography
-                component="p"
-                variant="caption"
-                color="text.secondary"
-              >
-                Selecciona los filtros y pulsa Buscar.
-              </Typography>
-            </Box>
+            <Divider />
 
             <Box
               sx={{
-                display: 'grid',
+                display:
+                  'grid',
 
                 gridTemplateColumns: {
-                  xs: '1fr',
-                  md: '2fr 1fr 1fr',
-                  xl: '2fr 1fr 1fr 1fr 1fr',
+                  xs:
+                    '1fr',
+
+                  md:
+                    '2fr 1fr 1fr',
+
+                  xl:
+                    canFilterByEncuestador
+                      ? '2fr 1fr 1fr 1.4fr 1fr 1fr'
+                      : '2fr 1fr 1fr 1fr 1fr',
                 },
 
-                gap: 1.25,
+                gap:
+                  1.5,
               }}
             >
               <TextField
@@ -972,17 +1205,11 @@ export default function PageMisAsignacionesCallCenter() {
                 }
                 onChange={(event) => {
                   setSearchText(
-                    event.target.value,
+                    event.target
+                      .value,
                   );
                 }}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === 'Enter'
-                  ) {
-                    handleSearch();
-                  }
-                }}
-                placeholder="Nombre, cédula, teléfono, barrio o dirección"
+                placeholder="Nombre, cédula, teléfono, barrio, dirección o caso"
                 size="small"
                 fullWidth
               />
@@ -1003,17 +1230,22 @@ export default function PageMisAsignacionesCallCenter() {
                   onChange={(event) => {
                     setEstadoVisitaFiltro(
                       String(
-                        event.target.value,
+                        event.target
+                          .value,
                       ),
                     );
                   }}
                 >
-                  <MenuItem value="TODOS">
+                  <MenuItem
+                    value="TODOS"
+                  >
                     Todos
                   </MenuItem>
 
                   {ESTADOS_VISITA_FILTRO.map(
-                    (estado) => (
+                    (
+                      estado,
+                    ) => (
                       <MenuItem
                         key={
                           estado
@@ -1047,32 +1279,97 @@ export default function PageMisAsignacionesCallCenter() {
                   onChange={(event) => {
                     setCondicionFiltro(
                       String(
-                        event.target.value,
+                        event.target
+                          .value,
                       ),
                     );
                   }}
                 >
-                  <MenuItem value="TODAS">
+                  <MenuItem
+                    value="TODAS"
+                  >
                     Todas
                   </MenuItem>
 
-                  <MenuItem value="ABIERTAS">
+                  <MenuItem
+                    value="ABIERTAS"
+                  >
                     Abiertas
                   </MenuItem>
 
-                  <MenuItem value="FINALIZADAS">
+                  <MenuItem
+                    value="FINALIZADAS"
+                  >
                     Finalizadas
                   </MenuItem>
 
-                  <MenuItem value="CERRADO">
+                  <MenuItem
+                    value="CERRADO"
+                  >
                     Caso cerrado
                   </MenuItem>
 
-                  <MenuItem value="CANCELADO">
+                  <MenuItem
+                    value="CANCELADO"
+                  >
                     Caso cancelado
                   </MenuItem>
                 </Select>
               </FormControl>
+
+              {canFilterByEncuestador ? (
+                <FormControl
+                  size="small"
+                  fullWidth
+                  disabled={
+                    loadingEncuestadores
+                  }
+                >
+                  <InputLabel>
+                    Encuestador
+                  </InputLabel>
+
+                  <Select
+                    label="Encuestador"
+                    value={
+                      encuestadorIdFiltro
+                    }
+                    onChange={(event) => {
+                      setEncuestadorIdFiltro(
+                        String(
+                          event.target
+                            .value,
+                        ),
+                      );
+                    }}
+                  >
+                    <MenuItem
+                      value=""
+                    >
+                      Todos los encuestadores
+                    </MenuItem>
+
+                    {encuestadores.map(
+                      (
+                        encuestador,
+                      ) => (
+                        <MenuItem
+                          key={
+                            encuestador.id
+                          }
+                          value={
+                            String(
+                              encuestador.id,
+                            )
+                          }
+                        >
+                          {encuestador.label}
+                        </MenuItem>
+                      ),
+                    )}
+                  </Select>
+                </FormControl>
+              ) : null}
 
               <TextField
                 label="Fecha desde"
@@ -1082,13 +1379,15 @@ export default function PageMisAsignacionesCallCenter() {
                 }
                 onChange={(event) => {
                   setFechaDesde(
-                    event.target.value,
+                    event.target
+                      .value,
                   );
                 }}
                 size="small"
                 slotProps={{
                   inputLabel: {
-                    shrink: true,
+                    shrink:
+                      true,
                   },
                 }}
                 fullWidth
@@ -1102,13 +1401,15 @@ export default function PageMisAsignacionesCallCenter() {
                 }
                 onChange={(event) => {
                   setFechaHasta(
-                    event.target.value,
+                    event.target
+                      .value,
                   );
                 }}
                 size="small"
                 slotProps={{
                   inputLabel: {
-                    shrink: true,
+                    shrink:
+                      true,
                   },
                 }}
                 fullWidth
@@ -1117,27 +1418,35 @@ export default function PageMisAsignacionesCallCenter() {
 
             <Box
               sx={{
-                display: 'flex',
+                display:
+                  'flex',
 
                 flexDirection: {
-                  xs: 'column',
-                  sm: 'row',
-                },
+                  xs:
+                    'column',
 
-                alignItems: {
-                  xs: 'stretch',
-                  sm: 'center',
+                  sm:
+                    'row',
                 },
 
                 justifyContent:
                   'space-between',
 
-                gap: 1,
+                alignItems: {
+                  xs:
+                    'stretch',
+
+                  sm:
+                    'center',
+                },
+
+                gap:
+                  1,
               }}
             >
               <Typography
                 component="p"
-                variant="caption"
+                variant="body2"
                 color="text.secondary"
               >
                 {loading
@@ -1147,8 +1456,19 @@ export default function PageMisAsignacionesCallCenter() {
 
               <Box
                 sx={{
-                  display: 'flex',
-                  gap: 1,
+                  display:
+                    'flex',
+
+                  flexDirection: {
+                    xs:
+                      'column',
+
+                    sm:
+                      'row',
+                  },
+
+                  gap:
+                    1,
                 }}
               >
                 <Button
@@ -1189,35 +1509,48 @@ export default function PageMisAsignacionesCallCenter() {
         </CardContent>
       </Card>
 
-      {items.length === 0 ? (
-        <Alert severity="info">
-          No tienes visitas asignadas con los filtros
-          aplicados.
+      {items.length
+        === 0 ? (
+        <Alert
+          severity="info"
+        >
+          No hay visitas con los filtros aplicados.
         </Alert>
       ) : (
         <Box
           sx={{
             display:
-              viewMode === 'CARDS'
+              viewMode
+                === 'CARDS'
                 ? 'grid'
                 : 'flex',
 
             flexDirection:
-              viewMode === 'LIST'
+              viewMode
+                === 'LIST'
                 ? 'column'
                 : undefined,
 
             gridTemplateColumns:
-              viewMode === 'CARDS'
+              viewMode
+                === 'CARDS'
                 ? {
-                  xs: '1fr',
-                  md: 'repeat(2, minmax(0, 1fr))',
-                  lg: 'repeat(3, minmax(0, 1fr))',
-                  xl: 'repeat(4, minmax(0, 1fr))',
+                  xs:
+                    '1fr',
+
+                  md:
+                    'repeat(2, minmax(0, 1fr))',
+
+                  lg:
+                    'repeat(3, minmax(0, 1fr))',
+
+                  xl:
+                    'repeat(4, minmax(0, 1fr))',
                 }
                 : undefined,
 
-            gap: 1.5,
+            gap:
+              1.5,
 
             opacity:
               loading
@@ -1234,32 +1567,43 @@ export default function PageMisAsignacionesCallCenter() {
           }}
         >
           {items.map(
-            (item) =>
-              viewMode === 'CARDS' ? (
-                <AssignmentCard
-                  key={
-                    item.id
-                  }
-                  item={
-                    item
-                  }
-                  onOpenResultado={
-                    handleOpenResultado
-                  }
-                />
-              ) : (
-                <AssignmentListItem
-                  key={
-                    item.id
-                  }
-                  item={
-                    item
-                  }
-                  onOpenResultado={
-                    handleOpenResultado
-                  }
-                />
-              ),
+            (
+              item,
+            ) =>
+              viewMode
+                === 'CARDS'
+                ? (
+                  <AssignmentCard
+                    key={
+                      item.id
+                    }
+                    item={
+                      item
+                    }
+                    canUpdateResultado={
+                      canUpdateResultado
+                    }
+                    onOpenResultado={
+                      handleOpenResultado
+                    }
+                  />
+                )
+                : (
+                  <AssignmentListItem
+                    key={
+                      item.id
+                    }
+                    item={
+                      item
+                    }
+                    canUpdateResultado={
+                      canUpdateResultado
+                    }
+                    onOpenResultado={
+                      handleOpenResultado
+                    }
+                  />
+                ),
           )}
         </Box>
       )}
@@ -1286,7 +1630,8 @@ export default function PageMisAsignacionesCallCenter() {
         onRowsPerPageChange={(event) => {
           setSize(
             Number(
-              event.target.value,
+              event.target
+                .value,
             ),
           );
 
@@ -1315,10 +1660,14 @@ export default function PageMisAsignacionesCallCenter() {
 
       <Dialog
         open={
-          Boolean(selected)
+          Boolean(
+            selected,
+          )
         }
         onClose={() => {
-          if (!saving) {
+          if (
+            !saving
+          ) {
             handleCloseResultado();
           }
         }}
@@ -1327,20 +1676,24 @@ export default function PageMisAsignacionesCallCenter() {
       >
         <DialogTitle
           sx={{
-            pb: 1,
+            pb:
+              1,
           }}
         >
           <Typography
             component="span"
             variant="h6"
             sx={{
-              fontWeight: 900,
+              fontWeight:
+                900,
             }}
           >
             {selected
             && normalizeCode(
-              selected.estadoVisita,
-            ) === 'REPROGRAMADA'
+              selected
+                .estadoVisita,
+            )
+              === 'REPROGRAMADA'
               ? 'Registrar resultado de visita reprogramada'
               : 'Registrar resultado de visita'}
           </Typography>
@@ -1351,48 +1704,64 @@ export default function PageMisAsignacionesCallCenter() {
               variant="body2"
               color="text.secondary"
             >
-              Caso #{selected.callCenterRegistroId} ·{' '}
+              Caso #{selected.callCenterRegistroId}
+              {' · '}
               {selected.nombreCompleto
                 ?? 'Ciudadano sin nombre'}
             </Typography>
           ) : null}
         </DialogTitle>
 
-        <DialogContent dividers>
+        <DialogContent
+          dividers
+        >
           <Box
             sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              mt: 0.5,
+              display:
+                'flex',
+
+              flexDirection:
+                'column',
+
+              gap:
+                2,
+
+              mt:
+                0.5,
             }}
           >
             {resultError ? (
-              <Alert severity="error">
+              <Alert
+                severity="error"
+              >
                 {resultError}
               </Alert>
             ) : null}
 
             <Alert
               severity={
-                resultImpact.severity
+                resultImpact
+                  .severity
               }
             >
               <Typography
                 component="p"
                 variant="body2"
                 sx={{
-                  fontWeight: 900,
+                  fontWeight:
+                    900,
                 }}
               >
-                {resultImpact.title}
+                {resultImpact
+                  .title}
               </Typography>
 
               <Typography
                 component="p"
                 variant="caption"
               >
-                {resultImpact.description}
+                {resultImpact
+                  .description}
               </Typography>
             </Alert>
 
@@ -1417,7 +1786,9 @@ export default function PageMisAsignacionesCallCenter() {
                 }}
               >
                 {ESTADOS_VISITA.map(
-                  (estado) => (
+                  (
+                    estado,
+                  ) => (
                     <MenuItem
                       key={
                         estado
@@ -1437,14 +1808,19 @@ export default function PageMisAsignacionesCallCenter() {
 
             <Box
               sx={{
-                display: 'grid',
+                display:
+                  'grid',
 
                 gridTemplateColumns: {
-                  xs: '1fr',
-                  sm: 'repeat(2, minmax(0, 1fr))',
+                  xs:
+                    '1fr',
+
+                  sm:
+                    'repeat(2, minmax(0, 1fr))',
                 },
 
-                gap: 1.5,
+                gap:
+                  1.5,
               }}
             >
               <TextField
@@ -1456,11 +1832,14 @@ export default function PageMisAsignacionesCallCenter() {
                 }
                 onChange={(event) => {
                   setForm(
-                    (current) => ({
+                    (
+                      current,
+                    ) => ({
                       ...current,
 
                       fechaVisitaReal:
-                        event.target.value
+                        event.target
+                          .value
                         || null,
                     }),
                   );
@@ -1468,7 +1847,8 @@ export default function PageMisAsignacionesCallCenter() {
                 size="small"
                 slotProps={{
                   inputLabel: {
-                    shrink: true,
+                    shrink:
+                      true,
                   },
                 }}
                 fullWidth
@@ -1483,11 +1863,14 @@ export default function PageMisAsignacionesCallCenter() {
                 }
                 onChange={(event) => {
                   setForm(
-                    (current) => ({
+                    (
+                      current,
+                    ) => ({
                       ...current,
 
                       horaVisitaReal:
-                        event.target.value
+                        event.target
+                          .value
                         || null,
                     }),
                   );
@@ -1495,14 +1878,16 @@ export default function PageMisAsignacionesCallCenter() {
                 size="small"
                 slotProps={{
                   inputLabel: {
-                    shrink: true,
+                    shrink:
+                      true,
                   },
                 }}
                 fullWidth
               />
             </Box>
 
-            {form.estadoVisita !== 'REALIZADA' ? (
+            {form.estadoVisita
+              !== 'REALIZADA' ? (
               <TextField
                 label={
                   form.estadoVisita
@@ -1519,11 +1904,14 @@ export default function PageMisAsignacionesCallCenter() {
                 }
                 onChange={(event) => {
                   setForm(
-                    (current) => ({
+                    (
+                      current,
+                    ) => ({
                       ...current,
 
                       motivoNoEncuesta:
-                        event.target.value,
+                        event.target
+                          .value,
                     }),
                   );
                 }}
@@ -1534,7 +1922,8 @@ export default function PageMisAsignacionesCallCenter() {
               />
             ) : null}
 
-            {form.estadoVisita === 'REPROGRAMADA' ? (
+            {form.estadoVisita
+              === 'REPROGRAMADA' ? (
               <TextField
                 label="Nueva fecha de la visita"
                 type="date"
@@ -1544,11 +1933,14 @@ export default function PageMisAsignacionesCallCenter() {
                 }
                 onChange={(event) => {
                   setForm(
-                    (current) => ({
+                    (
+                      current,
+                    ) => ({
                       ...current,
 
                       fechaReprogramacion:
-                        event.target.value
+                        event.target
+                          .value
                         || null,
                     }),
                   );
@@ -1556,7 +1948,8 @@ export default function PageMisAsignacionesCallCenter() {
                 size="small"
                 slotProps={{
                   inputLabel: {
-                    shrink: true,
+                    shrink:
+                      true,
                   },
                 }}
                 required
@@ -1573,16 +1966,21 @@ export default function PageMisAsignacionesCallCenter() {
               }
               onChange={(event) => {
                 setForm(
-                  (current) => ({
+                  (
+                    current,
+                  ) => ({
                     ...current,
 
                     observacionEncuestador:
-                      event.target.value,
+                      event.target
+                        .value,
                   }),
                 );
               }}
               multiline
-              minRows={3}
+              minRows={
+                3
+              }
               size="small"
               placeholder="Agrega información relevante del trabajo de campo."
               fullWidth
@@ -1592,8 +1990,11 @@ export default function PageMisAsignacionesCallCenter() {
 
         <DialogActions
           sx={{
-            px: 3,
-            py: 2,
+            px:
+              3,
+
+            py:
+              2,
           }}
         >
           <Button
@@ -1611,6 +2012,7 @@ export default function PageMisAsignacionesCallCenter() {
             variant="contained"
             disabled={
               saving
+              || !canUpdateResultado
               || (
                 selected
                   ? isVisitLocked(
@@ -1634,17 +2036,24 @@ export default function PageMisAsignacionesCallCenter() {
 
       <Snackbar
         open={
-          Boolean(error)
+          Boolean(
+            error,
+          )
         }
-        autoHideDuration={6000}
+        autoHideDuration={
+          6000
+        }
         onClose={() => {
           setError(
             null,
           );
         }}
         anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right',
+          vertical:
+            'bottom',
+
+          horizontal:
+            'right',
         }}
       >
         <Alert
@@ -1661,17 +2070,24 @@ export default function PageMisAsignacionesCallCenter() {
 
       <Snackbar
         open={
-          Boolean(success)
+          Boolean(
+            success,
+          )
         }
-        autoHideDuration={5000}
+        autoHideDuration={
+          5000
+        }
         onClose={() => {
           setSuccess(
             null,
           );
         }}
         anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right',
+          vertical:
+            'bottom',
+
+          horizontal:
+            'right',
         }}
       >
         <Alert
@@ -1691,6 +2107,7 @@ export default function PageMisAsignacionesCallCenter() {
 
 function AssignmentCard({
   item,
+  canUpdateResultado,
   onOpenResultado,
 }: AssignmentItemProps) {
   const locked =
@@ -1713,16 +2130,24 @@ function AssignmentCard({
   const reprogramada =
     normalizeCode(
       item.estadoVisita,
-    ) === 'REPROGRAMADA';
+    )
+    === 'REPROGRAMADA';
 
   return (
     <Card
       variant="outlined"
       sx={{
-        position: 'relative',
-        overflow: 'hidden',
-        height: '100%',
-        borderRadius: 2.5,
+        position:
+          'relative',
+
+        overflow:
+          'hidden',
+
+        height:
+          '100%',
+
+        borderRadius:
+          2.5,
 
         borderColor:
           locked
@@ -1739,27 +2164,28 @@ function AssignmentCard({
         transition: (
           theme,
         ) =>
-          theme.transitions.create(
-            [
-              'transform',
-              'box-shadow',
-              'border-color',
-            ],
-            {
-              duration:
-                theme.transitions
-                  .duration.short,
-            },
-          ),
+          theme.transitions
+            .create(
+              [
+                'transform',
+                'box-shadow',
+                'border-color',
+              ],
+              {
+                duration:
+                  theme
+                    .transitions
+                    .duration
+                    .short,
+              },
+            ),
 
         '&:hover': {
           transform:
-            'translateY(-4px)',
+            'translateY(-3px)',
 
           boxShadow:
-            locked
-              ? 2
-              : 6,
+            4,
 
           borderColor:
             getCardAccent(
@@ -1770,7 +2196,8 @@ function AssignmentCard({
     >
       <Box
         sx={{
-          height: 4,
+          height:
+            4,
 
           bgcolor:
             getCardAccent(
@@ -1781,44 +2208,67 @@ function AssignmentCard({
 
       <CardContent
         sx={{
-          p: 1.75,
+          p:
+            1.75,
 
           '&:last-child': {
-            pb: 1.75,
+            pb:
+              1.75,
           },
         }}
       >
         <Box
           sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1.25,
-            height: '100%',
+            display:
+              'flex',
+
+            flexDirection:
+              'column',
+
+            gap:
+              1.25,
+
+            height:
+              '100%',
           }}
         >
           <Box
             sx={{
-              display: 'flex',
-              alignItems: 'flex-start',
+              display:
+                'flex',
 
               justifyContent:
                 'space-between',
 
-              gap: 1,
+              alignItems:
+                'flex-start',
+
+              gap:
+                1,
             }}
           >
             <Box
               sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                minWidth: 0,
+                display:
+                  'flex',
+
+                alignItems:
+                  'center',
+
+                gap:
+                  1,
+
+                minWidth:
+                  0,
               }}
             >
               <Avatar
                 sx={{
-                  width: 36,
-                  height: 36,
+                  width:
+                    38,
+
+                  height:
+                    38,
 
                   bgcolor:
                     getCardAccent(
@@ -1833,14 +2283,16 @@ function AssignmentCard({
 
               <Box
                 sx={{
-                  minWidth: 0,
+                  minWidth:
+                    0,
                 }}
               >
                 <Typography
                   component="p"
                   variant="subtitle2"
                   sx={{
-                    fontWeight: 900,
+                    fontWeight:
+                      900,
                   }}
                 >
                   Caso #{item.callCenterRegistroId}
@@ -1856,60 +2308,31 @@ function AssignmentCard({
               </Box>
             </Box>
 
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end',
-                gap: 0.5,
-              }}
-            >
-              <Chip
-                size="small"
-                label={
-                  formatLabel(
+            <Chip
+              size="small"
+              label={
+                formatLabel(
+                  item.estadoVisita,
+                )
+              }
+              color={
+                getStatusColor(
+                  String(
                     item.estadoVisita,
-                  )
-                }
-                color={
-                  getStatusColor(
-                    item.estadoVisita,
-                  )
-                }
-              />
-
-              {estadoCaso ? (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={
-                    formatLabel(
-                      estadoCaso,
-                    )
-                  }
-                  color={
-                    getStatusColor(
-                      estadoCaso,
-                    )
-                  }
-                />
-              ) : null}
-            </Box>
+                  ),
+                )
+              }
+              variant="outlined"
+            />
           </Box>
 
-          <Divider />
-
-          <Box
-            sx={{
-              minWidth: 0,
-            }}
-          >
+          <Box>
             <Typography
               component="p"
               variant="subtitle2"
-              noWrap
               sx={{
-                fontWeight: 900,
+                fontWeight:
+                  900,
               }}
             >
               {item.nombreCompleto
@@ -1927,17 +2350,32 @@ function AssignmentCard({
             </Typography>
           </Box>
 
+          <Divider />
+
           <Box
             sx={{
-              display: 'grid',
+              display:
+                'flex',
 
-              gridTemplateColumns:
-                'repeat(2, minmax(0, 1fr))',
+              flexDirection:
+                'column',
 
-              gap: 1,
+              gap:
+                1,
             }}
           >
-            <CompactInfoItem
+            <InfoItem
+              icon={
+                <AssignmentIndIcon fontSize="small" />
+              }
+              label="Encuestador"
+              value={
+                item.encuestadorNombre
+                ?? 'Sin encuestador'
+              }
+            />
+
+            <InfoItem
               icon={
                 <PhoneIcon fontSize="small" />
               }
@@ -1948,48 +2386,55 @@ function AssignmentCard({
               }
             />
 
-            <CompactInfoItem
+            <InfoItem
+              icon={
+                <LocationOnIcon fontSize="small" />
+              }
+              label="Dirección"
+              value={
+                item.direccionTexto
+                ?? 'Sin dirección'
+              }
+            />
+
+            <InfoItem
+              icon={
+                <HomeWorkIcon fontSize="small" />
+              }
+              label="Barrio / Comuna"
+              value={
+                `${
+                  item.barrioNombre
+                  ?? 'Sin barrio'
+                } / ${
+                  item.comunaNombre
+                  ?? 'Sin comuna'
+                }`
+              }
+            />
+
+            <InfoItem
               icon={
                 <CalendarMonthIcon fontSize="small" />
               }
-              label="Programada"
+              label="Fecha programada"
               value={
-                formatVisitSchedule(
-                  item.fechaProgramada,
-                  item.horaProgramada,
-                )
+                `${
+                  item.fechaProgramada
+                  ?? 'Sin fecha'
+                } ${
+                  item.horaProgramada
+                  ?? ''
+                }`.trim()
               }
             />
           </Box>
 
-          <CompactInfoItem
-            icon={
-              <LocationOnIcon fontSize="small" />
-            }
-            label="Dirección"
-            value={
-              item.direccionTexto
-              ?? 'Sin dirección'
-            }
-          />
-
-          <CompactInfoItem
-            icon={
-              <HomeWorkIcon fontSize="small" />
-            }
-            label="Barrio / comuna"
-            value={
-              `${item.barrioNombre ?? 'Sin barrio'} / ${item.comunaNombre ?? 'Sin comuna'}`
-            }
-          />
-
           {tipoSolicitud ? (
-            <CompactInfoItem
-              icon={
-                <AssignmentIndIcon fontSize="small" />
-              }
-              label="Solicitud"
-              value={
+            <Chip
+              size="small"
+              variant="outlined"
+              label={
                 formatLabel(
                   tipoSolicitud,
                 )
@@ -1997,25 +2442,32 @@ function AssignmentCard({
             />
           ) : null}
 
+          {estadoCaso ? (
+            <Typography
+              component="p"
+              variant="caption"
+              color="text.secondary"
+            >
+              Estado caso:{' '}
+              <strong>
+                {formatLabel(
+                  estadoCaso,
+                )}
+              </strong>
+            </Typography>
+          ) : null}
+
           {item.fechaReprogramacion ? (
             <Alert
-              severity="warning"
-              icon={
-                <ReplayIcon fontSize="small" />
-              }
+              severity="info"
               sx={{
-                py: 0.25,
-
-                '& .MuiAlert-message': {
-                  py: 0.25,
-                },
+                py:
+                  0.25,
               }}
             >
               Nueva fecha:{' '}
               <strong>
-                {formatDate(
-                  item.fechaReprogramacion,
-                )}
+                {item.fechaReprogramacion}
               </strong>
             </Alert>
           ) : null}
@@ -2023,9 +2475,14 @@ function AssignmentCard({
           {item.motivoNoEncuesta ? (
             <Box
               sx={{
-                p: 1,
-                borderRadius: 1.5,
-                bgcolor: 'action.hover',
+                p:
+                  1,
+
+                borderRadius:
+                  1.5,
+
+                bgcolor:
+                  'action.hover',
               }}
             >
               <Typography
@@ -2040,7 +2497,8 @@ function AssignmentCard({
                 component="p"
                 variant="body2"
                 sx={{
-                  fontWeight: 700,
+                  fontWeight:
+                    700,
 
                   overflowWrap:
                     'anywhere',
@@ -2054,9 +2512,14 @@ function AssignmentCard({
           {item.observacionEncuestador ? (
             <Box
               sx={{
-                p: 1,
-                borderRadius: 1.5,
-                bgcolor: 'action.hover',
+                p:
+                  1,
+
+                borderRadius:
+                  1.5,
+
+                bgcolor:
+                  'action.hover',
               }}
             >
               <Typography
@@ -2070,18 +2533,6 @@ function AssignmentCard({
               <Typography
                 component="p"
                 variant="body2"
-                sx={{
-                  display:
-                    '-webkit-box',
-
-                  WebkitBoxOrient:
-                    'vertical',
-
-                  WebkitLineClamp: 2,
-
-                  overflow:
-                    'hidden',
-                }}
               >
                 {item.observacionEncuestador}
               </Typography>
@@ -2090,8 +2541,11 @@ function AssignmentCard({
 
           <Box
             sx={{
-              mt: 'auto',
-              pt: 0.5,
+              mt:
+                'auto',
+
+              pt:
+                0.5,
             }}
           >
             {locked ? (
@@ -2099,7 +2553,8 @@ function AssignmentCard({
                 severity={
                   normalizeCode(
                     item.estadoVisita,
-                  ) === 'CANCELADA'
+                  )
+                  === 'CANCELADA'
                     ? 'error'
                     : 'info'
                 }
@@ -2107,15 +2562,23 @@ function AssignmentCard({
                   <CheckCircleIcon fontSize="small" />
                 }
                 sx={{
-                  py: 0.25,
-
-                  '& .MuiAlert-message': {
-                    py: 0.25,
-                  },
+                  py:
+                    0.25,
                 }}
               >
                 Visita finalizada. Disponible únicamente para
                 consulta.
+              </Alert>
+            ) : !canUpdateResultado ? (
+              <Alert
+                severity="info"
+                sx={{
+                  py:
+                    0.25,
+                }}
+              >
+                Consulta únicamente. Tu perfil no registra
+                resultados de visita.
               </Alert>
             ) : (
               <>
@@ -2146,7 +2609,8 @@ function AssignmentCard({
                   color="text.secondary"
                   align="center"
                   sx={{
-                    mt: 0.5,
+                    mt:
+                      0.5,
                   }}
                 >
                   {reprogramada
@@ -2164,6 +2628,7 @@ function AssignmentCard({
 
 function AssignmentListItem({
   item,
+  canUpdateResultado,
   onOpenResultado,
 }: AssignmentItemProps) {
   const locked =
@@ -2186,25 +2651,29 @@ function AssignmentListItem({
   const reprogramada =
     normalizeCode(
       item.estadoVisita,
-    ) === 'REPROGRAMADA';
-
-  const cancelada =
-    normalizeCode(
-      item.estadoVisita,
-    ) === 'CANCELADA';
+    )
+    === 'REPROGRAMADA';
 
   return (
     <Paper
       variant="outlined"
       sx={{
         p: {
-          xs: 1.5,
-          md: 2,
+          xs:
+            1.5,
+
+          md:
+            2,
         },
 
-        borderRadius: 2,
-        borderLeftWidth: 5,
-        borderLeftStyle: 'solid',
+        borderRadius:
+          2,
+
+        borderLeftWidth:
+          5,
+
+        borderLeftStyle:
+          'solid',
 
         borderLeftColor:
           getCardAccent(
@@ -2215,61 +2684,55 @@ function AssignmentListItem({
           locked
             ? 'action.hover'
             : 'background.paper',
-
-        transition: (
-          theme,
-        ) =>
-          theme.transitions.create(
-            [
-              'box-shadow',
-              'border-color',
-            ],
-            {
-              duration:
-                theme.transitions
-                  .duration.short,
-            },
-          ),
-
-        '&:hover': {
-          boxShadow: 3,
-
-          borderColor:
-            getCardAccent(
-              item.estadoVisita,
-            ),
-        },
       }}
     >
       <Box
         sx={{
-          display: 'grid',
+          display:
+            'grid',
 
           gridTemplateColumns: {
-            xs: '1fr',
-            md: 'minmax(210px, 1.1fr) minmax(180px, 0.8fr) minmax(260px, 1.4fr) minmax(210px, auto)',
+            xs:
+              '1fr',
+
+            md:
+              'minmax(210px, 1.1fr) minmax(190px, 0.9fr) minmax(260px, 1.4fr) minmax(210px, auto)',
           },
 
           alignItems: {
-            xs: 'stretch',
-            md: 'center',
+            xs:
+              'stretch',
+
+            md:
+              'center',
           },
 
-          gap: 2,
+          gap:
+            2,
         }}
       >
         <Box
           sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1.25,
-            minWidth: 0,
+            display:
+              'flex',
+
+            alignItems:
+              'center',
+
+            gap:
+              1.25,
+
+            minWidth:
+              0,
           }}
         >
           <Avatar
             sx={{
-              width: 42,
-              height: 42,
+              width:
+                42,
+
+              height:
+                42,
 
               bgcolor:
                 getCardAccent(
@@ -2284,14 +2747,16 @@ function AssignmentListItem({
 
           <Box
             sx={{
-              minWidth: 0,
+              minWidth:
+                0,
             }}
           >
             <Typography
               component="p"
               variant="subtitle2"
               sx={{
-                fontWeight: 900,
+                fontWeight:
+                  900,
               }}
             >
               Caso #{item.callCenterRegistroId}
@@ -2300,9 +2765,9 @@ function AssignmentListItem({
             <Typography
               component="p"
               variant="body2"
-              noWrap
               sx={{
-                fontWeight: 800,
+                fontWeight:
+                  800,
               }}
             >
               {item.nombreCompleto
@@ -2317,33 +2782,97 @@ function AssignmentListItem({
               C.C.{' '}
               {item.cedulaSolicitante
                 ?? 'Sin cédula'}
-              {' · '}
-              Visita #{item.id}
             </Typography>
           </Box>
         </Box>
 
         <Box
           sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1,
+            display:
+              'flex',
+
+            flexDirection:
+              'column',
+
+            gap:
+              0.75,
           }}
         >
-          <CompactInfoItem
-            icon={
-              <CalendarMonthIcon fontSize="small" />
-            }
-            label="Programada"
-            value={
-              formatVisitSchedule(
-                item.fechaProgramada,
-                item.horaProgramada,
+          <Chip
+            size="small"
+            label={
+              formatLabel(
+                item.estadoVisita,
               )
+            }
+            color={
+              getStatusColor(
+                String(
+                  item.estadoVisita,
+                ),
+              )
+            }
+            variant="outlined"
+            sx={{
+              width:
+                'fit-content',
+            }}
+          />
+
+          {estadoCaso ? (
+            <Typography
+              component="p"
+              variant="caption"
+              color="text.secondary"
+            >
+              {formatLabel(
+                estadoCaso,
+              )}
+            </Typography>
+          ) : null}
+
+          {tipoSolicitud ? (
+            <Typography
+              component="p"
+              variant="caption"
+              color="text.secondary"
+            >
+              {formatLabel(
+                tipoSolicitud,
+              )}
+            </Typography>
+          ) : null}
+        </Box>
+
+        <Box
+          sx={{
+            display:
+              'grid',
+
+            gridTemplateColumns: {
+              xs:
+                '1fr',
+
+              sm:
+                'repeat(2, minmax(0, 1fr))',
+            },
+
+            gap:
+              1,
+          }}
+        >
+          <InfoItem
+            icon={
+              <AssignmentIndIcon fontSize="small" />
+            }
+            label="Encuestador"
+            value={
+              item.encuestadorNombre
+              ?? 'Sin encuestador'
             }
           />
 
-          <CompactInfoItem
+          <InfoItem
             icon={
               <PhoneIcon fontSize="small" />
             }
@@ -2353,17 +2882,8 @@ function AssignmentListItem({
               ?? 'Sin teléfono'
             }
           />
-        </Box>
 
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1,
-            minWidth: 0,
-          }}
-        >
-          <CompactInfoItem
+          <InfoItem
             icon={
               <LocationOnIcon fontSize="small" />
             }
@@ -2374,121 +2894,51 @@ function AssignmentListItem({
             }
           />
 
-          <CompactInfoItem
+          <InfoItem
             icon={
-              <HomeWorkIcon fontSize="small" />
+              <CalendarMonthIcon fontSize="small" />
             }
-            label="Barrio / comuna"
+            label="Programación"
             value={
-              `${item.barrioNombre ?? 'Sin barrio'} / ${item.comunaNombre ?? 'Sin comuna'}`
+              `${
+                item.fechaProgramada
+                ?? 'Sin fecha'
+              } ${
+                item.horaProgramada
+                ?? ''
+              }`.trim()
             }
           />
-
-          {tipoSolicitud ? (
-            <CompactInfoItem
-              icon={
-                <AssignmentIndIcon fontSize="small" />
-              }
-              label="Solicitud"
-              value={
-                formatLabel(
-                  tipoSolicitud,
-                )
-              }
-            />
-          ) : null}
         </Box>
 
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-
-            alignItems: {
-              xs: 'stretch',
-              md: 'flex-end',
-            },
-
-            gap: 1,
-          }}
-        >
-          <Box
-            sx={{
-              display: 'flex',
-              flexWrap: 'wrap',
-
-              justifyContent: {
-                xs: 'flex-start',
-                md: 'flex-end',
-              },
-
-              gap: 0.75,
-            }}
-          >
-            <Chip
-              size="small"
-              label={
-                formatLabel(
-                  item.estadoVisita,
-                )
-              }
-              color={
-                getStatusColor(
-                  item.estadoVisita,
-                )
-              }
-            />
-
-            {estadoCaso ? (
-              <Chip
-                size="small"
-                variant="outlined"
-                label={
-                  formatLabel(
-                    estadoCaso,
-                  )
-                }
-                color={
-                  getStatusColor(
-                    estadoCaso,
-                  )
-                }
-              />
-            ) : null}
-          </Box>
-
-          {item.fechaReprogramacion ? (
-            <Chip
-              size="small"
-              variant="outlined"
-              color="warning"
-              icon={
-                <ReplayIcon />
-              }
-              label={
-                `Nueva fecha: ${formatDate(
-                  item.fechaReprogramacion,
-                )}`
-              }
-            />
-          ) : null}
-
+        <Box>
           {locked ? (
-            <Chip
-              size="small"
-              variant="outlined"
-              color={
-                cancelada
+            <Alert
+              severity={
+                normalizeCode(
+                  item.estadoVisita,
+                )
+                === 'CANCELADA'
                   ? 'error'
-                  : 'default'
+                  : 'info'
               }
-              icon={
-                cancelada
-                  ? <CancelIcon />
-                  : <CheckCircleIcon />
-              }
-              label="Finalizada · solo consulta"
-            />
+              sx={{
+                py:
+                  0.25,
+              }}
+            >
+              Visita finalizada.
+            </Alert>
+          ) : !canUpdateResultado ? (
+            <Alert
+              severity="info"
+              sx={{
+                py:
+                  0.25,
+              }}
+            >
+              Solo consulta.
+            </Alert>
           ) : (
             <Button
               variant="contained"
@@ -2503,86 +2953,15 @@ function AssignmentListItem({
                   item,
                 );
               }}
-              sx={{
-                minWidth: 190,
-              }}
+              fullWidth
             >
               {reprogramada
-                ? 'Resultado de nueva visita'
+                ? 'Registrar nueva visita'
                 : 'Registrar resultado'}
             </Button>
           )}
         </Box>
       </Box>
-
-      {item.motivoNoEncuesta
-      || item.observacionEncuestador ? (
-        <>
-          <Divider
-            sx={{
-              my: 1.5,
-            }}
-          />
-
-          <Box
-            sx={{
-              display: 'grid',
-
-              gridTemplateColumns: {
-                xs: '1fr',
-                md: 'repeat(2, minmax(0, 1fr))',
-              },
-
-              gap: 1.5,
-            }}
-          >
-            {item.motivoNoEncuesta ? (
-              <Box>
-                <Typography
-                  component="p"
-                  variant="caption"
-                  color="text.secondary"
-                >
-                  Motivo registrado
-                </Typography>
-
-                <Typography
-                  component="p"
-                  variant="body2"
-                  sx={{
-                    fontWeight: 700,
-                    overflowWrap: 'anywhere',
-                  }}
-                >
-                  {item.motivoNoEncuesta}
-                </Typography>
-              </Box>
-            ) : null}
-
-            {item.observacionEncuestador ? (
-              <Box>
-                <Typography
-                  component="p"
-                  variant="caption"
-                  color="text.secondary"
-                >
-                  Observación
-                </Typography>
-
-                <Typography
-                  component="p"
-                  variant="body2"
-                  sx={{
-                    overflowWrap: 'anywhere',
-                  }}
-                >
-                  {item.observacionEncuestador}
-                </Typography>
-              </Box>
-            ) : null}
-          </Box>
-        </>
-      ) : null}
     </Paper>
   );
 }
@@ -2590,60 +2969,32 @@ function AssignmentListItem({
 function SummaryCard({
   label,
   value,
-  color,
 }: {
-  label: string;
-  value: number;
-  color: string;
+  label:
+    string;
+
+  value:
+    number;
 }) {
   return (
     <Card
       variant="outlined"
-      sx={{
-        borderRadius: 2,
-      }}
     >
-      <CardContent
-        sx={{
-          p: 1.5,
-
-          '&:last-child': {
-            pb: 1.5,
-          },
-        }}
-      >
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 1,
-          }}
+      <CardContent>
+        <Typography
+          component="p"
+          variant="caption"
+          color="text.secondary"
         >
-          <Typography
-            component="p"
-            variant="caption"
-            color="text.secondary"
-          >
-            {label}
-          </Typography>
-
-          <Box
-            sx={{
-              width: 9,
-              height: 9,
-              borderRadius: '50%',
-              bgcolor: color,
-            }}
-          />
-        </Box>
+          {label}
+        </Typography>
 
         <Typography
           component="p"
-          variant="h6"
+          variant="h5"
           sx={{
-            fontWeight: 900,
-            lineHeight: 1.2,
+            fontWeight:
+              900,
           }}
         >
           {value}
@@ -2653,34 +3004,44 @@ function SummaryCard({
   );
 }
 
-function CompactInfoItem({
+function InfoItem({
   label,
   value,
   icon,
 }: {
-  label: string;
-  value: string;
-  icon?: ReactNode;
+  label:
+    string;
+
+  value:
+    string;
+
+  icon?:
+    ReactNode;
 }) {
   return (
     <Box
       sx={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 0.75,
-        minWidth: 0,
+        display:
+          'flex',
+
+        gap:
+          1,
+
+        alignItems:
+          'flex-start',
+
+        minWidth:
+          0,
       }}
     >
       {icon ? (
         <Box
           sx={{
-            color: 'text.secondary',
-            display: 'flex',
-            mt: 0.1,
+            color:
+              'text.secondary',
 
-            '& svg': {
-              fontSize: 17,
-            },
+            mt:
+              0.2,
           }}
         >
           {icon}
@@ -2689,16 +3050,14 @@ function CompactInfoItem({
 
       <Box
         sx={{
-          minWidth: 0,
+          minWidth:
+            0,
         }}
       >
         <Typography
           component="p"
           variant="caption"
           color="text.secondary"
-          sx={{
-            lineHeight: 1.2,
-          }}
         >
           {label}
         </Typography>
@@ -2707,9 +3066,11 @@ function CompactInfoItem({
           component="p"
           variant="body2"
           sx={{
-            fontWeight: 700,
-            lineHeight: 1.35,
-            overflowWrap: 'anywhere',
+            fontWeight:
+              700,
+
+            overflowWrap:
+              'anywhere',
           }}
         >
           {value}
@@ -2725,45 +3086,55 @@ function getPageContent<T>(
 ): T[] {
   const data =
     pageResponse as {
-      content?: T[];
-      items?: T[];
-      data?: T[];
+      content?:
+        T[];
+
+      items?:
+        T[];
+
+      data?:
+        T[];
     };
 
-  return (
-    data.content
+  return data.content
     ?? data.items
     ?? data.data
-    ?? []
-  );
+    ?? [];
 }
 
 function getTotalElements(
   pageResponse:
     unknown,
+
   fallback:
     number,
 ) {
   const data =
     pageResponse as {
-      totalElements?: number;
-      totalItems?: number;
-      total?: number;
-      totalRecords?: number;
+      totalElements?:
+        number;
+
+      totalItems?:
+        number;
+
+      total?:
+        number;
+
+      totalRecords?:
+        number;
     };
 
-  return (
-    data.totalElements
+  return data.totalElements
     ?? data.totalItems
     ?? data.total
     ?? data.totalRecords
-    ?? fallback
-  );
+    ?? fallback;
 }
 
 function getOptionalStringField(
   item:
     CallCenterVisitaResponse,
+
   field:
     string,
 ) {
@@ -2774,10 +3145,13 @@ function getOptionalStringField(
     >;
 
   const value =
-    data[field];
+    data[
+      field
+    ];
 
   if (
-    typeof value !== 'string'
+    typeof value
+      !== 'string'
   ) {
     return null;
   }
@@ -2785,7 +3159,8 @@ function getOptionalStringField(
   const trimmed =
     value.trim();
 
-  return trimmed.length > 0
+  return trimmed.length
+    > 0
     ? trimmed
     : null;
 }
@@ -2808,12 +3183,18 @@ function isVisitLocked(
     );
 
   return (
-    item.encuestaRealizada === true
-    || estadoVisita === 'REALIZADA'
-    || estadoVisita === 'NO_ATENDIDA'
-    || estadoVisita === 'CANCELADA'
-    || estadoCaso === 'CERRADO'
-    || estadoCaso === 'CANCELADO'
+    item.encuestaRealizada
+      === true
+    || estadoVisita
+      === 'REALIZADA'
+    || estadoVisita
+      === 'NO_ATENDIDA'
+    || estadoVisita
+      === 'CANCELADA'
+    || estadoCaso
+      === 'CERRADO'
+    || estadoCaso
+      === 'CANCELADO'
   );
 }
 
@@ -2827,48 +3208,66 @@ function getVisitIcon(
     );
 
   if (
-    item.encuestaRealizada === true
-    || estadoVisita === 'REALIZADA'
+    item.encuestaRealizada
+      === true
+    || estadoVisita
+      === 'REALIZADA'
   ) {
     return (
-      <CheckCircleIcon fontSize="small" />
+      <CheckCircleIcon
+        fontSize="small"
+      />
     );
   }
 
   if (
-    estadoVisita === 'CANCELADA'
+    estadoVisita
+      === 'CANCELADA'
   ) {
     return (
-      <CancelIcon fontSize="small" />
+      <CancelIcon
+        fontSize="small"
+      />
     );
   }
 
   if (
-    estadoVisita === 'REPROGRAMADA'
+    estadoVisita
+      === 'REPROGRAMADA'
   ) {
     return (
-      <ReplayIcon fontSize="small" />
+      <ReplayIcon
+        fontSize="small"
+      />
     );
   }
 
   if (
-    estadoVisita === 'NO_ATENDIDA'
+    estadoVisita
+      === 'NO_ATENDIDA'
   ) {
     return (
-      <WarningAmberIcon fontSize="small" />
+      <WarningAmberIcon
+        fontSize="small"
+      />
     );
   }
 
   if (
-    estadoVisita === 'PROGRAMADA'
+    estadoVisita
+      === 'PROGRAMADA'
   ) {
     return (
-      <ScheduleIcon fontSize="small" />
+      <ScheduleIcon
+        fontSize="small"
+      />
     );
   }
 
   return (
-    <AssignmentIndIcon fontSize="small" />
+    <AssignmentIndIcon
+      fontSize="small"
+    />
   );
 }
 
@@ -2877,7 +3276,8 @@ function getResultadoImpacto(
     CallCenterEstadoVisita,
 ) {
   if (
-    estado === 'REALIZADA'
+    estado
+      === 'REALIZADA'
   ) {
     return {
       severity:
@@ -2892,7 +3292,8 @@ function getResultadoImpacto(
   }
 
   if (
-    estado === 'NO_ATENDIDA'
+    estado
+      === 'NO_ATENDIDA'
   ) {
     return {
       severity:
@@ -2907,7 +3308,8 @@ function getResultadoImpacto(
   }
 
   if (
-    estado === 'CANCELADA'
+    estado
+      === 'CANCELADA'
   ) {
     return {
       severity:
@@ -2938,19 +3340,22 @@ function getResultadoOptionLabel(
     CallCenterEstadoVisita,
 ) {
   if (
-    estado === 'REALIZADA'
+    estado
+      === 'REALIZADA'
   ) {
     return 'Realizada — finaliza el caso';
   }
 
   if (
-    estado === 'NO_ATENDIDA'
+    estado
+      === 'NO_ATENDIDA'
   ) {
     return 'No atendida — finaliza el caso';
   }
 
   if (
-    estado === 'CANCELADA'
+    estado
+      === 'CANCELADA'
   ) {
     return 'Cancelada — cancela el caso';
   }
@@ -2963,19 +3368,22 @@ function getResultadoSaveLabel(
     CallCenterEstadoVisita,
 ) {
   if (
-    estado === 'REALIZADA'
+    estado
+      === 'REALIZADA'
   ) {
     return 'Confirmar visita realizada';
   }
 
   if (
-    estado === 'NO_ATENDIDA'
+    estado
+      === 'NO_ATENDIDA'
   ) {
     return 'Confirmar visita no atendida';
   }
 
   if (
-    estado === 'CANCELADA'
+    estado
+      === 'CANCELADA'
   ) {
     return 'Confirmar cancelación';
   }
@@ -2994,31 +3402,36 @@ function getCardAccent(
     );
 
   if (
-    normalized === 'REALIZADA'
+    normalized
+      === 'REALIZADA'
   ) {
     return 'success.main';
   }
 
   if (
-    normalized === 'NO_ATENDIDA'
+    normalized
+      === 'NO_ATENDIDA'
   ) {
     return 'warning.main';
   }
 
   if (
-    normalized === 'REPROGRAMADA'
+    normalized
+      === 'REPROGRAMADA'
   ) {
     return 'info.main';
   }
 
   if (
-    normalized === 'CANCELADA'
+    normalized
+      === 'CANCELADA'
   ) {
     return 'error.main';
   }
 
   if (
-    normalized === 'PROGRAMADA'
+    normalized
+      === 'PROGRAMADA'
   ) {
     return 'primary.main';
   }
@@ -3042,14 +3455,18 @@ function normalizeCode(
 function getErrorMessage(
   exception:
     unknown,
+
   fallback:
     string,
 ) {
   if (
     exception
-    && typeof exception === 'object'
-    && 'message' in exception
-    && typeof exception.message === 'string'
+    && typeof exception
+      === 'object'
+    && 'message'
+      in exception
+    && typeof exception.message
+      === 'string'
   ) {
     return exception.message;
   }
@@ -3063,14 +3480,21 @@ function formatLabel(
     | null,
 ) {
   return String(
-    value ?? 'Sin estado',
+    value
+    ?? 'Sin estado',
   )
-    .split('_')
-    .join(' ')
+    .split(
+      '_',
+    )
+    .join(
+      ' ',
+    )
     .toLowerCase()
     .replace(
       /^\w/,
-      (letter) =>
+      (
+        letter,
+      ) =>
         letter.toUpperCase(),
     );
 }
@@ -3144,7 +3568,8 @@ function getLocalDateISO(
 
   const month =
     String(
-      date.getMonth() + 1,
+      date.getMonth()
+      + 1,
     ).padStart(
       2,
       '0',
@@ -3182,63 +3607,4 @@ function getLocalTime(
     );
 
   return `${hours}:${minutes}`;
-}
-
-function formatDate(
-  value?:
-    | string
-    | null,
-) {
-  if (!value) {
-    return 'Sin fecha';
-  }
-
-  const parts =
-    value.split('-');
-
-  if (
-    parts.length !== 3
-  ) {
-    return value;
-  }
-
-  return `${parts[2]}/${parts[1]}/${parts[0]}`;
-}
-
-function formatTime(
-  value?:
-    | string
-    | null,
-) {
-  if (!value) {
-    return '';
-  }
-
-  return value.slice(
-    0,
-    5,
-  );
-}
-
-function formatVisitSchedule(
-  fecha?:
-    | string
-    | null,
-  hora?:
-    | string
-    | null,
-) {
-  const date =
-    formatDate(
-      fecha,
-    );
-
-  const time =
-    formatTime(
-      hora,
-    );
-
-  return time
-    ? `${date} · ${time}`
-    : date;
 }

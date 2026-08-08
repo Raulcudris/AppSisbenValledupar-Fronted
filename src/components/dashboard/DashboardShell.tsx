@@ -91,8 +91,8 @@ function getCurrentModuleLabel(pathname: string) {
     return 'Asignar funcionarios Call Center';
   }
 
-  if (pathname.includes('/dashboard/callcenter/mis-registros/')) {
-    return 'Gestión caso Call Center';
+  if (pathname.includes('/dashboard/callcenter/agenda-visitas')) {
+    return 'Agenda de visitas';
   }
 
   if (pathname.includes('/dashboard/callcenter/mis-registros')) {
